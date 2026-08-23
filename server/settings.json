@@ -1,0 +1,9 @@
+{
+  "institutionName": "المديرية الجهوية للأملاك الوطنية",
+  "defaultPagination": "100",
+  "appTitle": "DRDN-HR",
+  "serverIp": "localhost",
+  "apiPort": "5000",
+  "baseApiUrl": "http://localhost:5000/api",
+  "networkMode": "local"
+}

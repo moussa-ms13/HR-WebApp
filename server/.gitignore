@@ -1,0 +1,23 @@
+# ============================================================
+# HR-WebApp Server — .gitignore
+# ============================================================
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables (NEVER commit secrets)
+.env
+.env.*
+.env.local
+.env.development
+.env.production
+
+# Prisma
+prisma/migrations/
+
+# Logs
+*.log
+npm-debug.log*

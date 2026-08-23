@@ -1,0 +1,317 @@
+import React, { useState, useEffect } from 'react';
+import useSWR from 'swr';
+import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import EmployeeStatesService from '../../services/employeeStatesService';
+import EmployeeStateModal from './EmployeeStateModal';
+import { Search, MoreVertical, CalendarOff, ArrowUpDown, ChevronDown, Loader2 } from 'lucide-react';
+import { DateText } from '../../utils/formatDate';
+
+const fetcher = async ([url, page, limit, category, search]) => {
+  const result = await EmployeeStatesService.getAll(page, limit, category, search);
+  if (!result.success) throw new Error("Failed to fetch");
+  return result;
+};
+
+
+
+const EmployeeStatesList = () => {
+  const { hasPermission } = useAuth();
+  const [searchParams] = useSearchParams();
+
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(100);
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('search')?.trim() || '');
+
+  const { data, error, isLoading, mutate } = useSWR(
+    ['/api/employee-states', page, limit, categoryFilter, search],
+    fetcher,
+    { revalidateOnFocus: false, keepPreviousData: true }
+  );
+
+  const debounceRef = React.useRef(null);
+  const searchInputRef = React.useRef(null);
+  const handleSearchChange = (e) => {
+    const value = e.target.value;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setSearch(value.trim());
+      setPage(1);
+    }, 500);
+  };
+
+  React.useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  const states = Array.isArray(data) ? data : (data?.records || data?.data || []);
+  const meta = data?.meta || { total: 0, totalPages: 0, page: 1 };
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedState, setSelectedState] = useState(null);
+  const [menuOpenId, setMenuOpenId] = useState(null);
+
+  const handleAdd = () => {
+    setSelectedState(null);
+    setIsModalOpen(true);
+  };
+
+  const handleModalSuccess = () => {
+    setIsModalOpen(false);
+    mutate();
+  };
+
+  const getRowStatus = (endDateStr, isResumed) => {
+    if (isResumed) return 'resumed';
+    if (!endDateStr) return 'active';
+
+    const endDate = new Date(endDateStr);
+    if (isNaN(endDate.getTime())) return 'active';
+
+    const today = new Date();
+    endDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+
+    const diffTime = endDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays < 0) return 'overdue';
+    if (diffDays >= 0 && diffDays <= 7) return 'warning';
+    return 'active';
+  };
+
+  const getStatusStyles = (status) => {
+    switch (status) {
+      case 'resumed': return 'bg-emerald-100 text-emerald-800 border border-emerald-300';
+      case 'overdue': return 'animate-pulse bg-red-100 text-red-800 border border-red-300';
+      case 'warning': return 'animate-pulse bg-orange-100 text-orange-800 border border-orange-300';
+      case 'active':
+      default: return 'bg-green-100 text-green-800 border border-green-300';
+    }
+  };
+
+  const getRowBgStyles = (status) => {
+    switch (status) {
+      case 'overdue': return 'bg-red-50 hover:bg-red-100';
+      case 'warning': return 'bg-orange-50 hover:bg-orange-100';
+      case 'resumed':
+      case 'active':
+      default: return 'bg-white hover:bg-gray-50';
+    }
+  };
+
+  const getStatusLabel = (status) => {
+    switch (status) {
+      case 'resumed': return 'تم الاستئناف';
+      case 'overdue': return 'لم يستأنف (متأخر)';
+      case 'warning': return 'يستأنف قريباً';
+      case 'active': return 'في عطلة';
+      default: return '-';
+    }
+  };
+
+  const HeaderCell = ({ label }) => (
+    <th className="py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100">
+      <div className="flex items-center gap-1.5 cursor-pointer hover:text-slate-800 transition-colors">
+        {label}
+        <ArrowUpDown size={12} className="text-gray-300" />
+      </div>
+    </th>
+  );
+
+  return (
+    <div className="flex flex-col h-full font-sans text-slate-800" dir="rtl">
+
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-6 bg-white p-3 rounded-xl border border-gray-200">
+
+        <div className="flex items-center gap-3">
+          <select
+            value={categoryFilter}
+            onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
+            className="flex items-center gap-2 text-sm font-medium text-gray-600 px-3 py-2 hover:bg-gray-50 rounded-lg outline-none bg-transparent cursor-pointer appearance-none"
+          >
+            <option value="">الفئة: الكل</option>
+            <option value="عطل">عطل</option>
+            <option value="غيابات">غيابات</option>
+            <option value="حالات أخرى">حالات أخرى</option>
+          </select>
+          <ChevronDown size={14} className="-mr-6 text-gray-500 pointer-events-none" />
+
+          <div className="h-4 w-px bg-gray-200 ml-2"></div>
+
+          <div className="relative w-64">
+            <input
+              type="text"
+              placeholder="البحث باسم الموظف..."
+              defaultValue={search}
+              onChange={handleSearchChange}
+              className="w-full pr-10 pl-4 py-2 bg-gray-50 border-none rounded-lg outline-none text-sm text-slate-700 focus:ring-1 focus:ring-gray-200"
+            />
+            <Search className="absolute right-3 top-2.5 text-gray-400" size={16} />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {hasPermission('checkBoxAdd') && (
+            <button
+              onClick={handleAdd}
+              className="flex items-center justify-center gap-1.5 px-5 py-2 text-white rounded-lg transition-colors font-medium shadow-sm text-sm"
+              style={{ backgroundColor: '#10b981' }}
+            >
+              إضافة حالة
+            </button>
+          )}
+        </div>
+      </div>
+
+
+
+
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col">
+        <div className="overflow-x-auto flex-1 custom-scrollbar">
+          <table className="w-full text-right border-collapse">
+            <thead className="sticky top-0 z-10">
+              <tr>
+                <HeaderCell label="الموظف" />
+                <HeaderCell label="الفئة" />
+                <HeaderCell label="النوع" />
+                <HeaderCell label="تاريخ البداية" />
+                <HeaderCell label="تاريخ النهاية" />
+                <HeaderCell label="المدة (أيام)" />
+                <HeaderCell label="حالة الاستئناف" />
+                <th className="py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center">الإجراء</th>
+              </tr>
+            </thead>
+            <tbody className="text-sm divide-y divide-gray-100">
+              {isLoading ? (
+                <tr>
+                  <td colSpan="8" className="py-12 text-center text-gray-400">
+                    <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
+                    جاري تحميل البيانات...
+                  </td>
+                </tr>
+              ) : states.length === 0 ? (
+                <tr>
+                  <td colSpan="8" className="py-12 text-center text-gray-400">
+                    <CalendarOff size={32} className="mx-auto text-gray-300 mb-2" />
+                    لا توجد سجلات عطل لعرضها
+                  </td>
+                </tr>
+              ) : (
+                states.map((st) => {
+                  const status = getRowStatus(st.EndDate, st.IsResumed);
+                  return (
+                    <tr key={st.Id} className={`${getRowBgStyles(status)} transition-colors group`}>
+                      <td className="py-3 px-4 font-bold text-slate-800">
+                        {st?.Employee?.Name || 'غير محدد'} {st?.Employee?.LastName || ''}
+                      </td>
+                      <td className="py-3 px-4 text-gray-500 font-medium">
+                        {st?.RecordCategory || '-'}
+                      </td>
+                      <td className="py-3 px-4 text-gray-500 font-medium max-w-[150px] truncate" title={st?.Type || st?.StateTypeOrReason}>
+                        {st?.Type || st?.StateTypeOrReason || '-'}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-gray-600">
+                        <DateText value={st?.StartDate} />
+                      </td>
+                      <td className="py-3 px-4 font-mono text-gray-600">
+                        <DateText value={st?.EndDate} />
+                      </td>
+                      <td className="py-3 px-4 text-center font-bold text-emerald-600 bg-emerald-50/30">
+                        {st?.DurationDays || st?.DaysCount || 0}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-bold ${getStatusStyles(status)}`}>
+                          {getStatusLabel(status)}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <div className="relative inline-block text-right">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuOpenId(menuOpenId === st.Id ? null : st.Id);
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-emerald-600 border border-transparent hover:border-gray-200 rounded-lg transition-all"
+                          >
+                            <MoreVertical size={18} />
+                          </button>
+
+                          {menuOpenId === st.Id && (
+                            <div className="absolute left-0 mt-2 w-40 rounded-xl shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                              <div className="py-1" role="menu">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setSelectedState(st); setIsModalOpen(true); setMenuOpenId(null); }}
+                                  className="w-full text-right px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                >
+                                  تعديل السجل
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="bg-white px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage(p => Math.min(meta.totalPages, p + 1))}
+              disabled={page === meta.totalPages || meta.totalPages === 0}
+              className="px-4 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              التالي
+            </button>
+            <button className="px-4 py-1.5 bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm">
+              {meta.page}
+            </button>
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-4 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              السابق
+            </button>
+          </div>
+
+          <div className="text-sm font-medium text-gray-500">
+            إظهار {states.length} من أصل {meta.total} مدخل
+          </div>
+
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+            أظهر
+            <select
+              value={limit}
+              onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}
+              className="border border-gray-200 rounded-lg px-2 py-1 outline-none bg-white text-slate-800"
+            >
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            مدخلات
+          </div>
+        </div>
+      </div>
+
+      <EmployeeStateModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        record={selectedState}
+        onSuccess={handleModalSuccess}
+      />
+    </div>
+  );
+};
+
+export default EmployeeStatesList;

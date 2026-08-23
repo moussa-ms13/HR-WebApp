@@ -1,0 +1,247 @@
+// ============================================================
+// HR-WebApp — Prisma Schema (Introspected from RafatDB)
+// 
+// WARNING: This schema was reverse-engineered from the existing
+// production database. Do NOT run destructive migrations.
+// Use `prisma generate` only — never `prisma migrate dev`.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+}
+
+// ============================================================
+// Users — Core user account table
+// ============================================================
+model Users {
+  Id              Int       @id @default(autoincrement())
+  FullName        String    @db.NVarChar(Max)
+  UserName        String    @db.NVarChar(Max)
+  Password        String    @db.NVarChar(Max)
+  Role            String    @db.NVarChar(Max)
+  IsSecondaryUser Boolean
+  UserId          String    @db.NVarChar(Max)
+  Phone           String?   @db.NVarChar(Max)
+  Email           String?   @db.NVarChar(Max)
+  Address         String?   @db.NVarChar(Max)
+  CreatedDate     DateTime  @db.DateTime2
+  EditedDate      DateTime  @db.DateTime2
+
+  // Relations
+  Roles           Roles[]
+
+  @@map("Users")
+}
+
+// ============================================================
+// Roles — Granular permission flags per user
+// ============================================================
+model Roles {
+  Id      Int     @id @default(autoincrement())
+  Key     String  @db.NVarChar(Max)
+  Value   Boolean
+  UsersId Int
+
+  User    Users   @relation(fields: [UsersId], references: [Id], onDelete: Cascade, map: "FK_Roles_Users_UsersId")
+
+  @@index([UsersId])
+  @@map("Roles")
+}
+
+// ============================================================
+// SystemRecords — Audit / activity log (legacy structure)
+// ============================================================
+model SystemRecords {
+  Id            Int       @id @default(autoincrement())
+  UserFullName  String    @db.NVarChar(Max)
+  DeviceName    String    @db.NVarChar(Max)
+  MachinId      String    @db.NVarChar(Max)
+  Title         String    @db.NVarChar(Max)
+  Description   String    @db.NVarChar(Max)
+  CreatedDate   DateTime  @db.DateTime2
+  UsersId       Int
+  EmployeesId   Int?
+
+  Employee      Employees? @relation(fields: [EmployeesId], references: [Id], onDelete: NoAction, map: "FK_SystemRecords_Employees_EmployeesId")
+
+  @@index([UsersId])
+  @@index([EmployeesId])
+  @@index([CreatedDate])
+  @@map("SystemRecords")
+}
+
+// ============================================================
+// Employees — Core employee data
+// ============================================================
+model Employees {
+  Id                Int       @id @default(autoincrement())
+  Name              String    @db.NVarChar(Max)
+  LastName          String    @db.NVarChar(Max)
+  DateOfBirth       DateTime  @db.DateTime2
+  PlaceOfBirth      String    @db.NVarChar(Max)
+  Gender            String    @db.NVarChar(Max)
+  MaritalStatus     String    @db.NVarChar(Max)
+  ProfileImagePath  String    @db.NVarChar(Max)
+  Province          String    @db.NVarChar(Max)
+  Directorate       String    @db.NVarChar(Max)
+  Department        String    @db.NVarChar(Max)
+  AddedDate         DateTime  @db.DateTime2
+  UpdateDate        DateTime  @db.DateTime2
+  UsersId           String    @db.NVarChar(Max)
+  NIN               String    @default("") @db.NVarChar(Max)
+  SIS               String    @default("") @db.NVarChar(Max)
+  AssignedPosition  String    @default("") @db.NVarChar(Max)
+  ConfirmationDate  DateTime? @db.DateTime2
+  Degree            Int       @default(0)
+  EmployeeStatus    String    @default("") @db.NVarChar(Max)
+  InstallationDate  DateTime  @default(dbgenerated("'0001-01-01T00:00:00.0000000'")) @db.DateTime2
+  JobTitleId        Int       @default(0)
+  LastDegreeDate    DateTime  @default(dbgenerated("'0001-01-01T00:00:00.0000000'")) @db.DateTime2
+  PositionDate      DateTime? @db.DateTime2
+  StatusDate        DateTime  @default(dbgenerated("'0001-01-01T00:00:00.0000000'")) @db.DateTime2
+  Address           String    @default("") @db.NVarChar(Max)
+  Email             String    @default("") @db.NVarChar(Max)
+  NumberOfChildren  Int       @default(0)
+  PhoneNumber       String    @default("") @db.NVarChar(Max)
+
+  // Relations
+  JobTitle          JobTitles         @relation(fields: [JobTitleId], references: [Id], onDelete: Cascade, map: "FK_Employees_JobTitles_JobTitleId")
+  EmployeeFiles     EmployeeFiles[]
+  EmployeesRecords  EmployeesRecords[]
+  EmployeeStates    EmployeeStates[]
+  SystemRecords     SystemRecords[]
+
+  // NOTE: Indexes on Province, Name, LastName, EmployeeStatus should be
+  // created directly in SQL Server since these are NVarChar(Max) columns
+  // which Prisma cannot index. Use:
+  //   CREATE INDEX IX_Employees_Province ON Employees(Province(200));
+  //   etc.
+  @@index([JobTitleId])
+  @@map("Employees")
+}
+
+// ============================================================
+// EmployeeFiles — Document attachments for employees
+// ============================================================
+model EmployeeFiles {
+  Id            Int       @id @default(autoincrement())
+  Category      String    @db.NVarChar(Max)
+  FileName      String    @db.NVarChar(Max)
+  FilePath      String    @db.NVarChar(Max)
+  UploadDate    DateTime  @db.DateTime2
+  EmployeesId   Int
+  DocumentDate  DateTime  @default(dbgenerated("'0001-01-01T00:00:00.0000000'")) @db.DateTime2
+  DocumentName  String    @default("") @db.NVarChar(Max)
+
+  Employee      Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_EmployeeFiles_Employees_EmployeesId")
+
+  @@index([EmployeesId])
+  @@map("EmployeeFiles")
+}
+
+// ============================================================
+// EmployeesRecords — Promotion / career progression records
+// ============================================================
+model EmployeesRecords {
+  Id                Int       @id @default(autoincrement())
+  Name              String    @db.NVarChar(Max)
+  JobTitle          String    @db.NVarChar(Max)
+  EmpState          String    @db.NVarChar(Max)
+  LastPromotionDate DateTime  @db.DateTime2
+  CurrentDegree     Int
+  CurrentStage      Int
+  CurrentSalary     Float     @db.Real
+  CurrentDate       DateTime  @db.DateTime2
+  NextDegree        Int
+  NextStage         Int
+  NextSalary        Float     @db.Real
+  NextDate          DateTime  @db.DateTime2
+  Note              String    @db.NVarChar(Max)
+  AddedDate         DateTime  @db.DateTime2
+  UpdateDate        DateTime  @db.DateTime2
+  UsersId           String    @db.NVarChar(Max)
+  EmployeesId       Int
+
+  Employee          Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_EmployeesRecords_Employees_EmployeesId")
+
+  @@index([EmployeesId])
+  @@map("EmployeesRecords")
+}
+
+// ============================================================
+// EmployeeStates — Leave, absence, and status tracking
+// ============================================================
+model EmployeeStates {
+  Id                Int       @id @default(autoincrement())
+  EmployeesId       Int
+  RecordCategory    String    @db.NVarChar(Max)
+  CurrentJobTitle   String    @db.NVarChar(Max)
+  StateTypeOrReason String    @db.NVarChar(Max)
+  DaysCount         Int
+  StartDate         DateTime  @db.DateTime2
+  EndDate           DateTime  @db.DateTime2
+  AddedDate         DateTime  @db.DateTime2
+  UsersId           String    @db.NVarChar(Max)
+  ActualReturnDate  DateTime? @db.DateTime2
+  IsResumed         Boolean   @default(false)
+
+  Employee          Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_EmployeeStates_Employees_EmployeesId")
+
+  @@index([EmployeesId])
+  @@index([EndDate])
+  @@index([IsResumed])
+  @@map("EmployeeStates")
+}
+
+// ============================================================
+// JobTitles — Position / rank classification
+// ============================================================
+model JobTitles {
+  Id                 Int       @id @default(autoincrement())
+  EmploymentCategory String    @db.NVarChar(Max)
+  RankName           String    @db.NVarChar(Max)
+  CategoryLevel      String    @db.NVarChar(Max)
+  IndexNumber        Int
+  AddedDate          DateTime  @db.DateTime2
+  UsersId            String    @db.NVarChar(Max)
+
+  // Relations
+  Employees          Employees[]
+
+  @@map("JobTitles")
+}
+
+// ============================================================
+// SystemSettings — Key-Value store for application settings
+// ============================================================
+model SystemSettings {
+  Id          Int      @id @default(autoincrement())
+  Key         String   @unique @db.NVarChar(255)
+  Value       String   @db.NVarChar(Max)
+  UpdatedAt   DateTime @default(now()) @db.DateTime2
+
+  @@map("SystemSettings")
+}
+/// هذا الجدول خاص بـ Entity Framework Core ولا يجب على Prisma حذفه
+model EFMigrationsHistory {
+  MigrationId    String @id @db.NVarChar(150)
+  ProductVersion String @db.NVarChar(32)
+
+  @@map("__EFMigrationsHistory")
+  @@ignore
+}
+
+/// هذا الجدول خاص بمخططات SQL Server
+model sysdiagrams {
+  name         String @db.NVarChar(128)
+  principal_id Int
+  diagram_id   Int    @id @default(autoincrement())
+  version      Int?
+  definition   Bytes?
+
+  @@ignore
+}

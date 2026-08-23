@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════════════
+   Cairo Font — Self-hosted (no external CDN)
+   ═══════════════════════════════════════════════════ */
+@font-face {
+  font-family: 'Cairo';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('/fonts/Cairo-Light.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cairo';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/Cairo-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cairo';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/Cairo-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cairo';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/Cairo-SemiBold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cairo';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/Cairo-Bold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cairo';
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url('/fonts/Cairo-ExtraBold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Cairo';
+  font-style: normal;
+  font-weight: 900;
+  font-display: swap;
+  src: url('/fonts/Cairo-Black.woff2') format('woff2');
+}
+
+/* ═══════════════════════════════════════════════════
+   Override Tailwind v4 --font-sans so `font-sans`
+   class resolves to Cairo everywhere
+   ═══════════════════════════════════════════════════ */
+@theme {
+  --font-sans: 'Cairo', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+/* ═══════════════════════════════════════════════════
+   Ministry of Finance — Official Color System
+   Primary:   #105b38 (Deep Ministerial Green)
+   Secondary: #0a7e50 (Vibrant Green)
+   Accent:    #c7a43e (Official Gold)
+   Bg:        #F8FAFC (Off-white)
+   ═══════════════════════════════════════════════════ */
+
+body {
+  font-family: 'Cairo', sans-serif;
+  background-color: #F8FAFC;
+  color: #0f172a;
+}
+
+/* ═══════════════════════════════════════════════════
+   Legacy Browser Fallbacks — Chrome 49+, Firefox 52+
+   Ensures visibility on Windows 7 / older browsers
+   ═══════════════════════════════════════════════════ */
+
+/* Ensure all SVG icons (Lucide-React) are visible on legacy browsers.
+   Modern Tailwind uses CSS variables for currentColor which may not resolve
+   on older engines. These fallbacks set explicit stroke/fill colors. */
+svg {
+  stroke: currentColor;
+  color: inherit;
+}
+
+/* Prevent invisible icons: any SVG inside a button or link inherits color */
+button svg,
+a svg {
+  color: inherit;
+  stroke: currentColor;
+}
+
+/* Explicit text color fallbacks for common text utilities.
+   On legacy browsers, oklch() and color-mix() silently fail,
+   leaving text transparent. These ensure baseline readability. */
+h1, h2, h3, h4, h5, h6 {
+  color: #0f172a; /* slate-900 fallback */
+}
+
+p, span, td, th, label, li {
+  color: inherit;
+}
+
+/* Ensure interactive elements have visible backgrounds */
+input, select, textarea {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+/* Badge/pill fallback — ensure borders and bg are visible */
+[class*="rounded-full"] {
+  border-style: solid;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+
+/* Custom Scrollbar inside dark sidebar */
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(255,255,255,0.15);
+}
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255,255,255,0.25);
+}
+
