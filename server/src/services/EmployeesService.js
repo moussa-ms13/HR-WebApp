@@ -109,7 +109,11 @@ class EmployeesService {
   static async getById(id, requestingUser) {
     const employee = await prisma.employees.findUnique({
       where: { Id: id },
-      include: { JobTitle: true }
+      include: {
+        JobTitle: true,
+        RankHistories: { orderBy: { InstallDate: "desc" } },
+        PositionHistories: { orderBy: { InstallDate: "desc" } },
+      }
     });
 
     if (!employee) {

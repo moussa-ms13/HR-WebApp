@@ -2,6 +2,7 @@
 // AuthService — Authentication & JWT Token Management
 // ============================================================
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
@@ -42,8 +43,14 @@ class AuthService {
       throw ApiError.unauthorized("Invalid credentials.");
     }
 
-    // Plain text comparison for legacy compatibility
-    if (user.Password !== password) {
+    // Verify password: bcrypt hashes (new users) + legacy plain-text fallback
+    let passwordValid = false;
+    if (/^\$2[aby]\$\d{2}\$/.test(user.Password)) {
+      passwordValid = await bcrypt.compare(password, user.Password);
+    } else {
+      passwordValid = user.Password === password;
+    }
+    if (!passwordValid) {
       throw ApiError.unauthorized("Invalid credentials.");
     }
 

@@ -21,7 +21,7 @@ const Settings = () => {
   const [connectionForm, setConnectionForm] = useState({
     serverIp: 'localhost',
     apiPort: '5000',
-    baseApiUrl: 'http://localhost:5000/api',
+    baseApiUrl: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
     networkMode: 'local' // 'local' or 'network'
   });
 

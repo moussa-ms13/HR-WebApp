@@ -305,7 +305,7 @@ const EmployeeProfile = () => {
       <div className="bg-white rounded-xl border border-gray-200 p-6 flex flex-col items-center justify-center mb-6 shadow-sm">
         <div className="w-24 h-24 rounded-full border-4 border-emerald-50 bg-slate-50 overflow-hidden shadow-sm mb-4">
           {employee.ProfileImagePath ? (
-            <img src={`http://localhost:5000${employee.ProfileImagePath}`} alt="Avatar" className="w-full h-full object-cover" />
+            <img src={`${import.meta.env.VITE_SERVER_URL || 'http://localhost:5000'}${employee.ProfileImagePath}`} alt="Avatar" className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-gray-100">
               <User size={32} className="text-gray-400" />

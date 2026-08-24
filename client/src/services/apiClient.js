@@ -1,8 +1,10 @@
 import axios from 'axios';
 
-// Create Axios instance with base URL
+// Create Axios instance with environment-aware base URL
+// - Development: VITE_API_URL = http://localhost:5000/api  (direct to Express)
+// - Production:  VITE_API_URL = /api                       (IIS reverse proxy)
 const apiClient = axios.create({
-  baseURL: '/api', // Pointing to the Node.js backend via IIS reverse proxy
+  baseURL: import.meta.env.VITE_API_URL || '/api',
   maxContentLength: 25 * 1024 * 1024, // 25MB
   maxBodyLength: 25 * 1024 * 1024,    // 25MB
 });

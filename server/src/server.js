@@ -25,7 +25,12 @@ app.use(helmet({
 }));
 app.use(
   cors({
-    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
+    origin: [
+      process.env.CLIENT_URL,
+      'http://10.128.21.97',
+      'http://localhost:5173',
+      'http://localhost:5174',
+    ].filter(Boolean),
     credentials: true,
   })
 );
@@ -80,11 +85,34 @@ app.use((err, req, res, next) => {
 app.use(errorHandler);
 
 // ─── Start Server ─────────────────────────────────────────
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`\n🚀 HR-WebApp API Server`);
   console.log(`   Environment : ${process.env.NODE_ENV || "development"}`);
   console.log(`   Port        : ${PORT}`);
   console.log(`   Health      : http://localhost:${PORT}/api/health\n`);
 });
+
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`\n❌ FATAL: Port ${PORT} is already in use.`);
+    console.error(`   Run: netstat -ano | findstr ":${PORT}" to find the culprit.`);
+  } else {
+    console.error("❌ Server error:", err);
+  }
+  process.exit(1);
+});
+
+// ─── Graceful Shutdown (release port on SIGTERM/SIGINT) ───
+const shutdown = (signal) => {
+  console.log(`\n⏹ Received ${signal}. Shutting down gracefully...`);
+  server.close(() => {
+    console.log("   Server closed. Exiting.");
+    process.exit(0);
+  });
+  // Force exit after 10s if graceful close stalls
+  setTimeout(() => process.exit(1), 10000);
+};
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
 module.exports = app;

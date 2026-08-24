@@ -18,21 +18,21 @@ datasource db {
 // Users — Core user account table
 // ============================================================
 model Users {
-  Id              Int       @id @default(autoincrement())
-  FullName        String    @db.NVarChar(Max)
-  UserName        String    @db.NVarChar(Max)
-  Password        String    @db.NVarChar(Max)
-  Role            String    @db.NVarChar(Max)
+  Id              Int      @id @default(autoincrement())
+  FullName        String   @db.NVarChar(Max)
+  UserName        String   @db.NVarChar(Max)
+  Password        String   @db.NVarChar(Max)
+  Role            String   @db.NVarChar(Max)
   IsSecondaryUser Boolean
-  UserId          String    @db.NVarChar(Max)
-  Phone           String?   @db.NVarChar(Max)
-  Email           String?   @db.NVarChar(Max)
-  Address         String?   @db.NVarChar(Max)
-  CreatedDate     DateTime  @db.DateTime2
-  EditedDate      DateTime  @db.DateTime2
+  UserId          String   @db.NVarChar(Max)
+  Phone           String?  @db.NVarChar(Max)
+  Email           String?  @db.NVarChar(Max)
+  Address         String?  @db.NVarChar(Max)
+  CreatedDate     DateTime @db.DateTime2
+  EditedDate      DateTime @db.DateTime2
 
   // Relations
-  Roles           Roles[]
+  Roles Roles[]
 
   @@map("Users")
 }
@@ -46,7 +46,7 @@ model Roles {
   Value   Boolean
   UsersId Int
 
-  User    Users   @relation(fields: [UsersId], references: [Id], onDelete: Cascade, map: "FK_Roles_Users_UsersId")
+  User Users @relation(fields: [UsersId], references: [Id], onDelete: Cascade, map: "FK_Roles_Users_UsersId")
 
   @@index([UsersId])
   @@map("Roles")
@@ -56,17 +56,17 @@ model Roles {
 // SystemRecords — Audit / activity log (legacy structure)
 // ============================================================
 model SystemRecords {
-  Id            Int       @id @default(autoincrement())
-  UserFullName  String    @db.NVarChar(Max)
-  DeviceName    String    @db.NVarChar(Max)
-  MachinId      String    @db.NVarChar(Max)
-  Title         String    @db.NVarChar(Max)
-  Description   String    @db.NVarChar(Max)
-  CreatedDate   DateTime  @db.DateTime2
-  UsersId       Int
-  EmployeesId   Int?
+  Id           Int      @id @default(autoincrement())
+  UserFullName String   @db.NVarChar(Max)
+  DeviceName   String   @db.NVarChar(Max)
+  MachinId     String   @db.NVarChar(Max)
+  Title        String   @db.NVarChar(Max)
+  Description  String   @db.NVarChar(Max)
+  CreatedDate  DateTime @db.DateTime2
+  UsersId      Int
+  EmployeesId  Int?
 
-  Employee      Employees? @relation(fields: [EmployeesId], references: [Id], onDelete: NoAction, map: "FK_SystemRecords_Employees_EmployeesId")
+  Employee Employees? @relation(fields: [EmployeesId], references: [Id], onDelete: NoAction, map: "FK_SystemRecords_Employees_EmployeesId")
 
   @@index([UsersId])
   @@index([EmployeesId])
@@ -78,42 +78,44 @@ model SystemRecords {
 // Employees — Core employee data
 // ============================================================
 model Employees {
-  Id                Int       @id @default(autoincrement())
-  Name              String    @db.NVarChar(Max)
-  LastName          String    @db.NVarChar(Max)
-  DateOfBirth       DateTime  @db.DateTime2
-  PlaceOfBirth      String    @db.NVarChar(Max)
-  Gender            String    @db.NVarChar(Max)
-  MaritalStatus     String    @db.NVarChar(Max)
-  ProfileImagePath  String    @db.NVarChar(Max)
-  Province          String    @db.NVarChar(Max)
-  Directorate       String    @db.NVarChar(Max)
-  Department        String    @db.NVarChar(Max)
-  AddedDate         DateTime  @db.DateTime2
-  UpdateDate        DateTime  @db.DateTime2
-  UsersId           String    @db.NVarChar(Max)
-  NIN               String    @default("") @db.NVarChar(Max)
-  SIS               String    @default("") @db.NVarChar(Max)
-  AssignedPosition  String    @default("") @db.NVarChar(Max)
-  ConfirmationDate  DateTime? @db.DateTime2
-  Degree            Int       @default(0)
-  EmployeeStatus    String    @default("") @db.NVarChar(Max)
-  InstallationDate  DateTime  @default(dbgenerated("'0001-01-01T00:00:00.0000000'")) @db.DateTime2
-  JobTitleId        Int       @default(0)
-  LastDegreeDate    DateTime  @default(dbgenerated("'0001-01-01T00:00:00.0000000'")) @db.DateTime2
-  PositionDate      DateTime? @db.DateTime2
-  StatusDate        DateTime  @default(dbgenerated("'0001-01-01T00:00:00.0000000'")) @db.DateTime2
-  Address           String    @default("") @db.NVarChar(Max)
-  Email             String    @default("") @db.NVarChar(Max)
-  NumberOfChildren  Int       @default(0)
-  PhoneNumber       String    @default("") @db.NVarChar(Max)
+  Id               Int       @id @default(autoincrement())
+  Name             String    @db.NVarChar(Max)
+  LastName         String    @db.NVarChar(Max)
+  DateOfBirth      DateTime  @db.DateTime2
+  PlaceOfBirth     String    @db.NVarChar(Max)
+  Gender           String    @db.NVarChar(Max)
+  MaritalStatus    String    @db.NVarChar(Max)
+  ProfileImagePath String    @db.NVarChar(Max)
+  Province         String    @db.NVarChar(Max)
+  Directorate      String    @db.NVarChar(Max)
+  Department       String    @db.NVarChar(Max)
+  AddedDate        DateTime  @db.DateTime2
+  UpdateDate       DateTime  @db.DateTime2
+  UsersId          String    @db.NVarChar(Max)
+  NIN              String    @default("") @db.NVarChar(Max)
+  SIS              String    @default("") @db.NVarChar(Max)
+  AssignedPosition String    @default("") @db.NVarChar(Max)
+  ConfirmationDate DateTime? @db.DateTime2
+  Degree           Int       @default(0)
+  EmployeeStatus   String    @default("") @db.NVarChar(Max)
+  InstallationDate DateTime  @default(dbgenerated("'0001-01-01T00:00:00.0000000'")) @db.DateTime2
+  JobTitleId       Int       @default(0)
+  LastDegreeDate   DateTime  @default(dbgenerated("'0001-01-01T00:00:00.0000000'")) @db.DateTime2
+  PositionDate     DateTime? @db.DateTime2
+  StatusDate       DateTime  @default(dbgenerated("'0001-01-01T00:00:00.0000000'")) @db.DateTime2
+  Address          String    @default("") @db.NVarChar(Max)
+  Email            String    @default("") @db.NVarChar(Max)
+  NumberOfChildren Int       @default(0)
+  PhoneNumber      String    @default("") @db.NVarChar(Max)
 
   // Relations
-  JobTitle          JobTitles         @relation(fields: [JobTitleId], references: [Id], onDelete: Cascade, map: "FK_Employees_JobTitles_JobTitleId")
+  JobTitle          JobTitles          @relation(fields: [JobTitleId], references: [Id], onDelete: Cascade, map: "FK_Employees_JobTitles_JobTitleId")
   EmployeeFiles     EmployeeFiles[]
   EmployeesRecords  EmployeesRecords[]
   EmployeeStates    EmployeeStates[]
   SystemRecords     SystemRecords[]
+  RankHistories     RankHistory[]
+  PositionHistories PositionHistory[]
 
   // NOTE: Indexes on Province, Name, LastName, EmployeeStatus should be
   // created directly in SQL Server since these are NVarChar(Max) columns
@@ -128,16 +130,16 @@ model Employees {
 // EmployeeFiles — Document attachments for employees
 // ============================================================
 model EmployeeFiles {
-  Id            Int       @id @default(autoincrement())
-  Category      String    @db.NVarChar(Max)
-  FileName      String    @db.NVarChar(Max)
-  FilePath      String    @db.NVarChar(Max)
-  UploadDate    DateTime  @db.DateTime2
-  EmployeesId   Int
-  DocumentDate  DateTime  @default(dbgenerated("'0001-01-01T00:00:00.0000000'")) @db.DateTime2
-  DocumentName  String    @default("") @db.NVarChar(Max)
+  Id           Int      @id @default(autoincrement())
+  Category     String   @db.NVarChar(Max)
+  FileName     String   @db.NVarChar(Max)
+  FilePath     String   @db.NVarChar(Max)
+  UploadDate   DateTime @db.DateTime2
+  EmployeesId  Int
+  DocumentDate DateTime @default(dbgenerated("'0001-01-01T00:00:00.0000000'")) @db.DateTime2
+  DocumentName String   @default("") @db.NVarChar(Max)
 
-  Employee      Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_EmployeeFiles_Employees_EmployeesId")
+  Employee Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_EmployeeFiles_Employees_EmployeesId")
 
   @@index([EmployeesId])
   @@map("EmployeeFiles")
@@ -147,26 +149,26 @@ model EmployeeFiles {
 // EmployeesRecords — Promotion / career progression records
 // ============================================================
 model EmployeesRecords {
-  Id                Int       @id @default(autoincrement())
-  Name              String    @db.NVarChar(Max)
-  JobTitle          String    @db.NVarChar(Max)
-  EmpState          String    @db.NVarChar(Max)
-  LastPromotionDate DateTime  @db.DateTime2
+  Id                Int      @id @default(autoincrement())
+  Name              String   @db.NVarChar(Max)
+  JobTitle          String   @db.NVarChar(Max)
+  EmpState          String   @db.NVarChar(Max)
+  LastPromotionDate DateTime @db.DateTime2
   CurrentDegree     Int
   CurrentStage      Int
-  CurrentSalary     Float     @db.Real
-  CurrentDate       DateTime  @db.DateTime2
+  CurrentSalary     Float    @db.Real
+  CurrentDate       DateTime @db.DateTime2
   NextDegree        Int
   NextStage         Int
-  NextSalary        Float     @db.Real
-  NextDate          DateTime  @db.DateTime2
-  Note              String    @db.NVarChar(Max)
-  AddedDate         DateTime  @db.DateTime2
-  UpdateDate        DateTime  @db.DateTime2
-  UsersId           String    @db.NVarChar(Max)
+  NextSalary        Float    @db.Real
+  NextDate          DateTime @db.DateTime2
+  Note              String   @db.NVarChar(Max)
+  AddedDate         DateTime @db.DateTime2
+  UpdateDate        DateTime @db.DateTime2
+  UsersId           String   @db.NVarChar(Max)
   EmployeesId       Int
 
-  Employee          Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_EmployeesRecords_Employees_EmployeesId")
+  Employee Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_EmployeesRecords_Employees_EmployeesId")
 
   @@index([EmployeesId])
   @@map("EmployeesRecords")
@@ -189,7 +191,7 @@ model EmployeeStates {
   ActualReturnDate  DateTime? @db.DateTime2
   IsResumed         Boolean   @default(false)
 
-  Employee          Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_EmployeeStates_Employees_EmployeesId")
+  Employee Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_EmployeeStates_Employees_EmployeesId")
 
   @@index([EmployeesId])
   @@index([EndDate])
@@ -198,19 +200,62 @@ model EmployeeStates {
 }
 
 // ============================================================
+// RankHistory — Career history: rank promotions over time
+// ============================================================
+model RankHistory {
+  Id          Int      @id @default(autoincrement())
+  EmployeesId Int
+  RankId      Int?
+  RankName    String   @default("") @db.NVarChar(Max)
+  InstallDate DateTime @db.DateTime2
+  Reference   String   @default("") @db.NVarChar(Max)
+  Notes       String   @default("") @db.NVarChar(Max)
+
+  Employee Employees  @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_RankHistory_Employees_EmployeesId")
+  // NOTE: NoAction here avoids a cyclic cascade path (JobTitles -> Employees -> RankHistory)
+  Rank     JobTitles? @relation(fields: [RankId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_RankHistory_JobTitles_RankId")
+
+  @@index([EmployeesId])
+  @@index([RankId])
+  @@index([InstallDate])
+  @@map("RankHistory")
+}
+
+// ============================================================
+// PositionHistory — Career history: higher position assignments
+// (Positions have no dedicated table in RafatDB — stored by name,
+// consistent with Employees.AssignedPosition)
+// ============================================================
+model PositionHistory {
+  Id           Int       @id @default(autoincrement())
+  EmployeesId  Int
+  PositionName String    @default("") @db.NVarChar(Max)
+  InstallDate  DateTime  @db.DateTime2
+  EndDate      DateTime? @db.DateTime2
+  Reference    String    @default("") @db.NVarChar(Max)
+
+  Employee Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_PositionHistory_Employees_EmployeesId")
+
+  @@index([EmployeesId])
+  @@index([InstallDate])
+  @@map("PositionHistory")
+}
+
+// ============================================================
 // JobTitles — Position / rank classification
 // ============================================================
 model JobTitles {
-  Id                 Int       @id @default(autoincrement())
-  EmploymentCategory String    @db.NVarChar(Max)
-  RankName           String    @db.NVarChar(Max)
-  CategoryLevel      String    @db.NVarChar(Max)
+  Id                 Int      @id @default(autoincrement())
+  EmploymentCategory String   @db.NVarChar(Max)
+  RankName           String   @db.NVarChar(Max)
+  CategoryLevel      String   @db.NVarChar(Max)
   IndexNumber        Int
-  AddedDate          DateTime  @db.DateTime2
-  UsersId            String    @db.NVarChar(Max)
+  AddedDate          DateTime @db.DateTime2
+  UsersId            String   @db.NVarChar(Max)
 
   // Relations
-  Employees          Employees[]
+  Employees     Employees[]
+  RankHistories RankHistory[]
 
   @@map("JobTitles")
 }
@@ -219,13 +264,14 @@ model JobTitles {
 // SystemSettings — Key-Value store for application settings
 // ============================================================
 model SystemSettings {
-  Id          Int      @id @default(autoincrement())
-  Key         String   @unique @db.NVarChar(255)
-  Value       String   @db.NVarChar(Max)
-  UpdatedAt   DateTime @default(now()) @db.DateTime2
+  Id        Int      @id @default(autoincrement())
+  Key       String   @unique @db.NVarChar(255)
+  Value     String   @db.NVarChar(Max)
+  UpdatedAt DateTime @default(now()) @db.DateTime2
 
   @@map("SystemSettings")
 }
+
 /// هذا الجدول خاص بـ Entity Framework Core ولا يجب على Prisma حذفه
 model EFMigrationsHistory {
   MigrationId    String @id @db.NVarChar(150)
