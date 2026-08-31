@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import useSWR from 'swr';
 import { useAuth } from '../../context/AuthContext';
 import JobTitlesService from '../../services/jobTitlesService';
@@ -24,10 +24,20 @@ const JobsList = () => {
   
   const [page, setPage] = useState(1);
   const [limit] = useState(20);
-  const [search, setSearch] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const debounceRef = useRef(null);
+  const handleSearch = useCallback((e) => {
+    const value = e.target.value;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setSearchQuery(value.trim());
+      setPage(1);
+    }, 500);
+  }, []);
   
   const { data, error, isLoading, mutate } = useSWR(
-    ['/api/job-titles', page, limit, search],
+    ['/api/job-titles', page, limit, searchQuery],
     fetcher,
     { revalidateOnFocus: false }
   );
@@ -80,8 +90,7 @@ const JobsList = () => {
             <input
               type="text"
               placeholder="بحث باسم الرتبة..."
-              value={search}
-              onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+              onChange={handleSearch}
               className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg outline-none text-sm"
               style={{ focusRingColor: '#0a7e50' }}
             />

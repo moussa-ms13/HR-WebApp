@@ -39,7 +39,15 @@ class EmployeesService {
 
     // Directorate Filter (الجهة)
     if (directorate) {
-      whereClause.Directorate = directorate;
+      whereClause.AND = [
+        ...(whereClause.AND || []),
+        {
+          OR: [
+            { Directorate: directorate },
+            { Department: directorate }
+          ]
+        }
+      ];
     }
 
     // File Status Filter (اكتمال الملف)
@@ -53,40 +61,47 @@ class EmployeesService {
     const trimmedSearch = (search || "").trim();
     if (trimmedSearch) {
       const searchTerms = trimmedSearch.split(/\s+/);
+      let searchOrConditions = [];
 
       if (searchTerms.length >= 2) {
-        // Multi-word: cross-match first+last name, OR full string in NIN/RankName
-        whereClause = {
-          ...whereClause,
-          OR: [
-            {
-              AND: [
-                { Name: { contains: searchTerms[0] } },
-                { LastName: { contains: searchTerms.slice(1).join(" ") } },
-              ],
-            },
-            {
-              AND: [
-                { Name: { contains: searchTerms.slice(0, -1).join(" ") } },
-                { LastName: { contains: searchTerms[searchTerms.length - 1] } },
-              ],
-            },
-            { NIN: { contains: trimmedSearch } },
-            { JobTitle: { RankName: { contains: trimmedSearch } } },
+        // Multi-word: cross-match first+last name in both normal and reversed orders
+        searchOrConditions.push({
+          AND: [
+            { Name: { contains: searchTerms[0] } },
+            { LastName: { contains: searchTerms.slice(1).join(" ") } },
           ],
-        };
-      } else {
-        // Single word: search Name, LastName, NIN, or related JobTitle.RankName
-        whereClause = {
-          ...whereClause,
-          OR: [
-            { Name: { contains: trimmedSearch } },
-            { LastName: { contains: trimmedSearch } },
-            { NIN: { contains: trimmedSearch } },
-            { JobTitle: { RankName: { contains: trimmedSearch } } },
+        });
+        searchOrConditions.push({
+          AND: [
+            { Name: { contains: searchTerms.slice(0, -1).join(" ") } },
+            { LastName: { contains: searchTerms[searchTerms.length - 1] } },
           ],
-        };
-      }
+        });
+        // Reversed combinations
+        searchOrConditions.push({
+          AND: [
+            { Name: { contains: searchTerms.slice(1).join(" ") } },
+            { LastName: { contains: searchTerms[0] } },
+          ],
+        });
+        searchOrConditions.push({
+          AND: [
+            { Name: { contains: searchTerms[searchTerms.length - 1] } },
+            { LastName: { contains: searchTerms.slice(0, -1).join(" ") } },
+          ],
+        });
+      } 
+      
+      // Single word or fallback match
+      searchOrConditions.push({ Name: { contains: trimmedSearch } });
+      searchOrConditions.push({ LastName: { contains: trimmedSearch } });
+      searchOrConditions.push({ NIN: { contains: trimmedSearch } });
+      searchOrConditions.push({ JobTitle: { RankName: { contains: trimmedSearch } } });
+
+      whereClause.AND = [
+        ...(whereClause.AND || []),
+        { OR: searchOrConditions }
+      ];
     }
 
     // Execute queries concurrently for performance
