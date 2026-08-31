@@ -4,6 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import UsersService from '../../services/usersService';
 import UserModal from './UserModal';
 import { Plus, Search, Edit2, Trash2, Loader2, ShieldCheck, Shield, MoreVertical } from 'lucide-react';
+import { useToast } from '../../components/ui/Toast';
+import ConfirmModal from '../../components/ui/ConfirmModal';
 
 const fetcher = async () => {
   const res = await UsersService.getAll();
@@ -12,6 +14,12 @@ const fetcher = async () => {
 
 const UsersList = () => {
   const { hasPermission, user: currentUser } = useAuth();
+  const toast = useToast();
+
+  // --- Generic Confirm Modal State ---
+  const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', onConfirm: null });
+  const showConfirm = (title, message, onConfirm) => setConfirmState({ open: true, title, message, onConfirm });
+  const closeConfirm = () => setConfirmState({ open: false, title: '', message: '', onConfirm: null });
   
   const { data: users = [], error, isLoading, mutate } = useSWR('/api/users', fetcher, {
     revalidateOnFocus: false,
@@ -55,15 +63,16 @@ const UsersList = () => {
     setIsModalOpen(true);
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm('هل أنت متأكد من حذف هذا المستخدم؟')) {
+  const handleDelete = (id) => {
+    showConfirm('حذف المستخدم', 'هل أنت متأكد من حذف هذا المستخدم؟', async () => {
+      closeConfirm();
       try {
         await UsersService.delete(id);
         mutate();
       } catch (err) {
-        alert(err.response?.data?.message || 'فشل الحذف');
+        toast.error(err.response?.data?.message || 'فشل الحذف');
       }
-    }
+    });
   };
 
   const handleModalSuccess = () => {
@@ -200,6 +209,15 @@ const UsersList = () => {
         onClose={() => setIsModalOpen(false)}
         user={selectedUser}
         onSuccess={handleModalSuccess}
+      />
+
+      <ConfirmModal
+        open={confirmState.open}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText="حذف"
+        onConfirm={confirmState.onConfirm}
+        onCancel={closeConfirm}
       />
     </div>
   );

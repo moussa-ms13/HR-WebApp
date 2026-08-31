@@ -7,6 +7,8 @@ import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils
 import EmployeeModal from './EmployeeModal';
 import { Search, MoreVertical, Loader2, Users, ArrowUpDown, ChevronDown, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { useToast } from '../../components/ui/Toast';
+import ConfirmModal from '../../components/ui/ConfirmModal';
 
 const fetcher = async ([url, page, limit, search, province, directorate, fileStatus]) => {
   const result = await EmployeeService.getAll(page, limit, search, province, directorate, fileStatus);
@@ -26,7 +28,13 @@ const HeaderCell = ({ label }) => (
 const EmployeesList = () => {
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
+
+  // --- Generic Confirm Modal State ---
+  const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', onConfirm: null });
+  const showConfirm = (title, message, onConfirm) => setConfirmState({ open: true, title, message, onConfirm });
+  const closeConfirm = () => setConfirmState({ open: false, title: '', message: '', onConfirm: null });
   
   // Pagination & Search state — initialized from URL
   const [page, setPage] = useState(1);
@@ -99,7 +107,7 @@ const EmployeesList = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      alert('فشل تصدير البيانات إلى Excel');
+      toast.error('فشل تصدير البيانات إلى Excel');
     } finally {
       setIsExporting(false);
     }
@@ -115,15 +123,16 @@ const EmployeesList = () => {
     mutate();
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm('هل أنت متأكد من حذف هذا الموظف؟')) {
+  const handleDelete = (id) => {
+    showConfirm('حذف الموظف', 'هل أنت متأكد من حذف هذا الموظف؟', async () => {
+      closeConfirm();
       try {
         await EmployeeService.delete(id);
         mutate();
       } catch (err) {
-        alert('فشل الحذف');
+        toast.error('فشل الحذف');
       }
-    }
+    });
   };
 
   // Close dropdown when clicking outside
@@ -416,6 +425,15 @@ const EmployeesList = () => {
         onClose={() => setIsModalOpen(false)}
         employee={selectedEmployee}
         onSuccess={handleModalSuccess}
+      />
+
+      <ConfirmModal
+        open={confirmState.open}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText="حذف"
+        onConfirm={confirmState.onConfirm}
+        onCancel={closeConfirm}
       />
     </div>
   );

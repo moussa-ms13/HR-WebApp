@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Settings as SettingsIcon, Globe, Save, Loader2, CheckCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import SettingsService from '../../services/settingsService';
+import { useToast } from '../../components/ui/Toast';
 
 const Settings = () => {
   const { hasPermission } = useAuth();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState('general');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -82,7 +84,7 @@ const Settings = () => {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err) {
-      alert("فشل في حفظ الإعدادات. تأكد من أنك تملك صلاحيات مسؤول.");
+      toast.error("فشل في حفظ الإعدادات. تأكد من أنك تملك صلاحيات مسؤول.");
     } finally {
       setIsSaving(false);
     }

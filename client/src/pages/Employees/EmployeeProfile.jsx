@@ -6,6 +6,8 @@ import { useAuth } from '../../context/AuthContext';
 import EmployeeService from '../../services/employeeService';
 import apiClient from '../../services/apiClient';
 import { DateText } from '../../utils/formatDate';
+import { useToast } from '../../components/ui/Toast';
+import ConfirmModal from '../../components/ui/ConfirmModal';
 
 const fetcher = async (url) => {
   const res = await apiClient.get(url);
@@ -16,8 +18,14 @@ const EmployeeProfile = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
+  const toast = useToast();
 
   const [activeTab, setActiveTab] = useState('profile');
+
+  // --- Generic Confirm Modal State ---
+  const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', onConfirm: null });
+  const showConfirm = (title, message, onConfirm) => setConfirmState({ open: true, title, message, onConfirm });
+  const closeConfirm = () => setConfirmState({ open: false, title: '', message: '', onConfirm: null });
 
   // --- Profile Summary (SWR) ---
   const { data: summaryData, error: summaryError, isLoading: isSummaryLoading } = useSWR(
@@ -65,7 +73,7 @@ const EmployeeProfile = () => {
       setRankForm(initialRankForm);
     } catch (err) {
       console.error("Failed to add rank", err);
-      alert("حدث خطأ أثناء إضافة الترقية");
+      toast.error("حدث خطأ أثناء إضافة الترقية");
     } finally {
       setIsSubmittingCareer(false);
     }
@@ -81,32 +89,36 @@ const EmployeeProfile = () => {
       setPositionForm(initialPositionForm);
     } catch (err) {
       console.error("Failed to add position", err);
-      alert("حدث خطأ أثناء إضافة المنصب");
+      toast.error("حدث خطأ أثناء إضافة المنصب");
     } finally {
       setIsSubmittingCareer(false);
     }
   };
 
-  const handleDeleteRank = async (recordId) => {
-    if (!window.confirm("هل أنت متأكد من حذف هذه الترقية؟")) return;
-    try {
-      await apiClient.delete(`/employees/${id}/rank-history/${recordId}`);
-      mutateCareer();
-    } catch (err) {
-      console.error("Failed to delete rank", err);
-      alert("حدث خطأ أثناء الحذف");
-    }
+  const handleDeleteRank = (recordId) => {
+    showConfirm('حذف الترقية', 'هل أنت متأكد من حذف هذه الترقية؟', async () => {
+      closeConfirm();
+      try {
+        await apiClient.delete(`/employees/${id}/rank-history/${recordId}`);
+        mutateCareer();
+      } catch (err) {
+        console.error("Failed to delete rank", err);
+        toast.error("حدث خطأ أثناء الحذف");
+      }
+    });
   };
 
-  const handleDeletePosition = async (recordId) => {
-    if (!window.confirm("هل أنت متأكد من حذف هذا المنصب؟")) return;
-    try {
-      await apiClient.delete(`/employees/${id}/position-history/${recordId}`);
-      mutateCareer();
-    } catch (err) {
-      console.error("Failed to delete position", err);
-      alert("حدث خطأ أثناء الحذف");
-    }
+  const handleDeletePosition = (recordId) => {
+    showConfirm('حذف المنصب', 'هل أنت متأكد من حذف هذا المنصب؟', async () => {
+      closeConfirm();
+      try {
+        await apiClient.delete(`/employees/${id}/position-history/${recordId}`);
+        mutateCareer();
+      } catch (err) {
+        console.error("Failed to delete position", err);
+        toast.error("حدث خطأ أثناء الحذف");
+      }
+    });
   };
 
   // --- Files State (Conditional SWR — lazy loaded on tab switch) ---
@@ -154,7 +166,7 @@ const EmployeeProfile = () => {
 
     const oversized = rawFiles.filter(f => f.size > MAX_FILE_SIZE);
     if (oversized.length > 0) {
-      alert(`الملفات التالية تتجاوز الحد المسموح (50 ميغابايت لكل ملف):\n${oversized.map(f => f.name).join('\n')}`);
+      toast.warning(`الملفات التالية تتجاوز الحد المسموح (50 ميغابايت لكل ملف):\n${oversized.map(f => f.name).join('\n')}`);
     }
 
     const validFiles = rawFiles.filter(f => f.size <= MAX_FILE_SIZE);
@@ -164,7 +176,7 @@ const EmployeeProfile = () => {
       const newUnique = validFiles.filter(f => !existingKeys.has(`${f.name}-${f.size}`));
       const total = [...prev, ...newUnique];
       if (total.length > 15) {
-        alert('الحد الأقصى لرفع الملفات دفعة واحدة هو 15 ملفاً.');
+        toast.warning('الحد الأقصى لرفع الملفات دفعة واحدة هو 15 ملفاً.');
         return total.slice(0, 15);
       }
       return total;
@@ -179,7 +191,7 @@ const EmployeeProfile = () => {
 
   const handleFormSubmit = async (e) => {
     e.preventDefault();
-    if (selectedFiles.length === 0) return alert('يرجى اختيار ملف واحد على الأقل للرفع');
+    if (selectedFiles.length === 0) { toast.warning('يرجى اختيار ملف واحد على الأقل للرفع'); return; }
     setIsUploading(true);
     try {
       const formData = new FormData();
@@ -198,7 +210,7 @@ const EmployeeProfile = () => {
       // Revalidate the files SWR cache
       mutateFiles();
     } catch (err) {
-      alert(err.response?.data?.message || 'فشل رفع الملفات');
+      toast.error(err.response?.data?.message || 'فشل رفع الملفات');
     } finally {
       setIsUploading(false);
     }
@@ -236,21 +248,22 @@ const EmployeeProfile = () => {
       setEditFileSelected(null);
       mutateFiles();
     } catch (err) {
-      alert(err.response?.data?.message || 'فشل تعديل الملف');
+      toast.error(err.response?.data?.message || 'فشل تعديل الملف');
     } finally {
       setIsEditUploading(false);
     }
   };
 
-  const handleDeleteFile = async (fileId) => {
-    if (window.confirm('هل أنت متأكد من حذف هذا الملف نهائياً؟')) {
+  const handleDeleteFile = (fileId) => {
+    showConfirm('حذف الملف', 'هل أنت متأكد من حذف هذا الملف نهائياً؟', async () => {
+      closeConfirm();
       try {
         await EmployeeService.deleteFile(id, fileId);
         mutateFiles();
       } catch (err) {
-        alert('فشل في حذف الملف');
+        toast.error('فشل في حذف الملف');
       }
-    }
+    });
   };
 
   // --- Bulk Delete Handlers ---
@@ -276,7 +289,7 @@ const EmployeeProfile = () => {
       setSelectedDocIds([]);
       mutateFiles();
     } catch (err) {
-      alert(err.response?.data?.message || 'فشل في حذف الملفات المحددة');
+      toast.error(err.response?.data?.message || 'فشل في حذف الملفات المحددة');
     } finally {
       setIsBulkDeleting(false);
     }
@@ -294,7 +307,7 @@ const EmployeeProfile = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      alert('فشل في تحميل الملف');
+      toast.error('فشل في تحميل الملف');
     }
   };
 
@@ -1019,7 +1032,7 @@ const EmployeeProfile = () => {
                     onChange={(e) => {
                       const f = e.target.files[0];
                       if (f && f.size > MAX_FILE_SIZE) {
-                        alert('حجم الملف يتجاوز الحد المسموح (20 ميغابايت).');
+                        toast.warning('حجم الملف يتجاوز الحد المسموح (50 ميغابايت).');
                         e.target.value = '';
                         setEditFileSelected(null);
                         return;
@@ -1174,6 +1187,15 @@ const EmployeeProfile = () => {
         </div>
       )}
 
+      {/* Generic Confirm Modal */}
+      <ConfirmModal
+        open={confirmState.open}
+        title={confirmState.title}
+        message={confirmState.message}
+        confirmText="حذف"
+        onConfirm={confirmState.onConfirm}
+        onCancel={closeConfirm}
+      />
     </div>
   );
 };

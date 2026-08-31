@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import EmployeeService from '../../services/employeeService';
 import apiClient from '../../services/apiClient';
+import { useToast } from '../../components/ui/Toast';
 
 // --- Tree View Data Helpers ---
 // TreeNode Component for the Assignment Tree
@@ -44,6 +45,7 @@ const TreeNode = ({ label, children, onSelect, isLeaf, dirTag }) => {
 
 const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
   const { user } = useAuth();
+  const toast = useToast();
   const allowedProvinces = getAllowedProvinces(user);
   const isEdit = !!employee;
 
@@ -199,7 +201,7 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
     const file = e.target.files[0];
     if (file) {
       if (file.size > MAX_FILE_SIZE) {
-        alert('حجم الملف يتجاوز الحد المسموح (50 ميغابايت).');
+        toast.warning('حجم الملف يتجاوز الحد المسموح (50 ميغابايت).');
         e.target.value = '';
         return;
       }
@@ -445,9 +447,9 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
                           value={formData.Department ? (formData.Directorate === formData.Department ? formData.Directorate : `${formData.Directorate} ➜ ${formData.Department}`) : ''}
                           placeholder="اضغط لاختيار مكان التعيين..."
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white outline-none text-sm cursor-pointer"
-                          onClick={() => { if (formData.Province) setShowTree(!showTree); else alert("يرجى اختيار الولاية أولاً."); }}
+                          onClick={() => { if (formData.Province) setShowTree(!showTree); else toast.warning("يرجى اختيار الولاية أولاً."); }}
                         />
-                        <button type="button" onClick={() => { if (formData.Province) setShowTree(!showTree); else alert("يرجى اختيار الولاية أولاً."); }} className="px-4 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-sm font-medium transition-colors">
+                        <button type="button" onClick={() => { if (formData.Province) setShowTree(!showTree); else toast.warning("يرجى اختيار الولاية أولاً."); }} className="px-4 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-sm font-medium transition-colors">
                           {showTree ? 'إغلاق' : 'اختيار'}
                         </button>
                       </div>
