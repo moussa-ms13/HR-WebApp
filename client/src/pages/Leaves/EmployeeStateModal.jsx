@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { X, Loader2, Calendar } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X, Loader2, Calendar, Search, Check, ChevronDown } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import EmployeeStatesService from '../../services/employeeStatesService';
 import EmployeeService from '../../services/employeeService';
 
@@ -42,21 +44,58 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // Search and Filter States for Employees
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [provinceFilter, setProvinceFilter] = useState('');
+  const [directorateFilter, setDirectorateFilter] = useState('');
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  
+  const { user } = useAuth();
+  const allowedProvinces = getAllowedProvinces(user);
+  const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
+  const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
+  const debounceRef = useRef(null);
+
+  const handleSearchChange = (e) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    setIsDropdownOpen(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setSearchQuery(value.trim());
+    }, 300);
+  };
+
   useEffect(() => {
     if (isOpen) {
-      const fetchEmployeesForSelect = async () => {
-        try {
-          const res = await EmployeeService.getAll(1, 2000, '', '');
-          if (res.success) {
-            setEmployees(res.data);
+      if (record) {
+        // Edit mode: fetch single employee just to display the name
+        const fetchOne = async () => {
+          try {
+            const res = await EmployeeService.getById(record.EmployeesId);
+            if (res.success) {
+              setSearchTerm(`${res.data.Name} ${res.data.LastName} (${res.data.Id})`);
+            }
+          } catch(err) {}
+        };
+        fetchOne();
+      } else {
+        // Add mode: fetch filtered employees
+        const fetchEmployeesForSelect = async () => {
+          try {
+            const res = await EmployeeService.getAll(1, 50, searchQuery, provinceFilter, directorateFilter, '');
+            if (res.success) {
+              setEmployees(res.data);
+            }
+          } catch (err) {
+            console.error("Failed to load employees for dropdown", err);
           }
-        } catch (err) {
-          console.error("Failed to load employees for dropdown", err);
-        }
-      };
-      fetchEmployeesForSelect();
+        };
+        fetchEmployeesForSelect();
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, record, searchQuery, provinceFilter, directorateFilter]);
 
   useEffect(() => {
     if (isOpen) {
@@ -84,6 +123,11 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
           ActualReturnDate: ''
         });
         setActiveTab('تسجيل عطلة');
+        setSearchTerm('');
+        setSearchQuery('');
+        setProvinceFilter('');
+        setDirectorateFilter('');
+        setIsDropdownOpen(false);
       }
       setError('');
     }
@@ -227,23 +271,84 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
 
           <form id="stateForm" onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-slate-700 mb-1">الموظف المعني *</label>
-                <select
-                  required
-                  name="EmployeesId"
-                  value={formData.EmployeesId}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-1 outline-none bg-slate-50 focus:bg-white"
-                  disabled={!!record}
-                >
-                  <option value="">-- اختر الموظف --</option>
-                  {employees.map(emp => (
-                    <option key={emp.Id} value={emp.Id}>
-                      {emp.Name} {emp.LastName} ({emp.Id}) - {emp.Province}
-                    </option>
-                  ))}
-                </select>
+              <div className="md:col-span-2 relative">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">الموظف المعني *</label>
+                
+                {/* Custom Employee Search & Filter */}
+                <div className="flex flex-col gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl mb-2">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <select
+                      value={provinceFilter}
+                      onChange={(e) => { setProvinceFilter(e.target.value); setDirectorateFilter(''); }}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-1 focus:ring-emerald-400 outline-none disabled:bg-gray-100"
+                      disabled={!!record}
+                    >
+                      <option value="">الولاية: الكل</option>
+                      {allowedProvinces.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+
+                    <select
+                      value={directorateFilter}
+                      onChange={(e) => setDirectorateFilter(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-1 focus:ring-emerald-400 outline-none disabled:bg-gray-100"
+                      disabled={!!record || !provinceFilter}
+                    >
+                      <option value="">الجهة: الكل</option>
+                      {provinceFilter === 'الشلف' && (
+                        <option value="المديرية الجهوية للأملاك الوطنية" className="font-bold text-emerald-700">المديرية الجهوية للأملاك الوطنية</option>
+                      )}
+                      <option value="مديرية أملاك الدولة" className="font-bold">مديرية أملاك الدولة</option>
+                      {availableMofatishiyat.map(item => (
+                        <option key={item} value={item}>-- {item}</option>
+                      ))}
+                      <option value="مديرية مسح الأراضي والحفظ العقاري" className="font-bold">مديرية مسح الأراضي</option>
+                      {availableMohafathat.map(item => (
+                        <option key={item} value={item}>-- {item}</option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  <div className="relative">
+                    <Search className="absolute right-3 top-2.5 text-slate-400" size={18} />
+                    <input
+                      type="text"
+                      placeholder="ابحث بالاسم أو اللقب أو الرقم..."
+                      value={searchTerm}
+                      onChange={handleSearchChange}
+                      onFocus={() => !record && setIsDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
+                      disabled={!!record}
+                      className="w-full pr-10 pl-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-1 focus:ring-emerald-400 outline-none bg-white disabled:bg-gray-100"
+                    />
+                    
+                    {isDropdownOpen && !record && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {employees.length === 0 ? (
+                          <div className="p-3 text-sm text-gray-500 text-center">لا توجد نتائج</div>
+                        ) : (
+                          employees.map(emp => (
+                            <div
+                              key={emp.Id}
+                              onClick={() => {
+                                setFormData(prev => ({ ...prev, EmployeesId: emp.Id }));
+                                setSearchTerm(`${emp.Name} ${emp.LastName} (${emp.Id})`);
+                                setIsDropdownOpen(false);
+                              }}
+                              className={`p-3 text-sm cursor-pointer hover:bg-slate-50 border-b border-slate-100 last:border-0 flex justify-between items-center ${formData.EmployeesId === emp.Id ? 'bg-emerald-50 text-emerald-700' : 'text-slate-700'}`}
+                            >
+                              <div>
+                                <span className="font-bold">{emp.Name} {emp.LastName}</span>
+                                <span className="text-gray-500 mr-2 text-xs"> ({emp.Id})</span>
+                                <div className="text-xs text-gray-400 mt-0.5">{emp.Province} - {emp.Directorate || emp.Department || 'الإدارة العامة'}</div>
+                              </div>
+                              {formData.EmployeesId === emp.Id && <Check size={16} className="text-emerald-500" />}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="md:col-span-2">
