@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
-import { ArrowRight, User, Upload, FileText, Trash2, Download, Loader2, Edit3, Briefcase, Calendar, Clock, CheckCircle2, Search, X, CheckSquare, Plus } from 'lucide-react';
+import { ArrowRight, User, Upload, FileText, Trash2, Download, Loader2, Edit3, Briefcase, Calendar, Clock, CheckCircle2, Search, X, CheckSquare, Plus, Save, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import EmployeeService from '../../services/employeeService';
 import apiClient from '../../services/apiClient';
@@ -28,11 +28,57 @@ const EmployeeProfile = () => {
   const closeConfirm = () => setConfirmState({ open: false, title: '', message: '', onConfirm: null });
 
   // --- Profile Summary (SWR) ---
-  const { data: summaryData, error: summaryError, isLoading: isSummaryLoading } = useSWR(
+  const { data: summaryData, error: summaryError, isLoading: isSummaryLoading, mutate: mutateSummary } = useSWR(
     id ? `/employees/${id}/summary` : null,
     fetcher
   );
   const employee = summaryData?.data || null;
+
+  // --- Inline Edit State ---
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState({});
+  const [isSaving, setIsSaving] = useState(false);
+
+  const enterEditMode = () => {
+    if (!employee) return;
+    setEditData({
+      Name: employee.Name || '',
+      LastName: employee.LastName || '',
+      Gender: employee.Gender || '',
+      PhoneNumber: employee.PhoneNumber || '',
+      Email: employee.Email || '',
+      DateOfBirth: employee.DateOfBirth ? new Date(employee.DateOfBirth).toISOString().split('T')[0] : '',
+      MaritalStatus: employee.MaritalStatus || '',
+      Address: employee.Address || '',
+      EmployeeStatus: employee.EmployeeStatus || '',
+      InstallationDate: employee.InstallationDate ? new Date(employee.InstallationDate).toISOString().split('T')[0] : '',
+      Degree: employee.Degree || 0,
+      NIN: employee.NIN || '',
+      SIS: employee.SIS || '',
+    });
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditData({});
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await EmployeeService.update(id, editData);
+      await mutateSummary();
+      toast.success('تم حفظ التعديلات بنجاح');
+      setIsEditing(false);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'فشل حفظ التعديلات');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const editField = (key, value) => setEditData(prev => ({ ...prev, [key]: value }));
 
   // --- Leaves State (Conditional SWR — lazy loaded on tab switch) ---
   const { data: leavesData, isLoading: isLeavesLoading } = useSWR(
@@ -408,6 +454,41 @@ const EmployeeProfile = () => {
       {/* Tab Contents */}
       {activeTab === 'profile' && (
         <div className="space-y-6">
+
+          {/* Edit Mode Action Bar */}
+          {hasPermission('checkBoxEdit') && (
+            <div className="flex justify-end gap-2">
+              {isEditing ? (
+                <>
+                  <button
+                    onClick={cancelEdit}
+                    disabled={isSaving}
+                    className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    <XCircle size={16} />
+                    إلغاء
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="flex items-center gap-1.5 px-5 py-2 text-sm font-medium text-white bg-emerald-500 hover:bg-emerald-600 rounded-lg transition-colors shadow-sm disabled:opacity-60"
+                  >
+                    {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                    حفظ التعديلات
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={enterEditMode}
+                  className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors"
+                >
+                  <Edit3 size={16} />
+                  تعديل البيانات
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Personal Info Card */}
           <div className="bg-white rounded-xl border border-gray-200 p-6 relative shadow-sm">
             <h3 className="text-lg font-bold flex items-center gap-2 mb-6 text-slate-800">
@@ -418,27 +499,80 @@ const EmployeeProfile = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-y-6 gap-x-8">
               <div>
                 <span className="block text-xs font-medium text-gray-400 mb-1">الاسم</span>
-                <span className="block font-semibold text-slate-800">{employee.Name} {employee.LastName}</span>
+                {isEditing ? (
+                  <div className="flex gap-2">
+                    <input value={editData.Name} onChange={e => editField('Name', e.target.value)} className="w-1/2 px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" placeholder="الاسم" />
+                    <input value={editData.LastName} onChange={e => editField('LastName', e.target.value)} className="w-1/2 px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" placeholder="اللقب" />
+                  </div>
+                ) : (
+                  <span className="block font-semibold text-slate-800">{employee.Name} {employee.LastName}</span>
+                )}
               </div>
               <div>
                 <span className="block text-xs font-medium text-gray-400 mb-1">الجنس</span>
-                <span className="block font-semibold text-slate-800">{employee.Gender || '—'}</span>
+                {isEditing ? (
+                  <select value={editData.Gender} onChange={e => editField('Gender', e.target.value)} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 bg-white">
+                    <option value="">—</option>
+                    <option value="ذكر">ذكر</option>
+                    <option value="أنثى">أنثى</option>
+                  </select>
+                ) : (
+                  <span className="block font-semibold text-slate-800">{employee.Gender || '—'}</span>
+                )}
               </div>
               <div>
                 <span className="block text-xs font-medium text-gray-400 mb-1">رقم التواصل</span>
-                <span className="block font-semibold text-slate-800" dir="ltr">{employee.PhoneNumber || '—'}</span>
+                {isEditing ? (
+                  <input value={editData.PhoneNumber} onChange={e => editField('PhoneNumber', e.target.value)} dir="ltr" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
+                ) : (
+                  <span className="block font-semibold text-slate-800" dir="ltr">{employee.PhoneNumber || '—'}</span>
+                )}
               </div>
               <div>
                 <span className="block text-xs font-medium text-gray-400 mb-1">البريد الإلكتروني</span>
-                <span className="block font-semibold text-slate-800" dir="ltr">{employee.Email || '—'}</span>
+                {isEditing ? (
+                  <input value={editData.Email} onChange={e => editField('Email', e.target.value)} dir="ltr" type="email" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
+                ) : (
+                  <span className="block font-semibold text-slate-800" dir="ltr">{employee.Email || '—'}</span>
+                )}
               </div>
               <div>
                 <span className="block text-xs font-medium text-gray-400 mb-1">تاريخ الميلاد</span>
-                <span className="block font-semibold text-slate-800"><DateText value={employee.DateOfBirth} /></span>
+                {isEditing ? (
+                  <input value={editData.DateOfBirth} onChange={e => editField('DateOfBirth', e.target.value)} type="date" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
+                ) : (
+                  <span className="block font-semibold text-slate-800"><DateText value={employee.DateOfBirth} /></span>
+                )}
               </div>
               <div>
                 <span className="block text-xs font-medium text-gray-400 mb-1">العنوان</span>
-                <span className="block font-semibold text-slate-800">{employee.Province}</span>
+                {isEditing ? (
+                  <input value={editData.Address} onChange={e => editField('Address', e.target.value)} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
+                ) : (
+                  <span className="block font-semibold text-slate-800">{employee.Address || employee.Province}</span>
+                )}
+              </div>
+              <div>
+                <span className="block text-xs font-medium text-gray-400 mb-1">الحالة العائلية</span>
+                {isEditing ? (
+                  <select value={editData.MaritalStatus} onChange={e => editField('MaritalStatus', e.target.value)} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 bg-white">
+                    <option value="">—</option>
+                    <option value="أعزب">أعزب</option>
+                    <option value="متزوج">متزوج</option>
+                    <option value="مطلق">مطلق</option>
+                    <option value="أرمل">أرمل</option>
+                  </select>
+                ) : (
+                  <span className="block font-semibold text-slate-800">{employee.MaritalStatus || '—'}</span>
+                )}
+              </div>
+              <div>
+                <span className="block text-xs font-medium text-gray-400 mb-1">رقم التعريف الوطني</span>
+                {isEditing ? (
+                  <input value={editData.NIN} onChange={e => editField('NIN', e.target.value)} dir="ltr" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
+                ) : (
+                  <span className="block font-semibold text-slate-800" dir="ltr">{employee.NIN || '—'}</span>
+                )}
               </div>
             </div>
           </div>
@@ -461,11 +595,43 @@ const EmployeeProfile = () => {
               </div>
               <div>
                 <span className="block text-xs font-medium text-gray-400 mb-1">تاريخ التوظيف</span>
-                <span className="block font-semibold text-slate-800"><DateText value={employee.InstallationDate} /></span>
+                {isEditing ? (
+                  <input value={editData.InstallationDate} onChange={e => editField('InstallationDate', e.target.value)} type="date" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
+                ) : (
+                  <span className="block font-semibold text-slate-800"><DateText value={employee.InstallationDate} /></span>
+                )}
               </div>
               <div>
                 <span className="block text-xs font-medium text-gray-400 mb-1">الحالة الوظيفية</span>
-                <span className="block font-semibold text-emerald-600">{employee.EmployeeStatus || 'نشط'}</span>
+                {isEditing ? (
+                  <select value={editData.EmployeeStatus} onChange={e => editField('EmployeeStatus', e.target.value)} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 bg-white">
+                    <option value="">—</option>
+                    <option value="نشط">نشط</option>
+                    <option value="مثبت">مثبت</option>
+                    <option value="متربص">متربص</option>
+                    <option value="معلق">معلق</option>
+                    <option value="مفصول">مفصول</option>
+                    <option value="متقاعد">متقاعد</option>
+                  </select>
+                ) : (
+                  <span className="block font-semibold text-emerald-600">{employee.EmployeeStatus || 'نشط'}</span>
+                )}
+              </div>
+              <div>
+                <span className="block text-xs font-medium text-gray-400 mb-1">الدرجة</span>
+                {isEditing ? (
+                  <input value={editData.Degree} onChange={e => editField('Degree', parseInt(e.target.value) || 0)} type="number" min="0" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
+                ) : (
+                  <span className="block font-semibold text-slate-800">{employee.Degree || '—'}</span>
+                )}
+              </div>
+              <div>
+                <span className="block text-xs font-medium text-gray-400 mb-1">رقم الضمان الاجتماعي</span>
+                {isEditing ? (
+                  <input value={editData.SIS} onChange={e => editField('SIS', e.target.value)} dir="ltr" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
+                ) : (
+                  <span className="block font-semibold text-slate-800" dir="ltr">{employee.SIS || '—'}</span>
+                )}
               </div>
             </div>
           </div>
