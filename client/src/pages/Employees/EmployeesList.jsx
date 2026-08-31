@@ -3,13 +3,13 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import useSWR from 'swr';
 import { useAuth } from '../../context/AuthContext';
 import EmployeeService from '../../services/employeeService';
-import { getAllowedProvinces } from '../../utils/constants';
+import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import EmployeeModal from './EmployeeModal';
 import { Search, MoreVertical, Loader2, Users, ArrowUpDown, ChevronDown, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
-const fetcher = async ([url, page, limit, search, province]) => {
-  const result = await EmployeeService.getAll(page, limit, search, province);
+const fetcher = async ([url, page, limit, search, province, directorate, fileStatus]) => {
+  const result = await EmployeeService.getAll(page, limit, search, province, directorate, fileStatus);
   if (!result.success) throw new Error("Failed to fetch");
   return result;
 };
@@ -33,12 +33,17 @@ const EmployeesList = () => {
   const [limit, setLimit] = useState(100);
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [provinceFilter, setProvinceFilter] = useState('');
+  const [directorateFilter, setDirectorateFilter] = useState('');
+  const [fileStatusFilter, setFileStatusFilter] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   
   const allowedProvinces = getAllowedProvinces(useAuth().user);
 
+  const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
+  const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
+
   const { data, error, isLoading, mutate } = useSWR(
-    ['/api/employees', page, limit, search, provinceFilter],
+    ['/api/employees', page, limit, search, provinceFilter, directorateFilter, fileStatusFilter],
     fetcher,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
@@ -156,13 +161,48 @@ const EmployeesList = () => {
         <div className="flex items-center gap-3">
           <select 
             value={provinceFilter}
-            onChange={(e) => { setProvinceFilter(e.target.value); setPage(1); }}
+            onChange={(e) => { setProvinceFilter(e.target.value); setDirectorateFilter(''); setPage(1); }}
             className="flex items-center gap-2 text-sm font-medium text-gray-600 px-3 py-2 hover:bg-gray-50 rounded-lg outline-none bg-transparent cursor-pointer appearance-none"
           >
             <option value="">الولاية: الكل</option>
             {allowedProvinces.map(prov => (
               <option key={prov} value={prov}>{prov}</option>
             ))}
+          </select>
+          <ChevronDown size={14} className="-mr-6 text-gray-500 pointer-events-none" />
+          
+          <div className="h-4 w-px bg-gray-200 ml-2"></div>
+
+          <select 
+            value={directorateFilter}
+            onChange={(e) => { setDirectorateFilter(e.target.value); setPage(1); }}
+            className="flex items-center gap-2 text-sm font-medium text-gray-600 px-3 py-2 hover:bg-gray-50 rounded-lg outline-none bg-transparent cursor-pointer appearance-none"
+          >
+            <option value="">الجهة: الكل</option>
+            {provinceFilter === 'الشلف' && (
+              <option value="المديرية الجهوية للأملاك الوطنية" className="font-bold text-emerald-700 bg-emerald-50">المديرية الجهوية للأملاك الوطنية</option>
+            )}
+            <option value="مديرية أملاك الدولة" className="font-bold">مديرية أملاك الدولة</option>
+            {availableMofatishiyat.map(item => (
+              <option key={item} value={item}>-- {item}</option>
+            ))}
+            <option value="مديرية مسح الأراضي والحفظ العقاري" className="font-bold">مديرية مسح الأراضي</option>
+            {availableMohafathat.map(item => (
+              <option key={item} value={item}>-- {item}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="-mr-6 text-gray-500 pointer-events-none" />
+          
+          <div className="h-4 w-px bg-gray-200 ml-2"></div>
+
+          <select 
+            value={fileStatusFilter}
+            onChange={(e) => { setFileStatusFilter(e.target.value); setPage(1); }}
+            className="flex items-center gap-2 text-sm font-medium text-gray-600 px-3 py-2 hover:bg-gray-50 rounded-lg outline-none bg-transparent cursor-pointer appearance-none"
+          >
+            <option value="">حالة الملف: الكل</option>
+            <option value="complete">مكتمل</option>
+            <option value="incomplete">ناقص</option>
           </select>
           <ChevronDown size={14} className="-mr-6 text-gray-500 pointer-events-none" />
           
@@ -200,6 +240,14 @@ const EmployeesList = () => {
               إضافة موظف
             </button>
           )}
+
+          {/* Stats Badge */}
+          {meta.total > 0 && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-sm font-medium text-emerald-800">
+              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 text-white text-xs font-bold">{meta.totalCompletedFiles || 0}</span>
+              <span>ملف مكتمل من أصل <strong>{meta.total}</strong> موظفاً</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -215,20 +263,21 @@ const EmployeesList = () => {
                 <HeaderCell label="الاسم" />
                 <HeaderCell label="الولاية" />
                 <HeaderCell label="الحالة" />
+                <HeaderCell label="الملف" />
                 <th className="py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center">الإجراء</th>
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-gray-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan="5" className="py-12 text-center text-gray-400">
+                  <td colSpan="6" className="py-12 text-center text-gray-400">
                     <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
                     جاري تحميل البيانات...
                   </td>
                 </tr>
               ) : employees.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="py-12 text-center text-gray-400">
+                  <td colSpan="6" className="py-12 text-center text-gray-400">
                     <Users size={32} className="mx-auto text-gray-300 mb-2" />
                     لا يوجد موظفين لعرضهم
                   </td>
@@ -253,6 +302,24 @@ const EmployeesList = () => {
                         <span className={`w-2 h-2 rounded-full ${emp.EmployeeStatus === 'مثبت' ? 'bg-emerald-500' : 'bg-gray-400'}`}></span>
                         <span className="font-medium text-slate-700">{emp.EmployeeStatus || 'نشط'}</span>
                       </div>
+                    </td>
+
+                    {/* Profile Completion */}
+                    <td className="py-3 px-4 text-center">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                          emp.IsProfileComplete
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            emp.IsProfileComplete ? 'bg-emerald-500' : 'bg-amber-500'
+                          }`}
+                        ></span>
+                        {emp.IsProfileComplete ? 'مكتمل' : 'ناقص'}
+                      </span>
                     </td>
 
                     {/* Action */}

@@ -39,8 +39,8 @@ app.use(
 const employeeFilesRoutes = require('./routes/employeeFiles.routes');
 app.use('/api/employees/:id/files', employeeFilesRoutes);
 
-app.use(express.json({ limit: "25mb" }));
-app.use(express.urlencoded({ extended: true, limit: "25mb" }));
+app.use(express.json({ limit: "55mb" }));
+app.use(express.urlencoded({ extended: true, limit: "55mb" }));
 
 // Serve static files (Employee documents, profile images, etc.)
 // MUST be after cors middleware

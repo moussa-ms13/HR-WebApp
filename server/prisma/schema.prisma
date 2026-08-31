@@ -107,6 +107,7 @@ model Employees {
   Email            String    @default("") @db.NVarChar(Max)
   NumberOfChildren Int       @default(0)
   PhoneNumber      String    @default("") @db.NVarChar(Max)
+  IsProfileComplete Boolean  @default(false)
 
   // Relations
   JobTitle          JobTitles          @relation(fields: [JobTitleId], references: [Id], onDelete: Cascade, map: "FK_Employees_JobTitles_JobTitleId")

@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import EmployeeStatesService from '../../services/employeeStatesService';
 import EmployeeStateModal from './EmployeeStateModal';
 import { Search, MoreVertical, CalendarOff, ArrowUpDown, ChevronDown, Loader2 } from 'lucide-react';
 import { DateText } from '../../utils/formatDate';
 
-const fetcher = async ([url, page, limit, category, search]) => {
-  const result = await EmployeeStatesService.getAll(page, limit, category, search);
+const fetcher = async ([url, page, limit, category, search, directorate, province]) => {
+  const result = await EmployeeStatesService.getAll(page, limit, category, search, directorate, province);
   if (!result.success) throw new Error("Failed to fetch");
   return result;
 };
@@ -22,10 +23,16 @@ const EmployeeStatesList = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(100);
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [provinceFilter, setProvinceFilter] = useState('');
+  const [directorateFilter, setDirectorateFilter] = useState('');
   const [search, setSearch] = useState(() => searchParams.get('search')?.trim() || '');
 
+  const allowedProvinces = getAllowedProvinces(useAuth().user);
+  const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
+  const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
+
   const { data, error, isLoading, mutate } = useSWR(
-    ['/api/employee-states', page, limit, categoryFilter, search],
+    ['/api/employee-states', page, limit, categoryFilter, search, directorateFilter, provinceFilter],
     fetcher,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
@@ -137,6 +144,42 @@ const EmployeeStatesList = () => {
             <option value="عطل">عطل</option>
             <option value="غيابات">غيابات</option>
             <option value="حالات أخرى">حالات أخرى</option>
+          </select>
+          <ChevronDown size={14} className="-mr-6 text-gray-500 pointer-events-none" />
+
+          <div className="h-4 w-px bg-gray-200 ml-2"></div>
+
+          <select
+            value={provinceFilter}
+            onChange={(e) => { setProvinceFilter(e.target.value); setDirectorateFilter(''); setPage(1); }}
+            className="flex items-center gap-2 text-sm font-medium text-gray-600 px-3 py-2 hover:bg-gray-50 rounded-lg outline-none bg-transparent cursor-pointer appearance-none"
+          >
+            <option value="">الولاية: الكل</option>
+            {allowedProvinces.map(prov => (
+              <option key={prov} value={prov}>{prov}</option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="-mr-6 text-gray-500 pointer-events-none" />
+
+          <div className="h-4 w-px bg-gray-200 ml-2"></div>
+
+          <select
+            value={directorateFilter}
+            onChange={(e) => { setDirectorateFilter(e.target.value); setPage(1); }}
+            className="flex items-center gap-2 text-sm font-medium text-gray-600 px-3 py-2 hover:bg-gray-50 rounded-lg outline-none bg-transparent cursor-pointer appearance-none"
+          >
+            <option value="">الجهة: الكل</option>
+            {provinceFilter === 'الشلف' && (
+              <option value="المديرية الجهوية للأملاك الوطنية" className="font-bold text-emerald-700 bg-emerald-50">المديرية الجهوية للأملاك الوطنية</option>
+            )}
+            <option value="مديرية أملاك الدولة" className="font-bold">مديرية أملاك الدولة</option>
+            {availableMofatishiyat.map(item => (
+              <option key={item} value={item}>-- {item}</option>
+            ))}
+            <option value="مديرية مسح الأراضي والحفظ العقاري" className="font-bold">مديرية مسح الأراضي</option>
+            {availableMohafathat.map(item => (
+              <option key={item} value={item}>-- {item}</option>
+            ))}
           </select>
           <ChevronDown size={14} className="-mr-6 text-gray-500 pointer-events-none" />
 

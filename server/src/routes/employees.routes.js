@@ -30,13 +30,15 @@ router.get("/export", async (req, res) => {
  * Fetches employees with server-side pagination and Geographic RBAC
  */
 router.get("/", async (req, res) => {
-  const { page, limit, search, province } = req.query;
+  const { page, limit, search, province, directorate, fileStatus } = req.query;
   const result = await EmployeesService.getAll(
     req.user,
     Number(page) || 1,
     Number(limit) || 20,
     search || "",
-    province || ""
+    province || "",
+    directorate || "",
+    fileStatus || ""
   );
   res.json({ success: true, ...result });
 });

@@ -16,14 +16,16 @@ router.use(authenticate);
  * Paginated list with optional category filter
  */
 router.get("/", async (req, res) => {
-  const { page, limit, category, employeeId, search } = req.query;
+  const { page, limit, category, employeeId, search, directorate, province } = req.query;
   const result = await EmployeeStatesService.getAll(
     req.user,
     Number(page) || 1,
     Number(limit) || 20,
     category || "",
     employeeId || null,
-    search || ""
+    search || "",
+    directorate || "",
+    province || ""
   );
   res.json({ success: true, ...result });
 });

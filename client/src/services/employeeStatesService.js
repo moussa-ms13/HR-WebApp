@@ -7,9 +7,9 @@ class EmployeeStatesService {
    * @param {number} limit 
    * @param {string} category 
    */
-  static async getAll(page = 1, limit = 20, category = '', search = '') {
+  static async getAll(page = 1, limit = 20, category = '', search = '', directorate = '', province = '') {
     const response = await apiClient.get('/employee-states', {
-      params: { page, limit, category, search }
+      params: { page, limit, category, search, directorate, province }
     });
     return response.data;
   }

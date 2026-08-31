@@ -1,31 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Loader2, Upload, Image as ImageIcon, ChevronDown, ChevronLeft } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getAllowedProvinces } from '../../utils/constants';
+import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import EmployeeService from '../../services/employeeService';
 import apiClient from '../../services/apiClient';
 
 // --- Tree View Data Helpers ---
-const getMofatishiyat = (province) => {
-  if (province === "الشلف") return ["مفتشية أملاك الدولة الشلف", "مفتشية أملاك الدولة بوقادير", "مفتشية أملاك الدولة أولاد فارس", "مفتشية أملاك الدولة تنس"];
-  if (province === "عين الدفلى") return ["مفتشية أملاك الدولة عين الدفلى", "مفتشية أملاك الدولة العطاف", "مفتشية أملاك الدولة جليدة", "مفتشية أملاك الدولة خميس مليانة", "مفتشية أملاك الدولة جندل", "مفتشية أملاك الدولة الروينة", "مفتشية أملاك الدولة مليانة"];
-  if (province === "غليزان" || province === "غيليزان") return ["مفتشية أملاك الدولة غليزان", "مفتشية أملاك الدولة وادي ارهيو", "مفتشية أملاك الدولة زمورة", "مفتشية أملاك الدولة مازونة", "مفتشية أملاك الدولة عمي موسى"];
-  if (province === "تيسمسيلت") return ["مفتشية أملاك الدولة تيسمسيلت", "مفتشية أملاك الدولة ثنية الحد", "مفتشية أملاك الدولة برج بونعامة"];
-  if (province === "تيارت") return ["مفتشية أملاك الدولة تيارت", "مفتشية أملاك الدولة رحوية", "مفتشية أملاك الدولة مهدية", "مفتشية أملاك الدولة السوقر", "مفتشية أملاك الدولة فرندة"];
-  if (province === "قصر الشلالة") return ["مفتشية أملاك الدولة قصر الشلالة"];
-  return [];
-};
-
-const getMohafathat = (province) => {
-  if (province === "الشلف") return ["المحافظة العقارية الشلف", "المحافظة العقارية بوقادير", "المحافظة العقارية أولاد فارس", "المحافظة العقارية وادي الفضة", "المحافظة العقارية تنس"];
-  if (province === "عين الدفلى") return ["المحافظة العقارية عين الدفلى", "المحافظة العقارية العطاف", "المحافظة العقارية جليدة", "المحافظة العقارية خميس مليانة", "المحافظة العقارية جندل"];
-  if (province === "غليزان" || province === "غيليزان") return ["المحافظة العقارية غليزان", "المحافظة العقارية وادي ارهيو", "المحافظة العقارية زمورة", "المحافظة العقارية مازونة", "المحافظة العقارية عمي موسى"];
-  if (province === "تيسمسيلت") return ["المحافظة العقارية تيسمسيلت", "المحافظة العقارية ثنية الحد", "المحافظة العقارية برج بونعامة"];
-  if (province === "تيارت") return ["المحافظة العقارية تيارت", "المحافظة العقارية رحوية", "المحافظة العقارية مهدية", "المحافظة العقارية السوقر", "المحافظة العقارية مدروسة"];
-  if (province === "قصر الشلالة") return ["المحافظة العقارية قصر الشلالة"];
-  return [];
-};
-
 // TreeNode Component for the Assignment Tree
 const TreeNode = ({ label, children, onSelect, isLeaf, dirTag }) => {
   const [isOpen, setIsOpen] = useState(true);
@@ -72,6 +52,9 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
   const [jobTitles, setJobTitles] = useState([]);
   const [error, setError] = useState('');
 
+  // Tabs State
+  const [activeTab, setActiveTab] = useState('personal');
+
   // Tree View State
   const [showTree, setShowTree] = useState(false);
 
@@ -91,13 +74,15 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
     LastDegreeDate: new Date().toISOString().split('T')[0],
     PositionDate: '',
     EmployeeStatus: 'مثبت',
-    ConfirmationDate: new Date().toISOString().split('T')[0]
+    ConfirmationDate: new Date().toISOString().split('T')[0],
+    isProfileComplete: false
   };
 
   // Helper: build form state from employee data
   const buildFormDataFromEmployee = (emp) => ({
     ...initialFormData,
     ...emp,
+    isProfileComplete: emp.IsProfileComplete || emp.isProfileComplete || false,
     JobTitleId: emp.JobTitleId ?? '',
     DateOfBirth: emp.DateOfBirth ? new Date(emp.DateOfBirth).toISOString().split('T')[0] : '',
     InstallationDate: emp.InstallationDate ? new Date(emp.InstallationDate).toISOString().split('T')[0] : '',
@@ -118,6 +103,7 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
       setProfileImageFile(null);
       setError('');
       setShowTree(false);
+      setActiveTab('personal'); // Reset tab on open
 
       const empId = employee?.Id || employee?.id;
 
@@ -207,13 +193,13 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
     });
   };
 
-  const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+  const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
     if (file) {
       if (file.size > MAX_FILE_SIZE) {
-        alert('حجم الملف يتجاوز الحد المسموح (20 ميغابايت).');
+        alert('حجم الملف يتجاوز الحد المسموح (50 ميغابايت).');
         e.target.value = '';
         return;
       }
@@ -247,7 +233,8 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
       const payload = {
         ...formData,
         JobTitleId: Number(formData.JobTitleId) || 0,
-        Degree: Number(formData.Degree) || 0
+        Degree: Number(formData.Degree) || 0,
+        IsProfileComplete: formData.isProfileComplete || false
       };
 
       let savedEmployeeId = null;
@@ -327,194 +314,250 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
           <form id="employeeForm" onSubmit={handleSubmit} className="space-y-8">
             <fieldset disabled={isFetchingDetails} className="space-y-8 contents">
 
-              {/* Profile Image & General */}
-              <div className="flex flex-col md:flex-row gap-8">
-                {/* Image Upload Area */}
-                <div className="flex flex-col items-center shrink-0 w-full md:w-48 space-y-3">
-                  <div className="w-32 h-32 rounded-full border-4 border-white shadow-md overflow-hidden bg-slate-100 flex items-center justify-center">
-                    {profileImagePreview ? (
-                      <img src={profileImagePreview} alt="Profile" className="w-full h-full object-cover" />
-                    ) : (
-                      <ImageIcon size={40} className="text-slate-300" />
-                    )}
-                  </div>
-                  <div className="w-full">
-                    <label className="block text-xs font-semibold text-slate-600 mb-1 text-center">الصورة الشخصية</label>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={handleImageSelect}
-                      className="w-full text-xs text-slate-500 file:mr-0 file:ml-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-slate-200 file:text-slate-700 hover:file:bg-slate-300 cursor-pointer"
-                    />
-                  </div>
-                </div>
-
-                {/* Personal Info */}
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">المعلومات الشخصية</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">الاسم <span className="text-red-500">*</span></label>
-                      <input type="text" name="Name" value={formData.Name} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">اللقب <span className="text-red-500">*</span></label>
-                      <input type="text" name="LastName" value={formData.LastName} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">الجنس</label>
-                      <select name="Gender" value={formData.Gender} onChange={handleGenderChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
-                        <option value="ذكر">ذكر</option>
-                        <option value="أنثى">أنثى</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">الحالة العائلية</label>
-                      <select name="MaritalStatus" value={formData.MaritalStatus} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
-                        {getMaritalOptions().map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ الميلاد</label>
-                      <input type="date" name="DateOfBirth" value={formData.DateOfBirth} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">مكان الميلاد</label>
-                      <input type="text" name="PlaceOfBirth" value={formData.PlaceOfBirth} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">رقم التعريف الوطني (NIN)</label>
-                      <input type="text" name="NIN" value={formData.NIN} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">رقم الضمان الاجتماعي (SIS)</label>
-                      <input type="text" name="SIS" value={formData.SIS} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                    </div>
-                    {!(formData.MaritalStatus === 'أعزب' || formData.MaritalStatus === 'عزباء') && (
-                      <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">عدد الأولاد</label>
-                        <input type="number" name="NumberOfChildren" value={formData.NumberOfChildren} onChange={handleChange} min="0" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                      </div>
-                    )}
-                    <div className="sm:col-span-2 lg:col-span-1">
-                      <label className="block text-sm font-medium text-slate-700 mb-1">رقم الهاتف</label>
-                      <input type="text" name="PhoneNumber" value={formData.PhoneNumber} onChange={handleChange} dir="ltr" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-right" />
-                    </div>
-                    <div className="sm:col-span-2 lg:col-span-2">
-                      <label className="block text-sm font-medium text-slate-700 mb-1">البريد الإلكتروني</label>
-                      <input type="email" name="Email" value={formData.Email} onChange={handleChange} dir="ltr" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-right" />
-                    </div>
-                    <div className="sm:col-span-2 lg:col-span-3">
-                      <label className="block text-sm font-medium text-slate-700 mb-1">العنوان</label>
-                      <input type="text" name="Address" value={formData.Address} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                    </div>
-                  </div>
-                </div>
+              {/* Tab Headers */}
+              <div className="flex border-b border-slate-200 mb-6">
+                {[
+                  { id: 'personal', label: 'المعلومات الشخصية' },
+                  { id: 'professional', label: 'المعلومات المهنية' }
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`px-4 py-2 font-medium text-sm transition-colors border-b-2 ${
+                      activeTab === tab.id
+                        ? 'border-emerald-600 text-emerald-600'
+                        : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
 
-              {/* Professional Info Section */}
-              <div>
-                <h3 className="text-lg font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100">المعلومات المهنية</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">الولاية (مقر العمل) <span className="text-red-500">*</span></label>
-                    <select name="Province" value={formData.Province} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
-                      <option value="" disabled>اختر الولاية...</option>
-                      {allowedProvinces.map(prov => (
-                        <option key={prov} value={prov}>{prov}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Tree-View Assignment */}
-                  <div className="lg:col-span-2 relative">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">مكان التعيين <span className="text-red-500">*</span></label>
-                    <div className="flex gap-2">
+              {/* Personal Info Tab */}
+              {activeTab === 'personal' && (
+                <div className="flex flex-col md:flex-row gap-8">
+                  {/* Image Upload Area */}
+                  <div className="flex flex-col items-center shrink-0 w-full md:w-48 space-y-3">
+                    <div className="w-32 h-32 rounded-full border-4 border-white shadow-md overflow-hidden bg-slate-100 flex items-center justify-center">
+                      {profileImagePreview ? (
+                        <img src={profileImagePreview} alt="Profile" className="w-full h-full object-cover" />
+                      ) : (
+                        <ImageIcon size={40} className="text-slate-300" />
+                      )}
+                    </div>
+                    <div className="w-full">
+                      <label className="block text-xs font-semibold text-slate-600 mb-1 text-center">الصورة الشخصية</label>
                       <input
-                        type="text"
-                        readOnly
-                        value={formData.Department ? (formData.Directorate === formData.Department ? formData.Directorate : `${formData.Directorate} ➜ ${formData.Department}`) : ''}
-                        placeholder="اضغط لاختيار مكان التعيين..."
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white outline-none text-sm cursor-pointer"
-                        onClick={() => { if (formData.Province) setShowTree(!showTree); else alert("يرجى اختيار الولاية أولاً."); }}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={handleImageSelect}
+                        className="w-full text-xs text-slate-500 file:mr-0 file:ml-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-slate-200 file:text-slate-700 hover:file:bg-slate-300 cursor-pointer"
                       />
-                      <button type="button" onClick={() => { if (formData.Province) setShowTree(!showTree); else alert("يرجى اختيار الولاية أولاً."); }} className="px-4 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-sm font-medium transition-colors">
-                        {showTree ? 'إغلاق' : 'اختيار'}
-                      </button>
                     </div>
+                  </div>
 
-                    {/* Tree Popup */}
-                    {showTree && formData.Province && (
-                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-4 z-10 max-h-64 overflow-y-auto">
-                        <TreeNode label="المديرية الجهوية للأملاك الوطنية" onSelect={handleTreeSelect} isLeaf={false}>
-
-                          <TreeNode label={dirAmlak} onSelect={handleTreeSelect} isLeaf={false}>
-                            <TreeNode label={`المديرية الولائية (${formData.Province})`} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirAmlak} />
-                            <TreeNode label="مفتشيات أملاك الدولة" onSelect={handleTreeSelect} isLeaf={false}>
-                              {getMofatishiyat(formData.Province).map(m => (
-                                <TreeNode key={m} label={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirAmlak} />
-                              ))}
-                            </TreeNode>
-                          </TreeNode>
-
-                          <TreeNode label={dirMash} onSelect={handleTreeSelect} isLeaf={false}>
-                            <TreeNode label={`المديرية الولائية (${formData.Province})`} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirMash} />
-                            <TreeNode label="المحافظات العقارية" onSelect={handleTreeSelect} isLeaf={false}>
-                              {getMohafathat(formData.Province).map(m => (
-                                <TreeNode key={m} label={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirMash} />
-                              ))}
-                            </TreeNode>
-                          </TreeNode>
-
-                        </TreeNode>
+                  {/* Personal Info */}
+                  <div className="flex-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">الاسم <span className="text-red-500">*</span></label>
+                        <input type="text" name="Name" value={formData.Name} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
                       </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">الرتبة</label>
-                    <select name="JobTitleId" value={formData.JobTitleId} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
-                      <option value="">بدون رتبة</option>
-                      {jobTitles.map(job => (
-                        <option key={job.Id} value={job.Id}>{job.RankName}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">المنصب العالي </label>
-                    <input type="text" name="AssignedPosition" value={formData.AssignedPosition} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ المنصب العالي</label>
-                    <input type="date" name="PositionDate" value={formData.PositionDate} onChange={handleChange} disabled={!formData.AssignedPosition || formData.AssignedPosition === 'لا شيء'} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100" />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ التنصيب</label>
-                    <input type="date" name="InstallationDate" value={formData.InstallationDate} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">الدرجة</label>
-                    <input type="number" name="Degree" value={formData.Degree} onChange={handleChange} min="0" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ آخر درجة</label>
-                    <input type="date" name="LastDegreeDate" value={formData.LastDegreeDate} onChange={handleChange} disabled={Number(formData.Degree) === 0} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100" />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">الحالة</label>
-                    <select name="EmployeeStatus" value={formData.EmployeeStatus} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
-                      <option value="مثبت">مثبت</option>
-                      <option value="متربص">متربص</option>
-                    </select>
-                  </div>
-                  <div className="sm:col-span-1 lg:col-span-2">
-                    <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ التثبيت</label>
-                    <input type="date" name="ConfirmationDate" value={formData.ConfirmationDate} onChange={handleChange} disabled={formData.EmployeeStatus === 'متربص'} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100" />
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">اللقب <span className="text-red-500">*</span></label>
+                        <input type="text" name="LastName" value={formData.LastName} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">الجنس</label>
+                        <select name="Gender" value={formData.Gender} onChange={handleGenderChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
+                          <option value="ذكر">ذكر</option>
+                          <option value="أنثى">أنثى</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">الحالة العائلية</label>
+                        <select name="MaritalStatus" value={formData.MaritalStatus} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
+                          {getMaritalOptions().map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ الميلاد</label>
+                        <input type="date" name="DateOfBirth" value={formData.DateOfBirth} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">مكان الميلاد</label>
+                        <input type="text" name="PlaceOfBirth" value={formData.PlaceOfBirth} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">رقم التعريف الوطني (NIN)</label>
+                        <input type="text" name="NIN" value={formData.NIN} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">رقم الضمان الاجتماعي (SIS)</label>
+                        <input type="text" name="SIS" value={formData.SIS} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                      </div>
+                      {!(formData.MaritalStatus === 'أعزب' || formData.MaritalStatus === 'عزباء') && (
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">عدد الأولاد</label>
+                          <input type="number" name="NumberOfChildren" value={formData.NumberOfChildren} onChange={handleChange} min="0" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                        </div>
+                      )}
+                      <div className="sm:col-span-2 lg:col-span-1">
+                        <label className="block text-sm font-medium text-slate-700 mb-1">رقم الهاتف</label>
+                        <input type="text" name="PhoneNumber" value={formData.PhoneNumber} onChange={handleChange} dir="ltr" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-right" />
+                      </div>
+                      <div className="sm:col-span-2 lg:col-span-2">
+                        <label className="block text-sm font-medium text-slate-700 mb-1">البريد الإلكتروني</label>
+                        <input type="email" name="Email" value={formData.Email} onChange={handleChange} dir="ltr" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm text-right" />
+                      </div>
+                      <div className="sm:col-span-2 lg:col-span-3">
+                        <label className="block text-sm font-medium text-slate-700 mb-1">العنوان</label>
+                        <input type="text" name="Address" value={formData.Address} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                      </div>
+                    </div>
                   </div>
                 </div>
+              )}
+
+              {/* Professional Info Tab */}
+              {activeTab === 'professional' && (
+                <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">الولاية (مقر العمل) <span className="text-red-500">*</span></label>
+                      <select name="Province" value={formData.Province} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
+                        <option value="" disabled>اختر الولاية...</option>
+                        {allowedProvinces.map(prov => (
+                          <option key={prov} value={prov}>{prov}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Tree-View Assignment */}
+                    <div className="lg:col-span-2 relative">
+                      <label className="block text-sm font-medium text-slate-700 mb-1">مكان التعيين <span className="text-red-500">*</span></label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={formData.Department ? (formData.Directorate === formData.Department ? formData.Directorate : `${formData.Directorate} ➜ ${formData.Department}`) : ''}
+                          placeholder="اضغط لاختيار مكان التعيين..."
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white outline-none text-sm cursor-pointer"
+                          onClick={() => { if (formData.Province) setShowTree(!showTree); else alert("يرجى اختيار الولاية أولاً."); }}
+                        />
+                        <button type="button" onClick={() => { if (formData.Province) setShowTree(!showTree); else alert("يرجى اختيار الولاية أولاً."); }} className="px-4 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-sm font-medium transition-colors">
+                          {showTree ? 'إغلاق' : 'اختيار'}
+                        </button>
+                      </div>
+
+                      {/* Tree Popup */}
+                      {showTree && formData.Province && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-4 z-10 max-h-64 overflow-y-auto">
+                          <TreeNode label="المديرية الجهوية للأملاك الوطنية" onSelect={handleTreeSelect} isLeaf={false}>
+
+                            {formData.Province === 'الشلف' && (
+                              <TreeNode label="المديرية الجهوية للأملاك الوطنية" onSelect={handleTreeSelect} isLeaf={true} dirTag="المديرية الجهوية للأملاك الوطنية" />
+                            )}
+
+                            <TreeNode label={dirAmlak} onSelect={handleTreeSelect} isLeaf={false}>
+                              <TreeNode label={`المديرية الولائية (${formData.Province})`} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirAmlak} />
+                              <TreeNode label="مفتشيات أملاك الدولة" onSelect={handleTreeSelect} isLeaf={false}>
+                                {getMofatishiyat(formData.Province).map(m => (
+                                  <TreeNode key={m} label={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirAmlak} />
+                                ))}
+                              </TreeNode>
+                            </TreeNode>
+
+                            <TreeNode label={dirMash} onSelect={handleTreeSelect} isLeaf={false}>
+                              <TreeNode label={`المديرية الولائية (${formData.Province})`} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirMash} />
+                              <TreeNode label="المحافظات العقارية" onSelect={handleTreeSelect} isLeaf={false}>
+                                {getMohafathat(formData.Province).map(m => (
+                                  <TreeNode key={m} label={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirMash} />
+                                ))}
+                              </TreeNode>
+                            </TreeNode>
+
+                          </TreeNode>
+                        </div>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">الرتبة</label>
+                      <select name="JobTitleId" value={formData.JobTitleId} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
+                        <option value="">بدون رتبة</option>
+                        {jobTitles.map(job => (
+                          <option key={job.Id} value={job.Id}>{job.RankName}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">المنصب العالي </label>
+                      <input type="text" name="AssignedPosition" value={formData.AssignedPosition} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ المنصب العالي</label>
+                      <input type="date" name="PositionDate" value={formData.PositionDate} onChange={handleChange} disabled={!formData.AssignedPosition || formData.AssignedPosition === 'لا شيء'} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100" />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ التنصيب</label>
+                      <input type="date" name="InstallationDate" value={formData.InstallationDate} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">الدرجة</label>
+                      <input type="number" name="Degree" value={formData.Degree} onChange={handleChange} min="0" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ آخر درجة</label>
+                      <input type="date" name="LastDegreeDate" value={formData.LastDegreeDate} onChange={handleChange} disabled={Number(formData.Degree) === 0} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100" />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">الحالة</label>
+                      <select name="EmployeeStatus" value={formData.EmployeeStatus} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
+                        <option value="مرسم">مرسم</option>
+                        <option value="متربص">متربص</option>
+                      </select>
+                    </div>
+                    <div className="sm:col-span-1 lg:col-span-2">
+                      <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ التثبيت</label>
+                      <input type="date" name="ConfirmationDate" value={formData.ConfirmationDate} onChange={handleChange} disabled={formData.EmployeeStatus === 'متربص'} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+
+              {/* Profile Completion Toggle */}
+              <div className="mt-2">
+                <div className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${formData.isProfileComplete
+                  ? 'border-emerald-400 bg-emerald-50/70'
+                  : 'border-slate-200 bg-slate-50/50'
+                  }`}>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl">{formData.isProfileComplete ? '🟢' : '🟠'}</span>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">تم استكمال جميع وثائق الملف</p>
+                      <p className="text-xs text-slate-500 mt-0.5">علّم هذا الخيار إذا كانت جميع الوثائق المطلوبة مرفقة ومكتملة</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, isProfileComplete: !prev.isProfileComplete }))}
+                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1 ${formData.isProfileComplete ? 'bg-emerald-500' : 'bg-gray-300'
+                      }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform ${formData.isProfileComplete ? '-translate-x-6' : '-translate-x-1'
+                        }`}
+                    />
+                  </button>
+                </div>
               </div>
+
             </fieldset>
           </form>
         </div>

@@ -11,7 +11,7 @@ class EmployeesService {
   /**
    * Fetch paginated and filtered employees based on geographic RBAC.
    */
-  static async getAll(requestingUser, page = 1, limit = 20, search = "", province = "") {
+  static async getAll(requestingUser, page = 1, limit = 20, search = "", province = "", directorate = "", fileStatus = "") {
     const skip = (page - 1) * limit;
     
     // Base Geographic Filter
@@ -35,6 +35,18 @@ class EmployeesService {
       if (requestingUser.role === ROLES.ADMIN || allowedProvinces.includes(province)) {
         whereClause.Province = province;
       }
+    }
+
+    // Directorate Filter (الجهة)
+    if (directorate) {
+      whereClause.Directorate = directorate;
+    }
+
+    // File Status Filter (اكتمال الملف)
+    if (fileStatus === 'complete') {
+      whereClause.IsProfileComplete = true;
+    } else if (fileStatus === 'incomplete') {
+      whereClause.IsProfileComplete = false;
     }
 
     // Search Filter: trim & split to handle full-name queries and trailing spaces
@@ -78,7 +90,7 @@ class EmployeesService {
     }
 
     // Execute queries concurrently for performance
-    const [total, employees] = await Promise.all([
+    const [total, employees, totalCompletedFiles] = await Promise.all([
       prisma.employees.count({ where: whereClause }),
       prisma.employees.findMany({
         where: whereClause,
@@ -88,11 +100,13 @@ class EmployeesService {
           LastName: true,
           Province: true,
           EmployeeStatus: true,
+          IsProfileComplete: true,
         },
         skip,
         take: Number(limit),
         orderBy: { Id: "desc" },
-      })
+      }),
+      prisma.employees.count({ where: { ...whereClause, IsProfileComplete: true } }),
     ]);
 
     return {
@@ -101,7 +115,8 @@ class EmployeesService {
         total,
         page: Number(page),
         limit: Number(limit),
-        totalPages: Math.ceil(total / limit)
+        totalPages: Math.ceil(total / limit),
+        totalCompletedFiles,
       }
     };
   }
@@ -162,6 +177,7 @@ class EmployeesService {
         Email: true,
         NumberOfChildren: true,
         PhoneNumber: true,
+        IsProfileComplete: true,
         JobTitle: { select: { RankName: true } },
       },
     });
@@ -228,6 +244,7 @@ class EmployeesService {
         Email: data.Email || "",
         NumberOfChildren: data.NumberOfChildren || 0,
         PhoneNumber: data.PhoneNumber || "",
+        IsProfileComplete: data.IsProfileComplete || false,
       }
     });
 
@@ -287,6 +304,7 @@ class EmployeesService {
         Email: data.Email ?? existing.Email,
         NumberOfChildren: data.NumberOfChildren ?? existing.NumberOfChildren,
         PhoneNumber: data.PhoneNumber ?? existing.PhoneNumber,
+        IsProfileComplete: data.IsProfileComplete !== undefined ? data.IsProfileComplete : existing.IsProfileComplete,
       }
     });
 

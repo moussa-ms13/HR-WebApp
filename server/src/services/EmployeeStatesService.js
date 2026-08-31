@@ -11,7 +11,7 @@ class EmployeeStatesService {
   /**
    * Fetch all employee states with pagination and geographic RBAC.
    */
-  static async getAll(requestingUser, page = 1, limit = 20, category = "", employeeId = null, search = "") {
+  static async getAll(requestingUser, page = 1, limit = 20, category = "", employeeId = null, search = "", directorate = "", province = "") {
     const skip = (page - 1) * limit;
 
     // Build where clause with geographic filter via Employee relation
@@ -22,6 +22,19 @@ class EmployeeStatesService {
         return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
       }
       employeeFilter.Province = { in: allowedProvinces };
+    }
+
+    // Explicit user-selected Province Filter
+    if (province) {
+      // Ensure they can only filter by a province they are allowed to see
+      if (requestingUser.role === ROLES.ADMIN || employeeFilter.Province?.in?.includes(province)) {
+        employeeFilter.Province = province;
+      }
+    }
+
+    // Directorate Filter (الجهة)
+    if (directorate) {
+      employeeFilter.Directorate = directorate;
     }
 
     const whereClause = {
