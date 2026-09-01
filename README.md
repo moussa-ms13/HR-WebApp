@@ -297,6 +297,6 @@ Unauthorized copying, distribution, or modification is strictly prohibited.
 
 <div align="center">
 
-**Built with ❤️ for enterprise HR operations.**
+**Built with مديرية الفرعية للرقمة بمديرية الجهوية للأملاك الوطنية ناحية الشلف for enterprise HR operations.**
 
 </div>

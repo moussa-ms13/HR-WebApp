@@ -103,6 +103,9 @@ const EmployeeProfile = () => {
   const [showPositionModal, setShowPositionModal] = useState(false);
   const [isSubmittingCareer, setIsSubmittingCareer] = useState(false);
 
+  const [editingRankId, setEditingRankId] = useState(null);
+  const [editingPositionId, setEditingPositionId] = useState(null);
+
   const initialRankForm = { RankId: '', RankName: '', InstallDate: '', Reference: '', Notes: '' };
   const [rankForm, setRankForm] = useState(initialRankForm);
 
@@ -113,13 +116,19 @@ const EmployeeProfile = () => {
     e.preventDefault();
     try {
       setIsSubmittingCareer(true);
-      await apiClient.post(`/employees/${id}/rank-history`, rankForm);
+      if (editingRankId) {
+        await apiClient.put(`/employees/${id}/rank-history/${editingRankId}`, rankForm);
+      } else {
+        await apiClient.post(`/employees/${id}/rank-history`, rankForm);
+      }
       mutateCareer();
       setShowRankModal(false);
+      setEditingRankId(null);
       setRankForm(initialRankForm);
+      toast.success(editingRankId ? "تم تعديل الترقية بنجاح" : "تمت إضافة الترقية بنجاح");
     } catch (err) {
-      console.error("Failed to add rank", err);
-      toast.error("حدث خطأ أثناء إضافة الترقية");
+      console.error("Failed to add/edit rank", err);
+      toast.error("حدث خطأ أثناء حفظ الترقية");
     } finally {
       setIsSubmittingCareer(false);
     }
@@ -129,16 +138,45 @@ const EmployeeProfile = () => {
     e.preventDefault();
     try {
       setIsSubmittingCareer(true);
-      await apiClient.post(`/employees/${id}/position-history`, positionForm);
+      if (editingPositionId) {
+        await apiClient.put(`/employees/${id}/position-history/${editingPositionId}`, positionForm);
+      } else {
+        await apiClient.post(`/employees/${id}/position-history`, positionForm);
+      }
       mutateCareer();
       setShowPositionModal(false);
+      setEditingPositionId(null);
       setPositionForm(initialPositionForm);
+      toast.success(editingPositionId ? "تم تعديل المنصب بنجاح" : "تمت إضافة المنصب بنجاح");
     } catch (err) {
-      console.error("Failed to add position", err);
-      toast.error("حدث خطأ أثناء إضافة المنصب");
+      console.error("Failed to add/edit position", err);
+      toast.error("حدث خطأ أثناء حفظ المنصب");
     } finally {
       setIsSubmittingCareer(false);
     }
+  };
+
+  const handleEditRank = (record) => {
+    setRankForm({
+      RankId: record.RankId || '',
+      RankName: record.RankName || '',
+      InstallDate: record.InstallDate ? new Date(record.InstallDate).toISOString().split('T')[0] : '',
+      Reference: record.Reference || '',
+      Notes: record.Notes || ''
+    });
+    setEditingRankId(record.Id);
+    setShowRankModal(true);
+  };
+
+  const handleEditPosition = (record) => {
+    setPositionForm({
+      PositionName: record.PositionName || '',
+      InstallDate: record.InstallDate ? new Date(record.InstallDate).toISOString().split('T')[0] : '',
+      EndDate: record.EndDate ? new Date(record.EndDate).toISOString().split('T')[0] : '',
+      Reference: record.Reference || ''
+    });
+    setEditingPositionId(record.Id);
+    setShowPositionModal(true);
   };
 
   const handleDeleteRank = (recordId) => {
@@ -696,7 +734,11 @@ const EmployeeProfile = () => {
                 حركة في الرتب
               </h3>
               <button
-                onClick={() => setShowRankModal(true)}
+                onClick={() => {
+                  setEditingRankId(null);
+                  setRankForm(initialRankForm);
+                  setShowRankModal(true);
+                }}
                 className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
               >
                 <Plus size={16} />
@@ -736,14 +778,23 @@ const EmployeeProfile = () => {
                         <td className="py-4 px-6 text-gray-600"><DateText value={record.InstallDate} /></td>
                         <td className="py-4 px-6 text-gray-600">{record.Reference || '—'}</td>
                         <td className="py-4 px-6 text-gray-600">{record.Notes || '—'}</td>
-                        <td className="py-4 px-6 text-center">
-                          <button
-                            onClick={() => handleDeleteRank(record.Id)}
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
-                            title="حذف"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                        <td className="py-4 px-6">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleEditRank(record)}
+                              className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-2 rounded-lg transition-colors"
+                              title="تعديل"
+                            >
+                              <Edit3 size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteRank(record.Id)}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                              title="حذف"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -761,7 +812,11 @@ const EmployeeProfile = () => {
                 حركة في المناصب و المناصب العليا
               </h3>
               <button
-                onClick={() => setShowPositionModal(true)}
+                onClick={() => {
+                  setEditingPositionId(null);
+                  setPositionForm(initialPositionForm);
+                  setShowPositionModal(true);
+                }}
                 className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
               >
                 <Plus size={16} />
@@ -801,14 +856,23 @@ const EmployeeProfile = () => {
                         <td className="py-4 px-6 text-gray-600"><DateText value={record.InstallDate} /></td>
                         <td className="py-4 px-6 text-gray-600">{record.EndDate ? <DateText value={record.EndDate} /> : <span className="text-emerald-600 font-medium">ساري</span>}</td>
                         <td className="py-4 px-6 text-gray-600">{record.Reference || '—'}</td>
-                        <td className="py-4 px-6 text-center">
-                          <button
-                            onClick={() => handleDeletePosition(record.Id)}
-                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
-                            title="حذف"
-                          >
-                            <Trash2 size={16} />
-                          </button>
+                        <td className="py-4 px-6">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleEditPosition(record)}
+                              className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-2 rounded-lg transition-colors"
+                              title="تعديل"
+                            >
+                              <Edit3 size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDeletePosition(record.Id)}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                              title="حذف"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -1224,9 +1288,11 @@ const EmployeeProfile = () => {
       {/* Rank Modal */}
       {showRankModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden" dir="rtl">
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h2 className="text-xl font-bold text-slate-800">إضافة ترقية جديدة</h2>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-xl overflow-hidden flex flex-col" dir="rtl">
+            <div className="flex justify-between items-center p-6 border-b border-gray-200 bg-slate-50">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Briefcase className="text-emerald-500" /> {editingRankId ? 'تعديل' : 'إضافة ترقية جديدة'}
+              </h2>
               <button onClick={() => setShowRankModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                 <X size={24} />
               </button>
@@ -1278,11 +1344,10 @@ const EmployeeProfile = () => {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm resize-none"
                 />
               </div>
-              <div className="flex justify-end gap-3 mt-6">
+              <div className="flex justify-end gap-3 p-6 border-t border-gray-200 bg-slate-50">
                 <button type="button" onClick={() => setShowRankModal(false)} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">إلغاء</button>
-                <button type="submit" disabled={isSubmittingCareer} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50">
-                  {isSubmittingCareer ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                  حفظ الترقية
+                <button type="submit" disabled={isSubmittingCareer} className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-70 flex items-center justify-center min-w-[100px]">
+                  {isSubmittingCareer ? <Loader2 className="animate-spin" size={20} /> : (editingRankId ? 'تعديل' : 'إضافة')}
                 </button>
               </div>
             </form>
@@ -1293,9 +1358,11 @@ const EmployeeProfile = () => {
       {/* Position Modal */}
       {showPositionModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden" dir="rtl">
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h2 className="text-xl font-bold text-slate-800">إضافة منصب عالي</h2>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-xl overflow-hidden flex flex-col" dir="rtl">
+            <div className="flex justify-between items-center p-6 border-b border-gray-200 bg-slate-50">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Clock className="text-emerald-500" /> {editingPositionId ? 'تعديل' : 'إضافة منصب جديد'}
+              </h2>
               <button onClick={() => setShowPositionModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
                 <X size={24} />
               </button>
@@ -1341,11 +1408,10 @@ const EmployeeProfile = () => {
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
                 />
               </div>
-              <div className="flex justify-end gap-3 mt-6">
+              <div className="flex justify-end gap-3 p-6 border-t border-gray-200 bg-slate-50">
                 <button type="button" onClick={() => setShowPositionModal(false)} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">إلغاء</button>
-                <button type="submit" disabled={isSubmittingCareer} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors disabled:opacity-50">
-                  {isSubmittingCareer ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                  حفظ المنصب
+                <button type="submit" disabled={isSubmittingCareer} className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-70 flex items-center justify-center min-w-[100px]">
+                  {isSubmittingCareer ? <Loader2 className="animate-spin" size={20} /> : (editingPositionId ? 'تعديل' : 'إضافة')}
                 </button>
               </div>
             </form>
