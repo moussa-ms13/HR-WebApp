@@ -13,8 +13,12 @@ const router = express.Router();
 // File routes moved to server.js before express.json
 
 const ExportService = require("../services/ExportService");
+const specialCasesRoutes = require("./specialCases.routes");
 
 router.use(authenticate);
+
+// Mount nested special-cases routes under /api/employees/:id/special-cases
+router.use("/:id/special-cases", specialCasesRoutes);
 
 /**
  * GET /api/employees/export

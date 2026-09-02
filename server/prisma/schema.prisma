@@ -114,6 +114,7 @@ model Employees {
   EmployeeFiles     EmployeeFiles[]
   EmployeesRecords  EmployeesRecords[]
   EmployeeStates    EmployeeStates[]
+  SpecialCases      SpecialCases[]
   SystemRecords     SystemRecords[]
   RankHistories     RankHistory[]
   PositionHistories PositionHistory[]
@@ -198,6 +199,28 @@ model EmployeeStates {
   @@index([EndDate])
   @@index([IsResumed])
   @@map("EmployeeStates")
+}
+
+// ============================================================
+// SpecialCases — Structural HR cases (انتداب, تحويل, استيداع, استقالة)
+// Separate from regular leaves in EmployeeStates
+// ============================================================
+model SpecialCases {
+  Id           Int       @id @default(autoincrement())
+  EmployeesId  Int
+  CaseType     String    @db.NVarChar(Max)
+  StartDate    DateTime  @db.DateTime2
+  EndDate      DateTime? @db.DateTime2
+  Destination  String?   @db.NVarChar(Max)
+  ReferenceDoc String    @db.NVarChar(Max)
+  IsActive     Boolean   @default(true)
+  CreatedAt    DateTime  @default(now()) @db.DateTime2
+
+  Employee Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_SpecialCases_Employees_EmployeesId")
+
+  @@index([EmployeesId])
+  @@index([IsActive])
+  @@map("SpecialCases")
 }
 
 // ============================================================
