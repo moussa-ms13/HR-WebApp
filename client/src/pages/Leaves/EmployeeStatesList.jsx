@@ -5,7 +5,9 @@ import { useAuth } from '../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import EmployeeStatesService from '../../services/employeeStatesService';
 import EmployeeStateModal from './EmployeeStateModal';
-import { Search, MoreVertical, CalendarOff, ArrowUpDown, ChevronDown, Loader2 } from 'lucide-react';
+import ConfirmModal from '../../components/ui/ConfirmModal';
+import { useToast } from '../../components/ui/Toast';
+import { Search, MoreVertical, CalendarOff, ArrowUpDown, ChevronDown, Loader2, Trash2 } from 'lucide-react';
 import { DateText } from '../../utils/formatDate';
 
 const fetcher = async ([url, page, limit, category, search, directorate, province]) => {
@@ -60,6 +62,27 @@ const EmployeeStatesList = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedState, setSelectedState] = useState(null);
   const [menuOpenId, setMenuOpenId] = useState(null);
+  const toast = useToast();
+
+  // Delete confirm state
+  const [confirmState, setConfirmState] = useState({ open: false, stateId: null, stateName: '' });
+
+  const handleDelete = (st) => {
+    setMenuOpenId(null);
+    setConfirmState({ open: true, stateId: st.Id, stateName: st.StateTypeOrReason || '' });
+  };
+
+  const confirmDelete = async () => {
+    const { stateId } = confirmState;
+    setConfirmState({ open: false, stateId: null, stateName: '' });
+    try {
+      await EmployeeStatesService.delete(stateId);
+      mutate();
+      toast.success('تم حذف السجل بنجاح');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'حدث خطأ أثناء الحذف');
+    }
+  };
 
   const handleAdd = () => {
     setSelectedState(null);
@@ -293,6 +316,15 @@ const EmployeeStatesList = () => {
                                 >
                                   تعديل السجل
                                 </button>
+                                {hasPermission('checkBoxDelete') && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDelete(st); }}
+                                    className="w-full text-right px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                  >
+                                    <Trash2 size={14} />
+                                    حذف
+                                  </button>
+                                )}
                               </div>
                             </div>
                           )}
@@ -352,6 +384,15 @@ const EmployeeStatesList = () => {
         onClose={() => setIsModalOpen(false)}
         record={selectedState}
         onSuccess={handleModalSuccess}
+      />
+
+      <ConfirmModal
+        open={confirmState.open}
+        title="حذف السجل"
+        message={`هل أنت متأكد من حذف السجل "${confirmState.stateName}"؟`}
+        confirmText="حذف"
+        onConfirm={confirmDelete}
+        onCancel={() => setConfirmState({ open: false, stateId: null, stateName: '' })}
       />
     </div>
   );

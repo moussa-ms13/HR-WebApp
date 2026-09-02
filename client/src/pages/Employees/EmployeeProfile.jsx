@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
-import { ArrowRight, User, Upload, FileText, Trash2, Download, Loader2, Edit3, Briefcase, Calendar, Clock, CheckCircle2, Search, X, CheckSquare, Plus, Save, XCircle } from 'lucide-react';
+import { ArrowRight, User, Upload, FileText, Trash2, Download, Loader2, Edit3, Briefcase, Calendar, Clock, CheckCircle2, Search, X, CheckSquare, Plus, Save, XCircle, AlertTriangle, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import EmployeeService from '../../services/employeeService';
+import SpecialCasesService from '../../services/specialCasesService';
 import apiClient from '../../services/apiClient';
 import { DateText } from '../../utils/formatDate';
 import { useToast } from '../../components/ui/Toast';
@@ -86,6 +87,78 @@ const EmployeeProfile = () => {
     fetcher
   );
   const leaves = leavesData?.data || [];
+
+  // --- Special Cases State (always fetched for banner + tab) ---
+  const { data: specialCasesData, isLoading: isSpecialCasesLoading, mutate: mutateSpecialCases } = useSWR(
+    id ? [`special-cases-${id}`] : null,
+    async () => {
+      const res = await SpecialCasesService.getByEmployee(id);
+      return res;
+    }
+  );
+  const specialCases = specialCasesData?.data || [];
+  const activeSpecialCase = specialCases.find(c => c.IsActive);
+
+  // Special Cases form state
+  const [showSpecialCaseModal, setShowSpecialCaseModal] = useState(false);
+  const [editingSpecialCaseId, setEditingSpecialCaseId] = useState(null);
+  const [isSubmittingSpecialCase, setIsSubmittingSpecialCase] = useState(false);
+  const initialSpecialCaseForm = { CaseType: 'انتداب', StartDate: '', EndDate: '', Destination: '', ReferenceDoc: '' };
+  const [specialCaseForm, setSpecialCaseForm] = useState(initialSpecialCaseForm);
+
+  const CASE_TYPE_COLORS = {
+    'استقالة': { bg: 'bg-red-50', border: 'border-red-300', text: 'text-red-800', icon: 'text-red-600', banner: 'from-red-500 to-red-700' },
+    'استيداع': { bg: 'bg-amber-50', border: 'border-amber-300', text: 'text-amber-800', icon: 'text-amber-600', banner: 'from-amber-500 to-amber-700' },
+    'انتداب': { bg: 'bg-blue-50', border: 'border-blue-300', text: 'text-blue-800', icon: 'text-blue-600', banner: 'from-blue-500 to-blue-700' },
+    'تحويل': { bg: 'bg-purple-50', border: 'border-purple-300', text: 'text-purple-800', icon: 'text-purple-600', banner: 'from-purple-500 to-purple-700' },
+  };
+
+  const handleSpecialCaseSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      setIsSubmittingSpecialCase(true);
+      if (editingSpecialCaseId) {
+        await SpecialCasesService.update(id, editingSpecialCaseId, specialCaseForm);
+      } else {
+        await SpecialCasesService.create(id, specialCaseForm);
+      }
+      mutateSpecialCases();
+      mutateSummary();
+      setShowSpecialCaseModal(false);
+      setEditingSpecialCaseId(null);
+      setSpecialCaseForm(initialSpecialCaseForm);
+      toast.success(editingSpecialCaseId ? 'تم تعديل الحالة الخاصة بنجاح' : 'تمت إضافة الحالة الخاصة بنجاح');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'حدث خطأ أثناء حفظ الحالة الخاصة');
+    } finally {
+      setIsSubmittingSpecialCase(false);
+    }
+  };
+
+  const handleEditSpecialCase = (record) => {
+    setSpecialCaseForm({
+      CaseType: record.CaseType || 'انتداب',
+      StartDate: record.StartDate ? new Date(record.StartDate).toISOString().split('T')[0] : '',
+      EndDate: record.EndDate ? new Date(record.EndDate).toISOString().split('T')[0] : '',
+      Destination: record.Destination || '',
+      ReferenceDoc: record.ReferenceDoc || '',
+    });
+    setEditingSpecialCaseId(record.Id);
+    setShowSpecialCaseModal(true);
+  };
+
+  const handleDeleteSpecialCase = (caseId) => {
+    showConfirm('حذف الحالة الخاصة', 'هل أنت متأكد من حذف هذه الحالة الخاصة؟', async () => {
+      closeConfirm();
+      try {
+        await SpecialCasesService.delete(id, caseId);
+        mutateSpecialCases();
+        toast.success('تم حذف الحالة الخاصة بنجاح');
+      } catch (err) {
+        toast.error('حدث خطأ أثناء الحذف');
+      }
+    });
+  };
 
   // --- Career History State (Conditional SWR — lazy loaded on tab switch) ---
   const { data: careerData, isLoading: isCareerLoading, mutate: mutateCareer } = useSWR(
@@ -432,6 +505,7 @@ const EmployeeProfile = () => {
   const tabs = [
     { id: 'profile', label: 'الملف التعريفي' },
     { id: 'leaves', label: 'الإجازات' },
+    { id: 'special-cases', label: 'الحالات الخاصة' },
     { id: 'career', label: 'المسار المهني' },
     { id: 'documents', label: 'المستندات' }
   ];
@@ -488,6 +562,30 @@ const EmployeeProfile = () => {
         <h2 className="text-xl font-bold text-slate-800">{employee.Name} {employee.LastName}</h2>
         <p className="text-sm font-medium text-gray-500 mt-1">{employee.JobTitle?.RankName || 'موظف'} • {employee.Department || 'الإدارة العامة'}</p>
       </div>
+
+      {/* Special Case Banner */}
+      {activeSpecialCase && (() => {
+        const colors = CASE_TYPE_COLORS[activeSpecialCase.CaseType] || CASE_TYPE_COLORS['انتداب'];
+        return (
+          <div className={`mb-6 rounded-xl overflow-hidden shadow-md border ${colors.border}`}>
+            <div className={`bg-gradient-to-l ${colors.banner} px-6 py-4 flex items-center gap-4`}>
+              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm shrink-0">
+                <AlertTriangle size={22} className="text-white" />
+              </div>
+              <div className="flex-1">
+                <p className="text-white font-bold text-base">⚠️ الحالة الحالية: {activeSpecialCase.CaseType}</p>
+                <p className="text-white/80 text-sm mt-0.5">
+                  منذ <DateText value={activeSpecialCase.StartDate} />
+                  {activeSpecialCase.Destination && ` — الوجهة: ${activeSpecialCase.Destination}`}
+                </p>
+              </div>
+              <span className="bg-white/20 backdrop-blur-sm text-white text-xs font-bold px-3 py-1.5 rounded-full border border-white/30">
+                حالة نشطة
+              </span>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Tab Contents */}
       {activeTab === 'profile' && (
@@ -880,6 +978,186 @@ const EmployeeProfile = () => {
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'special-cases' && (
+        <div className="space-y-6">
+          {/* Special Cases Table */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-visible flex flex-col shadow-sm">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Shield size={20} className="text-emerald-600" />
+                الحالات الخاصة (انتداب، تحويل، استيداع، استقالة)
+              </h3>
+              {hasPermission('checkBoxAdd') && (
+                <button
+                  onClick={() => {
+                    setEditingSpecialCaseId(null);
+                    setSpecialCaseForm(initialSpecialCaseForm);
+                    setShowSpecialCaseModal(true);
+                  }}
+                  className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+                >
+                  <Plus size={16} />
+                  إضافة حالة خاصة
+                </button>
+              )}
+            </div>
+            <div className="overflow-x-auto flex-1 custom-scrollbar">
+              <table className="w-full text-right border-collapse whitespace-nowrap">
+                <thead className="bg-white text-gray-500 text-sm border-b border-gray-200 sticky top-0">
+                  <tr>
+                    <th className="py-4 px-6 font-medium">النوع</th>
+                    <th className="py-4 px-6 font-medium">تاريخ البداية</th>
+                    <th className="py-4 px-6 font-medium">تاريخ النهاية</th>
+                    <th className="py-4 px-6 font-medium">الوجهة</th>
+                    <th className="py-4 px-6 font-medium">المرجع</th>
+                    <th className="py-4 px-6 font-medium">الحالة</th>
+                    <th className="py-4 px-6 font-medium w-16 text-center">إجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm text-slate-700 divide-y divide-gray-100">
+                  {isSpecialCasesLoading ? (
+                    <tr>
+                      <td colSpan="7" className="py-12 text-center text-gray-400">
+                        <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
+                        جاري تحميل البيانات...
+                      </td>
+                    </tr>
+                  ) : specialCases.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="py-12 text-center text-gray-400">
+                        <Shield size={32} className="mx-auto text-gray-300 mb-2" />
+                        لا توجد حالات خاصة لهذا الموظف
+                      </td>
+                    </tr>
+                  ) : (
+                    specialCases.map((sc) => {
+                      const colors = CASE_TYPE_COLORS[sc.CaseType] || CASE_TYPE_COLORS['انتداب'];
+                      return (
+                        <tr key={sc.Id} className="hover:bg-gray-50 transition-colors">
+                          <td className="py-4 px-6">
+                            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${colors.bg} ${colors.text} border ${colors.border}`}>
+                              {sc.CaseType}
+                            </span>
+                          </td>
+                          <td className="py-4 px-6 text-gray-600"><DateText value={sc.StartDate} /></td>
+                          <td className="py-4 px-6 text-gray-600">{sc.EndDate ? <DateText value={sc.EndDate} /> : <span className="text-emerald-600 font-medium">مفتوح</span>}</td>
+                          <td className="py-4 px-6 text-gray-600">{sc.Destination || '—'}</td>
+                          <td className="py-4 px-6 text-gray-600 max-w-[180px] truncate" title={sc.ReferenceDoc}>{sc.ReferenceDoc || '—'}</td>
+                          <td className="py-4 px-6">
+                            {sc.IsActive ? (
+                              <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-200">نشط</span>
+                            ) : (
+                              <span className="bg-gray-100 text-gray-500 px-3 py-1 rounded-full text-xs font-bold border border-gray-200">منتهي</span>
+                            )}
+                          </td>
+                          <td className="py-4 px-6">
+                            <div className="flex items-center justify-center gap-2">
+                              {hasPermission('checkBoxEdit') && (
+                                <button
+                                  onClick={() => handleEditSpecialCase(sc)}
+                                  className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-2 rounded-lg transition-colors"
+                                  title="تعديل"
+                                >
+                                  <Edit3 size={16} />
+                                </button>
+                              )}
+                              {hasPermission('checkBoxDelete') && (
+                                <button
+                                  onClick={() => handleDeleteSpecialCase(sc.Id)}
+                                  className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                                  title="حذف"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Special Case Modal */}
+      {showSpecialCaseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" dir="rtl">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+            <div className="p-6 border-b border-gray-200">
+              <h3 className="text-lg font-bold text-slate-800">{editingSpecialCaseId ? 'تعديل الحالة الخاصة' : 'إضافة حالة خاصة'}</h3>
+            </div>
+            <form onSubmit={handleSpecialCaseSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">نوع الحالة</label>
+                <select
+                  required
+                  value={specialCaseForm.CaseType}
+                  onChange={(e) => setSpecialCaseForm({ ...specialCaseForm, CaseType: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white"
+                >
+                  <option value="انتداب">انتداب</option>
+                  <option value="تحويل">تحويل</option>
+                  <option value="استيداع">استيداع</option>
+                  <option value="استقالة">استقالة</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ البداية</label>
+                  <input
+                    type="date"
+                    required
+                    value={specialCaseForm.StartDate}
+                    onChange={(e) => setSpecialCaseForm({ ...specialCaseForm, StartDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ النهاية <span className="text-slate-400 font-normal text-xs">(اختياري)</span></label>
+                  <input
+                    type="date"
+                    value={specialCaseForm.EndDate}
+                    onChange={(e) => setSpecialCaseForm({ ...specialCaseForm, EndDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">الوجهة <span className="text-slate-400 font-normal text-xs">(اختياري)</span></label>
+                <input
+                  type="text"
+                  value={specialCaseForm.Destination}
+                  onChange={(e) => setSpecialCaseForm({ ...specialCaseForm, Destination: e.target.value })}
+                  placeholder="مثال: وزارة المالية"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">المرجع / الوثيقة</label>
+                <input
+                  type="text"
+                  required
+                  value={specialCaseForm.ReferenceDoc}
+                  onChange={(e) => setSpecialCaseForm({ ...specialCaseForm, ReferenceDoc: e.target.value })}
+                  placeholder="مثال: مقرر رقم 123/2026"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                />
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onClick={() => setShowSpecialCaseModal(false)} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">إلغاء</button>
+                <button type="submit" disabled={isSubmittingSpecialCase} className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-70 flex items-center justify-center min-w-[100px]">
+                  {isSubmittingSpecialCase ? <Loader2 className="animate-spin" size={20} /> : (editingSpecialCaseId ? 'تعديل' : 'إضافة')}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
