@@ -613,6 +613,13 @@ const EmployeeProfile = () => {
         </div>
         <h2 className="text-xl font-bold text-slate-800">{employee.Name} {employee.LastName}</h2>
         <p className="text-sm font-medium text-gray-500 mt-1">{employee.JobTitle?.RankName || 'موظف'} • {employee.Department || 'الإدارة العامة'}</p>
+        {activeSpecialCase && (
+          <div className="mt-2">
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200 shadow-sm">
+              حالة خاصة: {activeSpecialCase.CaseType}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Special Case Banner */}
