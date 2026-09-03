@@ -901,7 +901,7 @@ const EmployeeProfile = () => {
                   <tr>
                     <th className="py-4 px-6 font-medium">الرتبة</th>
                     <th className="py-4 px-6 font-medium">تاريخ التعيين</th>
-                    <th className="py-4 px-6 font-medium">المرجع</th>
+                    <th className="py-4 px-6 font-medium">المقرر</th>
                     <th className="py-4 px-6 font-medium">ملاحظات</th>
                     <th className="py-4 px-6 font-medium w-16 text-center">إجراء</th>
                   </tr>
@@ -980,7 +980,7 @@ const EmployeeProfile = () => {
                     <th className="py-4 px-6 font-medium">المنصب</th>
                     <th className="py-4 px-6 font-medium">تاريخ التعيين</th>
                     <th className="py-4 px-6 font-medium">تاريخ الانتهاء</th>
-                    <th className="py-4 px-6 font-medium">المرجع</th>
+                    <th className="py-4 px-6 font-medium">المقرر</th>
                     <th className="py-4 px-6 font-medium w-16 text-center">إجراء</th>
                   </tr>
                 </thead>
@@ -1057,7 +1057,7 @@ const EmployeeProfile = () => {
                     <th className="py-4 px-6 font-medium">الدرجة</th>
                     <th className="py-4 px-6 font-medium">الوتيرة</th>
                     <th className="py-4 px-6 font-medium">تاريخ السريان</th>
-                    <th className="py-4 px-6 font-medium">المرجع</th>
+                    <th className="py-4 px-6 font-medium">المقرر</th>
                     <th className="py-4 px-6 font-medium">ملاحظات</th>
                     <th className="py-4 px-6 font-medium w-16 text-center">إجراء</th>
                   </tr>
@@ -1728,7 +1728,7 @@ const EmployeeProfile = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">المرجع</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">المقرر</label>
                 <input
                   type="text"
                   value={rankForm.Reference}
@@ -1801,7 +1801,7 @@ const EmployeeProfile = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">المرجع</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">المقرر</label>
                 <input
                   type="text"
                   value={positionForm.Reference}
@@ -1872,7 +1872,7 @@ const EmployeeProfile = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">رقم وتاريخ المقرر / المرجع</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">رقم وتاريخ المقرر</label>
                 <input
                   type="text"
                   value={degreeForm.ReferenceDoc}
