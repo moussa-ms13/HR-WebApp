@@ -188,6 +188,55 @@ const EmployeeProfile = () => {
   const initialPositionForm = { PositionName: '', InstallDate: '', EndDate: '', Reference: '' };
   const [positionForm, setPositionForm] = useState(initialPositionForm);
 
+  // --- Degree History State (lazy loaded with career tab) ---
+  const { data: degreeData, isLoading: isDegreeLoading, mutate: mutateDegrees } = useSWR(
+    id && activeTab === 'career' ? `/employees/${id}/degrees` : null,
+    fetcher
+  );
+  const degreeHistory = degreeData?.data || [];
+
+  const [showDegreeModal, setShowDegreeModal] = useState(false);
+  const [isSubmittingDegree, setIsSubmittingDegree] = useState(false);
+  const initialDegreeForm = { DegreeLevel: '', PromotionDuration: 'دنيا', EffectiveDate: '', ReferenceDoc: '', Notes: '' };
+  const [degreeForm, setDegreeForm] = useState(initialDegreeForm);
+
+  const handleDegreeSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      setIsSubmittingDegree(true);
+      await apiClient.post(`/employees/${id}/degrees`, degreeForm);
+      mutateDegrees();
+      mutateSummary();
+      setShowDegreeModal(false);
+      setDegreeForm(initialDegreeForm);
+      toast.success('تمت إضافة الدرجة بنجاح');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'حدث خطأ أثناء حفظ الدرجة');
+    } finally {
+      setIsSubmittingDegree(false);
+    }
+  };
+
+  const handleDeleteDegree = (degreeId) => {
+    showConfirm('حذف الدرجة', 'هل أنت متأكد من حذف هذه الدرجة؟', async () => {
+      closeConfirm();
+      try {
+        await apiClient.delete(`/employees/${id}/degrees/${degreeId}`);
+        mutateDegrees();
+        mutateSummary();
+        toast.success('تم حذف الدرجة بنجاح');
+      } catch (err) {
+        toast.error('حدث خطأ أثناء الحذف');
+      }
+    });
+  };
+
+  const PROMOTION_DURATIONS = [
+    { value: 'دنيا', label: 'دنيا (2.5 سنة)' },
+    { value: 'متوسطة', label: 'متوسطة (3 سنوات)' },
+    { value: 'قصوى', label: 'قصوى (3.5 سنة)' },
+  ];
+
   const handleRankSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -982,6 +1031,78 @@ const EmployeeProfile = () => {
               </table>
             </div>
           </div>
+
+          {/* Degree History */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-visible flex flex-col shadow-sm">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <CheckCircle2 size={20} className="text-emerald-600" />
+                حركة في الدرجات
+              </h3>
+              <button
+                onClick={() => {
+                  setDegreeForm(initialDegreeForm);
+                  setShowDegreeModal(true);
+                }}
+                className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+              >
+                <Plus size={16} />
+                إضافة درجة
+              </button>
+            </div>
+            <div className="overflow-x-auto flex-1 custom-scrollbar">
+              <table className="w-full text-right border-collapse whitespace-nowrap">
+                <thead className="bg-white text-gray-500 text-sm border-b border-gray-200 sticky top-0">
+                  <tr>
+                    <th className="py-4 px-6 font-medium">الدرجة</th>
+                    <th className="py-4 px-6 font-medium">الوتيرة</th>
+                    <th className="py-4 px-6 font-medium">تاريخ السريان</th>
+                    <th className="py-4 px-6 font-medium">المرجع</th>
+                    <th className="py-4 px-6 font-medium">ملاحظات</th>
+                    <th className="py-4 px-6 font-medium w-16 text-center">إجراء</th>
+                  </tr>
+                </thead>
+                <tbody className="text-sm text-slate-700 divide-y divide-gray-100">
+                  {isDegreeLoading ? (
+                    <tr>
+                      <td colSpan="6" className="py-12 text-center text-gray-400">
+                        <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
+                        جاري تحميل البيانات...
+                      </td>
+                    </tr>
+                  ) : degreeHistory.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="py-12 text-center text-gray-400">
+                        <CheckCircle2 size={32} className="mx-auto text-gray-300 mb-2" />
+                        لا توجد حركة درجات لهذا الموظف
+                      </td>
+                    </tr>
+                  ) : (
+                    degreeHistory.map((record) => (
+                      <tr key={record.Id} className="hover:bg-gray-50 transition-colors">
+                        <td className="py-4 px-6 font-bold text-slate-800">{record.DegreeLevel}</td>
+                        <td className="py-4 px-6 text-gray-600">{record.PromotionDuration || '—'}</td>
+                        <td className="py-4 px-6 text-gray-600"><DateText value={record.EffectiveDate} /></td>
+                        <td className="py-4 px-6 text-gray-600">{record.ReferenceDoc || '—'}</td>
+                        <td className="py-4 px-6 text-gray-600">{record.Notes || '—'}</td>
+                        <td className="py-4 px-6">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleDeleteDegree(record.Id)}
+                              className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                              title="حذف"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1693,6 +1814,86 @@ const EmployeeProfile = () => {
                 <button type="button" onClick={() => setShowPositionModal(false)} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">إلغاء</button>
                 <button type="submit" disabled={isSubmittingCareer} className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-70 flex items-center justify-center min-w-[100px]">
                   {isSubmittingCareer ? <Loader2 className="animate-spin" size={20} /> : (editingPositionId ? 'تعديل' : 'إضافة')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Degree Modal */}
+      {showDegreeModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-xl overflow-hidden flex flex-col" dir="rtl">
+            <div className="flex justify-between items-center p-6 border-b border-gray-200 bg-slate-50">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <CheckCircle2 className="text-emerald-500" /> إضافة درجة جديدة
+              </h2>
+              <button onClick={() => setShowDegreeModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+            <form onSubmit={handleDegreeSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">الدرجة (0 إلى 12)</label>
+                <select
+                  required
+                  value={degreeForm.DegreeLevel}
+                  onChange={(e) => setDegreeForm({ ...degreeForm, DegreeLevel: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white"
+                >
+                  <option value="">-- اختر الدرجة --</option>
+                  {[...Array(13).keys()].map(i => (
+                    <option key={i} value={i}>{i}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">الوتيرة / المدة</label>
+                <select
+                  required
+                  value={degreeForm.PromotionDuration}
+                  onChange={(e) => setDegreeForm({ ...degreeForm, PromotionDuration: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm bg-white"
+                >
+                  {PROMOTION_DURATIONS.map(d => (
+                    <option key={d.value} value={d.value}>{d.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ السريان</label>
+                <input
+                  type="date"
+                  required
+                  value={degreeForm.EffectiveDate}
+                  onChange={(e) => setDegreeForm({ ...degreeForm, EffectiveDate: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">رقم وتاريخ المقرر / المرجع</label>
+                <input
+                  type="text"
+                  value={degreeForm.ReferenceDoc}
+                  onChange={(e) => setDegreeForm({ ...degreeForm, ReferenceDoc: e.target.value })}
+                  placeholder="مثال: مقرر رقم 789 بتاريخ 01/01/2026"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">ملاحظات <span className="text-slate-400 font-normal text-xs">(اختياري)</span></label>
+                <textarea
+                  value={degreeForm.Notes}
+                  onChange={(e) => setDegreeForm({ ...degreeForm, Notes: e.target.value })}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm resize-none"
+                />
+              </div>
+              <div className="flex justify-end gap-3 p-6 border-t border-gray-200 bg-slate-50">
+                <button type="button" onClick={() => setShowDegreeModal(false)} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">إلغاء</button>
+                <button type="submit" disabled={isSubmittingDegree} className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-70 flex items-center justify-center min-w-[100px]">
+                  {isSubmittingDegree ? <Loader2 className="animate-spin" size={20} /> : 'إضافة'}
                 </button>
               </div>
             </form>

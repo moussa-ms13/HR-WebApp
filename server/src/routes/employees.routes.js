@@ -5,6 +5,7 @@
 const express = require("express");
 const EmployeesService = require("../services/EmployeesService");
 const CareerHistoryService = require("../services/CareerHistoryService");
+const DegreeHistoryService = require("../services/DegreeHistoryService");
 const { authenticate, hasPermission } = require("../middleware/auth");
 const { PERMISSIONS } = require("../config/constants");
 
@@ -172,6 +173,35 @@ router.delete("/:id/position-history/:recordId", hasPermission(PERMISSIONS.DELET
   const result = await CareerHistoryService.deletePosition(
     Number(req.params.id),
     Number(req.params.recordId),
+    req.user
+  );
+  res.json({ success: true, ...result });
+});
+
+/**
+ * GET /api/employees/:id/degrees
+ * Fetches degree history for an employee
+ */
+router.get("/:id/degrees", async (req, res) => {
+  const data = await DegreeHistoryService.getByEmployee(Number(req.params.id), req.user);
+  res.json({ success: true, data });
+});
+
+/**
+ * POST /api/employees/:id/degrees
+ */
+router.post("/:id/degrees", hasPermission(PERMISSIONS.ADD), async (req, res) => {
+  const record = await DegreeHistoryService.create(Number(req.params.id), req.body, req.user);
+  res.status(201).json({ success: true, data: record });
+});
+
+/**
+ * DELETE /api/employees/:id/degrees/:degreeId
+ */
+router.delete("/:id/degrees/:degreeId", hasPermission(PERMISSIONS.DELETE), async (req, res) => {
+  const result = await DegreeHistoryService.delete(
+    Number(req.params.id),
+    Number(req.params.degreeId),
     req.user
   );
   res.json({ success: true, ...result });

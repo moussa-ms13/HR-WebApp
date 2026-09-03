@@ -91,11 +91,27 @@ model Employees {
   SpecialCases      SpecialCases[]
   PositionHistories PositionHistory[]
   RankHistories     RankHistory[]
+  DegreeHistories   DegreeHistory[]
   SystemRecords     SystemRecords[]
 
   @@index([JobTitleId], map: "IX_Employees_JobTitleId")
   @@index([EmployeeStatus], map: "IX_Employees_EmployeeStatus")
   @@map("Employees")
+}
+
+model DegreeHistory {
+  Id                Int       @id @default(autoincrement())
+  EmployeesId       Int
+  DegreeLevel       Int
+  PromotionDuration String    @db.NVarChar(50)
+  EffectiveDate     DateTime
+  ReferenceDoc      String    @db.NVarChar(Max)
+  Notes             String?   @db.NVarChar(Max)
+  Employee          Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_DegreeHistory_Employees_EmployeesId")
+
+  @@index([EmployeesId])
+  @@index([EffectiveDate])
+  @@map("DegreeHistory")
 }
 
 model EmployeeFiles {
