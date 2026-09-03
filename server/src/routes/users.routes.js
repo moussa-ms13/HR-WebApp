@@ -18,8 +18,14 @@ router.use(authenticate);
  * Returns all users (Admin) or only linked users (non-Admin).
  */
 router.get("/", async (req, res) => {
-  const users = await UsersService.getAll(req.user);
-  res.json({ success: true, data: users });
+  const { page, limit, search } = req.query;
+  const result = await UsersService.getAll(
+    req.user,
+    Number(page) || 1,
+    Number(limit) || 50,
+    search || ""
+  );
+  res.json({ success: true, ...result });
 });
 
 /**

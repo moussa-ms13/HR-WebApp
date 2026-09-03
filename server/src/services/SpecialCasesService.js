@@ -52,12 +52,26 @@ class SpecialCasesService {
    * List all special cases for a given employee.
    */
   static async getByEmployee(employeeId, requestingUser) {
-    const employee = await prisma.employees.findUnique({ where: { Id: employeeId } });
+    const employee = await prisma.employees.findUnique({
+      where: { Id: employeeId },
+      select: { Id: true, Province: true }
+    });
     if (!employee) throw ApiError.notFound(`Employee ${employeeId} not found.`);
     await this._verifyAccess(employee, requestingUser);
 
     const cases = await prisma.specialCases.findMany({
       where: { EmployeesId: employeeId },
+      select: {
+        Id: true,
+        EmployeesId: true,
+        CaseType: true,
+        StartDate: true,
+        EndDate: true,
+        Destination: true,
+        ReferenceDoc: true,
+        IsActive: true,
+        CreatedAt: true,
+      },
       orderBy: { Id: "desc" },
     });
 

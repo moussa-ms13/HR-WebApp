@@ -12,33 +12,56 @@ class UsersService {
   // ──────────────────────────────────────────────
   // READ — List users (conditional access)
   // ──────────────────────────────────────────────
-  static async getAll(requestingUser) {
+  static async getAll(requestingUser, page = 1, limit = 50, search = "") {
+    const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+    const safePage = Math.max(Number(page) || 1, 1);
+    const skip = (safePage - 1) * safeLimit;
+
     const where =
       requestingUser.role === ROLES.ADMIN
         ? {}
         : { UserId: requestingUser.userName };
 
-    const users = await prisma.users.findMany({
-      where,
-      select: {
-        Id: true,
-        FullName: true,
-        UserName: true,
-        Role: true,
-        IsSecondaryUser: true,
-        UserId: true,
-        Phone: true,
-        Email: true,
-        Address: true,
-        CreatedDate: true,
-        EditedDate: true,
-        // NOTE: Roles[] deliberately excluded from listing for performance.
-        // Fetched only on getById when editing a specific user.
-      },
-      orderBy: { CreatedDate: "desc" },
-    });
+    const trimmedSearch = (search || "").trim();
+    if (trimmedSearch) {
+      where.OR = [
+        { FullName: { contains: trimmedSearch } },
+        { UserName: { contains: trimmedSearch } },
+      ];
+    }
 
-    return users;
+    const [total, users] = await Promise.all([
+      prisma.users.count({ where }),
+      prisma.users.findMany({
+        where,
+        skip,
+        take: safeLimit,
+        select: {
+          Id: true,
+          FullName: true,
+          UserName: true,
+          Role: true,
+          IsSecondaryUser: true,
+          UserId: true,
+          Phone: true,
+          Email: true,
+          Address: true,
+          CreatedDate: true,
+          EditedDate: true,
+        },
+        orderBy: { CreatedDate: "desc" },
+      }),
+    ]);
+
+    return {
+      data: users,
+      meta: {
+        total,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit),
+      }
+    };
   }
 
   // ──────────────────────────────────────────────

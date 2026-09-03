@@ -20,7 +20,7 @@ router.get("/", async (req, res) => {
   const result = await EmployeeStatesService.getAll(
     req.user,
     Number(page) || 1,
-    Number(limit) || 20,
+    Number(limit) || 25,
     category || "",
     employeeId || null,
     search || "",

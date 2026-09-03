@@ -38,7 +38,7 @@ router.get("/", async (req, res) => {
   const result = await EmployeesService.getAll(
     req.user,
     Number(page) || 1,
-    Number(limit) || 20,
+    Number(limit) || 25,
     search || "",
     province || "",
     directorate || "",

@@ -11,15 +11,17 @@ class EmployeeStatesService {
   /**
    * Fetch all employee states with pagination and geographic RBAC.
    */
-  static async getAll(requestingUser, page = 1, limit = 20, category = "", employeeId = null, search = "", directorate = "", province = "") {
-    const skip = (page - 1) * limit;
+  static async getAll(requestingUser, page = 1, limit = 25, category = "", employeeId = null, search = "", directorate = "", province = "") {
+    const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
+    const safePage = Math.max(Number(page) || 1, 1);
+    const skip = (safePage - 1) * safeLimit;
 
     // Build where clause with geographic filter via Employee relation
     let employeeFilter = employeeId ? { Id: Number(employeeId) } : {};
     if (requestingUser.role !== ROLES.ADMIN) {
       const allowedProvinces = getAllowedProvinces(requestingUser.permissions || {});
       if (allowedProvinces.length === 0) {
-        return { data: [], meta: { total: 0, page, limit, totalPages: 0 } };
+        return { data: [], meta: { total: 0, page: safePage, limit: safeLimit, totalPages: 0 } };
       }
       employeeFilter.Province = { in: allowedProvinces };
     }
@@ -116,7 +118,7 @@ class EmployeeStatesService {
           }
         },
         skip,
-        take: Number(limit),
+        take: safeLimit,
         orderBy: { Id: "desc" },
       }),
     ]);
@@ -125,9 +127,9 @@ class EmployeeStatesService {
       data: states,
       meta: {
         total,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / limit),
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit),
       },
     };
   }

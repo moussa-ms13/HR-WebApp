@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { SWRConfig } from 'swr';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './components/ui/Toast';
 import MainLayout from './components/layout/MainLayout';
@@ -17,8 +18,15 @@ import Settings from './pages/Settings/Settings';
 
 function App() {
   return (
-    <ToastProvider>
-      <AuthProvider>
+    <SWRConfig
+      value={{
+        revalidateOnFocus: false,
+        dedupingInterval: 60000,
+        shouldRetryOnError: false,
+      }}
+    >
+      <ToastProvider>
+        <AuthProvider>
         <Router>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -43,6 +51,7 @@ function App() {
         </Router>
       </AuthProvider>
     </ToastProvider>
+  </SWRConfig>
   );
 }
 

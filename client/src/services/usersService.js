@@ -4,8 +4,10 @@ class UsersService {
   /**
    * Fetch all users
    */
-  static async getAll() {
-    const response = await apiClient.get('/users');
+  static async getAll(page = 1, limit = 50, search = '') {
+    const response = await apiClient.get('/users', {
+      params: { page, limit, search }
+    });
     return response.data;
   }
 

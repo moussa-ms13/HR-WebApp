@@ -38,7 +38,7 @@ const EmployeesList = () => {
   
   // Pagination & Search state — initialized from URL
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(100);
+  const [limit, setLimit] = useState(25);
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [provinceFilter, setProvinceFilter] = useState('');
   const [directorateFilter, setDirectorateFilter] = useState('');
@@ -411,7 +411,7 @@ const EmployeesList = () => {
               onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}
               className="border border-gray-200 rounded-lg px-2 py-1 outline-none bg-white text-slate-800"
             >
-              <option value={20}>20</option>
+              <option value={25}>25</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
             </select>

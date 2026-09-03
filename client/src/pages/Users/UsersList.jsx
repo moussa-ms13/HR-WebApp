@@ -47,7 +47,7 @@ const UsersList = () => {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, []);
 
-  const safeUsers = Array.isArray(users) ? users : [];
+  const safeUsers = Array.isArray(users) ? users : (users?.data || []);
   const filteredUsers = safeUsers.filter(u => 
     u.FullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.UserName?.toLowerCase().includes(searchQuery.toLowerCase())

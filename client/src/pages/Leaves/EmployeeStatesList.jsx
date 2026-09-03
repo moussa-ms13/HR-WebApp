@@ -23,7 +23,7 @@ const EmployeeStatesList = () => {
   const [searchParams] = useSearchParams();
 
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(100);
+  const [limit, setLimit] = useState(25);
   const [categoryFilter, setCategoryFilter] = useState('');
   const [provinceFilter, setProvinceFilter] = useState('');
   const [directorateFilter, setDirectorateFilter] = useState('');
@@ -370,7 +370,7 @@ const EmployeeStatesList = () => {
               onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}
               className="border border-gray-200 rounded-lg px-2 py-1 outline-none bg-white text-slate-800"
             >
-              <option value={20}>20</option>
+              <option value={25}>25</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
             </select>

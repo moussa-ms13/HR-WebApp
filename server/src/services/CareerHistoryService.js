@@ -60,10 +60,27 @@ class CareerHistoryService {
     const [ranks, positions] = await Promise.all([
       prisma.rankHistory.findMany({
         where: { EmployeesId: employeeId },
+        select: {
+          Id: true,
+          EmployeesId: true,
+          RankId: true,
+          RankName: true,
+          InstallDate: true,
+          Reference: true,
+          Notes: true,
+        },
         orderBy: { InstallDate: "desc" },
       }),
       prisma.positionHistory.findMany({
         where: { EmployeesId: employeeId },
+        select: {
+          Id: true,
+          EmployeesId: true,
+          PositionName: true,
+          InstallDate: true,
+          EndDate: true,
+          Reference: true,
+        },
         orderBy: { InstallDate: "desc" },
       }),
     ]);

@@ -11,8 +11,10 @@ class EmployeesService {
   /**
    * Fetch paginated and filtered employees based on geographic RBAC.
    */
-  static async getAll(requestingUser, page = 1, limit = 20, search = "", province = "", directorate = "", fileStatus = "") {
-    const skip = (page - 1) * limit;
+  static async getAll(requestingUser, page = 1, limit = 25, search = "", province = "", directorate = "", fileStatus = "") {
+    const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
+    const safePage = Math.max(Number(page) || 1, 1);
+    const skip = (safePage - 1) * safeLimit;
     
     // Base Geographic Filter
     let whereClause = {};
@@ -23,7 +25,7 @@ class EmployeesService {
         // If they are not Admin and have NO provinces checked, they shouldn't see anyone.
         return {
           data: [],
-          meta: { total: 0, page, limit, totalPages: 0 }
+          meta: { total: 0, page: safePage, limit: safeLimit, totalPages: 0 }
         };
       }
       whereClause.Province = { in: allowedProvinces };
@@ -118,7 +120,7 @@ class EmployeesService {
           IsProfileComplete: true,
         },
         skip,
-        take: Number(limit),
+        take: safeLimit,
         orderBy: { Id: "desc" },
       }),
       prisma.employees.count({ where: { ...whereClause, IsProfileComplete: true } }),
@@ -128,9 +130,9 @@ class EmployeesService {
       data: employees,
       meta: {
         total,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / limit),
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit),
         totalCompletedFiles,
       }
     };
