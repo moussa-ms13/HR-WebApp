@@ -14,12 +14,9 @@ const router = express.Router();
 // File routes moved to server.js before express.json
 
 const ExportService = require("../services/ExportService");
-const specialCasesRoutes = require("./specialCases.routes");
+const SpecialCasesService = require("../services/SpecialCasesService");
 
 router.use(authenticate);
-
-// Mount nested special-cases routes under /api/employees/:id/special-cases
-router.use("/:id/special-cases", specialCasesRoutes);
 
 /**
  * GET /api/employees/export
@@ -202,6 +199,51 @@ router.delete("/:id/degrees/:degreeId", hasPermission(PERMISSIONS.DELETE), async
   const result = await DegreeHistoryService.delete(
     Number(req.params.id),
     Number(req.params.degreeId),
+    req.user
+  );
+  res.json({ success: true, ...result });
+});
+
+/**
+ * GET /api/employees/:id/special-cases
+ * List all special cases for a given employee
+ */
+router.get("/:id/special-cases", async (req, res) => {
+  const data = await SpecialCasesService.getByEmployee(Number(req.params.id), req.user);
+  res.json({ success: true, data });
+});
+
+/**
+ * POST /api/employees/:id/special-cases
+ * Create a new special case + auto-sync employee status
+ */
+router.post("/:id/special-cases", hasPermission(PERMISSIONS.ADD), async (req, res) => {
+  const record = await SpecialCasesService.create(Number(req.params.id), req.body, req.user);
+  res.status(201).json({ success: true, data: record });
+});
+
+/**
+ * PUT /api/employees/:id/special-cases/:caseId
+ * Update a special case + re-sync employee status
+ */
+router.put("/:id/special-cases/:caseId", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
+  const record = await SpecialCasesService.update(
+    Number(req.params.id),
+    Number(req.params.caseId),
+    req.body,
+    req.user
+  );
+  res.json({ success: true, data: record });
+});
+
+/**
+ * DELETE /api/employees/:id/special-cases/:caseId
+ * Delete a special case
+ */
+router.delete("/:id/special-cases/:caseId", hasPermission(PERMISSIONS.DELETE), async (req, res) => {
+  const result = await SpecialCasesService.delete(
+    Number(req.params.id),
+    Number(req.params.caseId),
     req.user
   );
   res.json({ success: true, ...result });
