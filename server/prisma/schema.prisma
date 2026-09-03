@@ -73,7 +73,7 @@ model Employees {
   AssignedPosition  String             @db.NVarChar(Max)
   ConfirmationDate  DateTime?
   Degree            Int
-  EmployeeStatus    String             @db.NVarChar(Max)
+  EmployeeStatus    String?            @default("نشط") @db.NVarChar(50)
   InstallationDate  DateTime
   JobTitleId        Int
   LastDegreeDate    DateTime
@@ -94,6 +94,7 @@ model Employees {
   SystemRecords     SystemRecords[]
 
   @@index([JobTitleId], map: "IX_Employees_JobTitleId")
+  @@index([EmployeeStatus], map: "IX_Employees_EmployeeStatus")
   @@map("Employees")
 }
 
