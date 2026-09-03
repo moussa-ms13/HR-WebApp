@@ -139,10 +139,37 @@ class EmployeesService {
   static async getById(id, requestingUser) {
     const employee = await prisma.employees.findUnique({
       where: { Id: id },
-      include: {
-        JobTitle: true,
-        RankHistories: { orderBy: { InstallDate: "desc" } },
-        PositionHistories: { orderBy: { InstallDate: "desc" } },
+      select: {
+        Id: true,
+        Name: true,
+        LastName: true,
+        DateOfBirth: true,
+        PlaceOfBirth: true,
+        Gender: true,
+        MaritalStatus: true,
+        ProfileImagePath: true,
+        Province: true,
+        Directorate: true,
+        Department: true,
+        NIN: true,
+        SIS: true,
+        AssignedPosition: true,
+        ConfirmationDate: true,
+        Degree: true,
+        EmployeeStatus: true,
+        InstallationDate: true,
+        JobTitleId: true,
+        PositionDate: true,
+        StatusDate: true,
+        Address: true,
+        Email: true,
+        NumberOfChildren: true,
+        PhoneNumber: true,
+        IsProfileComplete: true,
+        JobTitle: { select: { Id: true, RankName: true } },
+        RankHistories: { take: 1, orderBy: { InstallDate: "desc" }, select: { Id: true, RankName: true, InstallDate: true } },
+        PositionHistories: { where: { EndDate: null }, take: 1, orderBy: { InstallDate: "desc" }, select: { Id: true, PositionName: true, InstallDate: true } },
+        SpecialCases: { where: { IsActive: true }, take: 1, orderBy: { Id: "desc" }, select: { Id: true, CaseType: true, StartDate: true, EndDate: true, Destination: true, ReferenceDoc: true, IsActive: true } },
       }
     });
 
@@ -163,7 +190,7 @@ class EmployeesService {
 
   /**
    * Fetch a lightweight profile summary for the employee header.
-   * Returns core fields + current JobTitle only. No arrays, no nested relations.
+   * Restricts payload strictly to core info + current active rank, position, and case.
    */
   static async getSummary(id, requestingUser) {
     const employee = await prisma.employees.findUnique({
@@ -194,6 +221,9 @@ class EmployeesService {
         PhoneNumber: true,
         IsProfileComplete: true,
         JobTitle: { select: { RankName: true } },
+        RankHistories: { take: 1, orderBy: { InstallDate: "desc" }, select: { Id: true, RankName: true, InstallDate: true } },
+        PositionHistories: { where: { EndDate: null }, take: 1, orderBy: { InstallDate: "desc" }, select: { Id: true, PositionName: true, InstallDate: true } },
+        SpecialCases: { where: { IsActive: true }, take: 1, orderBy: { Id: "desc" }, select: { Id: true, CaseType: true, StartDate: true, EndDate: true, Destination: true, ReferenceDoc: true, IsActive: true } },
       },
     });
 

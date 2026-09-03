@@ -88,16 +88,17 @@ const EmployeeProfile = () => {
   );
   const leaves = leavesData?.data || [];
 
-  // --- Special Cases State (always fetched for banner + tab) ---
+  // --- Special Cases State (lazy loaded on tab switch) ---
   const { data: specialCasesData, isLoading: isSpecialCasesLoading, mutate: mutateSpecialCases } = useSWR(
-    id ? [`special-cases-${id}`] : null,
+    id && activeTab === 'special-cases' ? [`special-cases-${id}`] : null,
     async () => {
       const res = await SpecialCasesService.getByEmployee(id);
       return res;
     }
   );
   const specialCases = specialCasesData?.data || [];
-  const activeSpecialCase = specialCases.find(c => c.IsActive);
+  // Active case for top banner: instantly available from lightweight profile summary, or refreshed from tab
+  const activeSpecialCase = employee?.SpecialCases?.[0] || (specialCases.length > 0 ? specialCases.find(c => c.IsActive) : null);
 
   // Special Cases form state
   const [showSpecialCaseModal, setShowSpecialCaseModal] = useState(false);
@@ -153,6 +154,7 @@ const EmployeeProfile = () => {
       try {
         await SpecialCasesService.delete(id, caseId);
         mutateSpecialCases();
+        mutateSummary();
         toast.success('تم حذف الحالة الخاصة بنجاح');
       } catch (err) {
         toast.error('حدث خطأ أثناء الحذف');
@@ -168,12 +170,13 @@ const EmployeeProfile = () => {
   const rankHistory = careerData?.data?.ranks || [];
   const positionHistory = careerData?.data?.positions || [];
 
-  const { data: jobTitlesData } = useSWR('/job-titles', fetcher);
-  const jobTitles = jobTitlesData?.data || [];
-
   // Career Modals State
   const [showRankModal, setShowRankModal] = useState(false);
   const [showPositionModal, setShowPositionModal] = useState(false);
+
+  // Lazy-load job titles only when user opens rank modal
+  const { data: jobTitlesData } = useSWR(showRankModal ? '/job-titles' : null, fetcher);
+  const jobTitles = jobTitlesData?.data || [];
   const [isSubmittingCareer, setIsSubmittingCareer] = useState(false);
 
   const [editingRankId, setEditingRankId] = useState(null);
