@@ -12,6 +12,14 @@ const dotenv = require("dotenv");
 
 dotenv.config();
 
+// ─── Process-Level Error Handlers ─────────────────────────
+const fatalError = (label, error) => {
+  console.error(`[${label}]`, error);
+  process.exit(1);
+};
+process.on("uncaughtException", (error) => fatalError("uncaughtException", error));
+process.on("unhandledRejection", (reason) => fatalError("unhandledRejection", reason instanceof Error ? reason : new Error(String(reason))));
+
 const routes = require("./routes");
 const errorHandler = require("./middleware/errorHandler");
 
