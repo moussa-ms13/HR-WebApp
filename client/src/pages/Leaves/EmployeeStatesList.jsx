@@ -5,9 +5,10 @@ import { useAuth } from '../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import EmployeeStatesService from '../../services/employeeStatesService';
 import EmployeeStateModal from './EmployeeStateModal';
+import UnifiedEntryModal from './UnifiedEntryModal';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { useToast } from '../../components/ui/Toast';
-import { Search, MoreVertical, CalendarOff, ArrowUpDown, ChevronDown, Loader2, Trash2 } from 'lucide-react';
+import { Search, MoreVertical, CalendarOff, ArrowUpDown, ChevronDown, Loader2, Trash2, Plus } from 'lucide-react';
 import { DateText } from '../../utils/formatDate';
 
 const fetcher = async ([url, page, limit, category, search, directorate, province]) => {
@@ -60,6 +61,7 @@ const EmployeeStatesList = () => {
   const meta = data?.meta || { total: 0, totalPages: 0, page: 1 };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isUnifiedModalOpen, setIsUnifiedModalOpen] = useState(false);
   const [selectedState, setSelectedState] = useState(null);
   const [menuOpenId, setMenuOpenId] = useState(null);
   const toast = useToast();
@@ -85,8 +87,12 @@ const EmployeeStatesList = () => {
   };
 
   const handleAdd = () => {
-    setSelectedState(null);
-    setIsModalOpen(true);
+    setIsUnifiedModalOpen(true);
+  };
+
+  const handleUnifiedSuccess = () => {
+    mutate();
+    toast.success('تمت الإضافة بنجاح');
   };
 
   const handleModalSuccess = () => {
@@ -224,9 +230,10 @@ const EmployeeStatesList = () => {
           {hasPermission('checkBoxAdd') && (
             <button
               onClick={handleAdd}
-              className="flex items-center justify-center gap-1.5 px-5 py-2 text-white rounded-lg transition-colors font-medium shadow-sm text-sm"
+              className="flex items-center justify-center gap-1.5 px-5 py-2 text-white rounded-lg transition-all font-medium shadow-sm text-sm hover:shadow-md active:scale-[0.97]"
               style={{ backgroundColor: '#10b981' }}
             >
+              <Plus size={16} />
               إضافة حالة
             </button>
           )}
@@ -384,6 +391,12 @@ const EmployeeStatesList = () => {
         onClose={() => setIsModalOpen(false)}
         record={selectedState}
         onSuccess={handleModalSuccess}
+      />
+
+      <UnifiedEntryModal
+        isOpen={isUnifiedModalOpen}
+        onClose={() => setIsUnifiedModalOpen(false)}
+        onSuccess={handleUnifiedSuccess}
       />
 
       <ConfirmModal
