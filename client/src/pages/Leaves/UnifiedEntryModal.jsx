@@ -210,10 +210,10 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess, preSelectedEmployee = n
         undefined,
         { revalidate: true }
       );
-      // 2. Invalidate the specific employee's profile cache
-      mutate(`/api/employees/${employeeId}`);
-      // 3. Invalidate special-cases list for this employee
-      mutate(`/api/employees/${employeeId}/special-cases`);
+      // 2. Invalidate the employee profile summary cache
+      mutate(`/employees/${employeeId}/summary`);
+      // 3. Invalidate special-cases list (custom key used in EmployeeProfile)
+      mutate([`special-cases-${employeeId}`]);
 
       onSuccess?.();
       onClose();

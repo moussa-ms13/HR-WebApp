@@ -9,7 +9,7 @@ import apiClient from '../../services/apiClient';
 import { DateText } from '../../utils/formatDate';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
-import UnifiedEntryModal from '../Leaves/UnifiedEntryModal';
+
 
 const fetcher = async (url) => {
   const res = await apiClient.get(url);
@@ -103,7 +103,7 @@ const EmployeeProfile = () => {
 
   // Special Cases form state
   const [showSpecialCaseModal, setShowSpecialCaseModal] = useState(false);
-  const [showUnifiedCaseModal, setShowUnifiedCaseModal] = useState(false);
+
   const [editingSpecialCaseId, setEditingSpecialCaseId] = useState(null);
   const [isSubmittingSpecialCase, setIsSubmittingSpecialCase] = useState(false);
   const initialSpecialCaseForm = { CaseType: 'انتداب', StartDate: '', EndDate: '', Destination: '', ReferenceDoc: '' };
@@ -1119,20 +1119,11 @@ const EmployeeProfile = () => {
         <div className="space-y-6">
           {/* Special Cases Table */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-visible flex flex-col shadow-sm">
-            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+            <div className="p-6 border-b border-gray-200">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Shield size={20} className="text-emerald-600" />
                 الحالات الخاصة (انتداب، تحويل، استيداع، استقالة)
               </h3>
-              {hasPermission('checkBoxAdd') && (
-                <button
-                  onClick={() => setShowUnifiedCaseModal(true)}
-                  className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-                >
-                  <Plus size={16} />
-                  إضافة حالة خاصة
-                </button>
-              )}
             </div>
             <div className="overflow-x-auto flex-1 custom-scrollbar">
               <table className="w-full text-right border-collapse whitespace-nowrap">
@@ -1291,20 +1282,7 @@ const EmployeeProfile = () => {
         </div>
       )}
 
-      {/* Unified Entry Modal for adding new special cases */}
-      {employee && (
-        <UnifiedEntryModal
-          isOpen={showUnifiedCaseModal}
-          onClose={() => setShowUnifiedCaseModal(false)}
-          onSuccess={() => {
-            mutateSpecialCases();
-            mutateSummary();
-            toast.success('تمت إضافة الحالة الخاصة بنجاح');
-          }}
-          preSelectedEmployee={{ id: Number(id), name: `${employee.Name} ${employee.LastName}` }}
-          defaultCategory="special_case"
-        />
-      )}
+
 
       {activeTab === 'documents' && (
         <div className="space-y-6">
