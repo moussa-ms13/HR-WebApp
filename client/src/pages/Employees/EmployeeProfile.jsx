@@ -9,6 +9,7 @@ import apiClient from '../../services/apiClient';
 import { DateText } from '../../utils/formatDate';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
+import UnifiedEntryModal from '../Leaves/UnifiedEntryModal';
 
 const fetcher = async (url) => {
   const res = await apiClient.get(url);
@@ -102,6 +103,7 @@ const EmployeeProfile = () => {
 
   // Special Cases form state
   const [showSpecialCaseModal, setShowSpecialCaseModal] = useState(false);
+  const [showUnifiedCaseModal, setShowUnifiedCaseModal] = useState(false);
   const [editingSpecialCaseId, setEditingSpecialCaseId] = useState(null);
   const [isSubmittingSpecialCase, setIsSubmittingSpecialCase] = useState(false);
   const initialSpecialCaseForm = { CaseType: 'انتداب', StartDate: '', EndDate: '', Destination: '', ReferenceDoc: '' };
@@ -1124,11 +1126,7 @@ const EmployeeProfile = () => {
               </h3>
               {hasPermission('checkBoxAdd') && (
                 <button
-                  onClick={() => {
-                    setEditingSpecialCaseId(null);
-                    setSpecialCaseForm(initialSpecialCaseForm);
-                    setShowSpecialCaseModal(true);
-                  }}
+                  onClick={() => setShowUnifiedCaseModal(true)}
                   className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
                 >
                   <Plus size={16} />
@@ -1218,12 +1216,12 @@ const EmployeeProfile = () => {
         </div>
       )}
 
-      {/* Special Case Modal */}
-      {showSpecialCaseModal && (
+      {/* Special Case Edit Modal (kept for editing existing records) */}
+      {showSpecialCaseModal && editingSpecialCaseId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" dir="rtl">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
             <div className="p-6 border-b border-gray-200">
-              <h3 className="text-lg font-bold text-slate-800">{editingSpecialCaseId ? 'تعديل الحالة الخاصة' : 'إضافة حالة خاصة'}</h3>
+              <h3 className="text-lg font-bold text-slate-800">تعديل الحالة الخاصة</h3>
             </div>
             <form onSubmit={handleSpecialCaseSubmit} className="p-6 space-y-4">
               <div>
@@ -1285,12 +1283,27 @@ const EmployeeProfile = () => {
               <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
                 <button type="button" onClick={() => setShowSpecialCaseModal(false)} className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors">إلغاء</button>
                 <button type="submit" disabled={isSubmittingSpecialCase} className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-70 flex items-center justify-center min-w-[100px]">
-                  {isSubmittingSpecialCase ? <Loader2 className="animate-spin" size={20} /> : (editingSpecialCaseId ? 'تعديل' : 'إضافة')}
+                  {isSubmittingSpecialCase ? <Loader2 className="animate-spin" size={20} /> : 'تعديل'}
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* Unified Entry Modal for adding new special cases */}
+      {employee && (
+        <UnifiedEntryModal
+          isOpen={showUnifiedCaseModal}
+          onClose={() => setShowUnifiedCaseModal(false)}
+          onSuccess={() => {
+            mutateSpecialCases();
+            mutateSummary();
+            toast.success('تمت إضافة الحالة الخاصة بنجاح');
+          }}
+          preSelectedEmployee={{ id: Number(id), name: `${employee.Name} ${employee.LastName}` }}
+          defaultCategory="special_case"
+        />
       )}
 
       {activeTab === 'documents' && (

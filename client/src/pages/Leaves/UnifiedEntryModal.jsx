@@ -34,7 +34,7 @@ const PERMANENT_CASES = new Set(["استقالة", "تقاعد", "نقل"]);
 const DESTINATION_CASES = new Set(["انتداب", "تحويل", "نقل"]);
 
 // ── Component ───────────────────────────────────────────────
-const UnifiedEntryModal = ({ isOpen, onClose, onSuccess }) => {
+const UnifiedEntryModal = ({ isOpen, onClose, onSuccess, preSelectedEmployee = null, defaultCategory = 'leave' }) => {
   const { user } = useAuth();
   const allowedProvinces = getAllowedProvinces(user);
 
@@ -75,9 +75,9 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess }) => {
   const isPermanent = PERMANENT_CASES.has(caseForm.CaseType);
   const needsDestination = DESTINATION_CASES.has(caseForm.CaseType);
 
-  // ── Fetch employees for searchable dropdown ──
+  // ── Fetch employees for searchable dropdown (skip when pre-selected) ──
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || preSelectedEmployee) return;
     const fetchEmployees = async () => {
       try {
         const res = await EmployeeService.getAll(1, 50, searchQuery, provinceFilter, directorateFilter, '');
@@ -87,7 +87,7 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess }) => {
       }
     };
     fetchEmployees();
-  }, [isOpen, searchQuery, provinceFilter, directorateFilter]);
+  }, [isOpen, searchQuery, provinceFilter, directorateFilter, preSelectedEmployee]);
 
   // ── Auto-calc EndDate for leaves ──
   useEffect(() => {
@@ -113,9 +113,14 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess }) => {
   // ── Reset on open ──
   useEffect(() => {
     if (isOpen) {
-      setEntryCategory('leave');
-      setSelectedEmployee(null);
-      setSearchTerm('');
+      setEntryCategory(defaultCategory);
+      if (preSelectedEmployee) {
+        setSelectedEmployee({ Id: preSelectedEmployee.id, Name: preSelectedEmployee.name, LastName: '' });
+        setSearchTerm(preSelectedEmployee.name);
+      } else {
+        setSelectedEmployee(null);
+        setSearchTerm('');
+      }
       setSearchQuery('');
       setProvinceFilter('');
       setDirectorateFilter('');
@@ -136,7 +141,7 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess }) => {
         Destination: ''
       });
     }
-  }, [isOpen]);
+  }, [isOpen, defaultCategory, preSelectedEmployee]);
 
   // ── Search handler with debounce ──
   const handleSearchChange = (e) => {
@@ -161,13 +166,14 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess }) => {
     e.preventDefault();
     setError('');
 
-    if (!selectedEmployee) {
+    const empId = preSelectedEmployee?.id || selectedEmployee?.Id;
+    if (!empId) {
       setError('الرجاء اختيار الموظف المعني');
       return;
     }
 
     setLoading(true);
-    const employeeId = selectedEmployee.Id;
+    const employeeId = empId;
 
     try {
       if (entryCategory === 'leave') {
@@ -286,88 +292,100 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess }) => {
           )}
 
           <form id="unifiedForm" onSubmit={handleSubmit} className="space-y-5">
-            {/* ── Employee Search ── */}
-            <div className="relative">
-              <label className="block text-sm font-semibold text-slate-700 mb-2">الموظف المعني <span className="text-red-500">*</span></label>
-              <div className="flex flex-col gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <select
-                    value={provinceFilter}
-                    onChange={(e) => { setProvinceFilter(e.target.value); setDirectorateFilter(''); }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-1 focus:ring-emerald-400 outline-none"
-                  >
-                    <option value="">الولاية: الكل</option>
-                    {allowedProvinces.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-
-                  <select
-                    value={directorateFilter}
-                    onChange={(e) => setDirectorateFilter(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-1 focus:ring-emerald-400 outline-none"
-                    disabled={!provinceFilter}
-                  >
-                    <option value="">الجهة: الكل</option>
-                    {provinceFilter === 'الشلف' && (
-                      <option value="المديرية الجهوية للأملاك الوطنية" className="font-bold text-emerald-700">المديرية الجهوية للأملاك الوطنية</option>
-                    )}
-                    <option value="مديرية أملاك الدولة" className="font-bold">مديرية أملاك الدولة</option>
-                    {availableMofatishiyat.map(item => (
-                      <option key={item} value={item}>-- {item}</option>
-                    ))}
-                    <option value="مديرية مسح الأراضي والحفظ العقاري" className="font-bold">مديرية مسح الأراضي</option>
-                    {availableMohafathat.map(item => (
-                      <option key={item} value={item}>-- {item}</option>
-                    ))}
-                  </select>
+            {/* ── Employee Search (hidden when pre-selected) ── */}
+            {preSelectedEmployee ? (
+              <div className="flex items-center gap-3 p-4 bg-emerald-50 border border-emerald-200 rounded-xl">
+                <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center">
+                  <Check size={18} className="text-emerald-600" />
                 </div>
-
-                <div className="relative">
-                  <Search className="absolute right-3 top-2.5 text-slate-400" size={18} />
-                  <input
-                    type="text"
-                    placeholder="ابحث بالاسم أو اللقب أو الرقم..."
-                    value={searchTerm}
-                    onChange={handleSearchChange}
-                    onFocus={() => setIsDropdownOpen(true)}
-                    onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
-                    className="w-full pr-10 pl-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-1 focus:ring-emerald-400 outline-none bg-white"
-                  />
-                  {selectedEmployee && (
-                    <div className="absolute left-3 top-2">
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">
-                        <Check size={12} />
-                        محدد
-                      </span>
-                    </div>
-                  )}
-
-                  {isDropdownOpen && (
-                    <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                      {employees.length === 0 ? (
-                        <div className="p-3 text-sm text-gray-500 text-center">لا توجد نتائج</div>
-                      ) : (
-                        employees.map(emp => (
-                          <div
-                            key={emp.Id}
-                            onClick={() => handleSelectEmployee(emp)}
-                            className={`p-3 text-sm cursor-pointer hover:bg-slate-50 border-b border-slate-100 last:border-0 flex justify-between items-center transition-colors ${
-                              selectedEmployee?.Id === emp.Id ? 'bg-emerald-50 text-emerald-700' : 'text-slate-700'
-                            }`}
-                          >
-                            <div>
-                              <span className="font-bold">{emp.Name} {emp.LastName}</span>
-                              <span className="text-gray-500 mr-2 text-xs"> ({emp.Id})</span>
-                              <div className="text-xs text-gray-400 mt-0.5">{emp.Province} - {emp.Directorate || emp.Department || 'الإدارة العامة'}</div>
-                            </div>
-                            {selectedEmployee?.Id === emp.Id && <Check size={16} className="text-emerald-500" />}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  )}
+                <div>
+                  <p className="text-sm font-bold text-slate-800">{preSelectedEmployee.name}</p>
+                  <p className="text-xs text-slate-500">الموظف المعني</p>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="relative">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">الموظف المعني <span className="text-red-500">*</span></label>
+                <div className="flex flex-col gap-3 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <select
+                      value={provinceFilter}
+                      onChange={(e) => { setProvinceFilter(e.target.value); setDirectorateFilter(''); }}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-1 focus:ring-emerald-400 outline-none"
+                    >
+                      <option value="">الولاية: الكل</option>
+                      {allowedProvinces.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+
+                    <select
+                      value={directorateFilter}
+                      onChange={(e) => setDirectorateFilter(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-1 focus:ring-emerald-400 outline-none"
+                      disabled={!provinceFilter}
+                    >
+                      <option value="">الجهة: الكل</option>
+                      {provinceFilter === 'الشلف' && (
+                        <option value="المديرية الجهوية للأملاك الوطنية" className="font-bold text-emerald-700">المديرية الجهوية للأملاك الوطنية</option>
+                      )}
+                      <option value="مديرية أملاك الدولة" className="font-bold">مديرية أملاك الدولة</option>
+                      {availableMofatishiyat.map(item => (
+                        <option key={item} value={item}>-- {item}</option>
+                      ))}
+                      <option value="مديرية مسح الأراضي والحفظ العقاري" className="font-bold">مديرية مسح الأراضي</option>
+                      {availableMohafathat.map(item => (
+                        <option key={item} value={item}>-- {item}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="relative">
+                    <Search className="absolute right-3 top-2.5 text-slate-400" size={18} />
+                    <input
+                      type="text"
+                      placeholder="ابحث بالاسم أو اللقب أو الرقم..."
+                      value={searchTerm}
+                      onChange={handleSearchChange}
+                      onFocus={() => setIsDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setIsDropdownOpen(false), 200)}
+                      className="w-full pr-10 pl-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-1 focus:ring-emerald-400 outline-none bg-white"
+                    />
+                    {selectedEmployee && (
+                      <div className="absolute left-3 top-2">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">
+                          <Check size={12} />
+                          محدد
+                        </span>
+                      </div>
+                    )}
+
+                    {isDropdownOpen && (
+                      <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                        {employees.length === 0 ? (
+                          <div className="p-3 text-sm text-gray-500 text-center">لا توجد نتائج</div>
+                        ) : (
+                          employees.map(emp => (
+                            <div
+                              key={emp.Id}
+                              onClick={() => handleSelectEmployee(emp)}
+                              className={`p-3 text-sm cursor-pointer hover:bg-slate-50 border-b border-slate-100 last:border-0 flex justify-between items-center transition-colors ${
+                                selectedEmployee?.Id === emp.Id ? 'bg-emerald-50 text-emerald-700' : 'text-slate-700'
+                              }`}
+                            >
+                              <div>
+                                <span className="font-bold">{emp.Name} {emp.LastName}</span>
+                                <span className="text-gray-500 mr-2 text-xs"> ({emp.Id})</span>
+                                <div className="text-xs text-gray-400 mt-0.5">{emp.Province} - {emp.Directorate || emp.Department || 'الإدارة العامة'}</div>
+                              </div>
+                              {selectedEmployee?.Id === emp.Id && <Check size={16} className="text-emerald-500" />}
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* ══════════════════════════════════════════════
                  LEAVE FIELDS
