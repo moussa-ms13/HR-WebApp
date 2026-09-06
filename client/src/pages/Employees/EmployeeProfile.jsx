@@ -32,7 +32,8 @@ const EmployeeProfile = () => {
   // --- Profile Summary (SWR) ---
   const { data: summaryData, error: summaryError, isLoading: isSummaryLoading, mutate: mutateSummary } = useSWR(
     id ? `/employees/${id}/summary` : null,
-    fetcher
+    fetcher,
+    { keepPreviousData: true }
   );
   const employee = summaryData?.data || null;
 
@@ -85,7 +86,8 @@ const EmployeeProfile = () => {
   // --- Leaves State (Conditional SWR — lazy loaded on tab switch) ---
   const { data: leavesData, isLoading: isLeavesLoading } = useSWR(
     id && activeTab === 'leaves' ? `/employee-states?employeeId=${id}` : null,
-    fetcher
+    fetcher,
+    { keepPreviousData: true }
   );
   const leaves = leavesData?.data || [];
 
@@ -95,7 +97,8 @@ const EmployeeProfile = () => {
     async () => {
       const res = await SpecialCasesService.getByEmployee(id);
       return res;
-    }
+    },
+    { keepPreviousData: true }
   );
   const specialCases = specialCasesData?.data || [];
   // Active case for top banner: instantly available from lightweight profile summary, or refreshed from tab
@@ -167,7 +170,8 @@ const EmployeeProfile = () => {
   // --- Career History State (Conditional SWR — lazy loaded on tab switch) ---
   const { data: careerData, isLoading: isCareerLoading, mutate: mutateCareer } = useSWR(
     id && activeTab === 'career' ? `/employees/${id}/career-history` : null,
-    fetcher
+    fetcher,
+    { keepPreviousData: true }
   );
   const rankHistory = careerData?.data?.ranks || [];
   const positionHistory = careerData?.data?.positions || [];
@@ -177,7 +181,7 @@ const EmployeeProfile = () => {
   const [showPositionModal, setShowPositionModal] = useState(false);
 
   // Lazy-load job titles only when user opens rank modal
-  const { data: jobTitlesData } = useSWR(showRankModal ? '/job-titles' : null, fetcher);
+  const { data: jobTitlesData } = useSWR(showRankModal ? '/job-titles' : null, fetcher, { keepPreviousData: true });
   const jobTitles = jobTitlesData?.data || [];
   const [isSubmittingCareer, setIsSubmittingCareer] = useState(false);
 
@@ -193,7 +197,8 @@ const EmployeeProfile = () => {
   // --- Degree History State (lazy loaded with career tab) ---
   const { data: degreeData, isLoading: isDegreeLoading, mutate: mutateDegrees } = useSWR(
     id && activeTab === 'career' ? `/employees/${id}/degrees` : null,
-    fetcher
+    fetcher,
+    { keepPreviousData: true }
   );
   const degreeHistory = degreeData?.data || [];
 
@@ -335,7 +340,8 @@ const EmployeeProfile = () => {
   // --- Files State (Conditional SWR — lazy loaded on tab switch) ---
   const { data: filesData, isLoading: isFilesLoading, mutate: mutateFiles } = useSWR(
     id && activeTab === 'documents' ? `/employees/${id}/files` : null,
-    fetcher
+    fetcher,
+    { keepPreviousData: true }
   );
   const files = filesData?.data || [];
 

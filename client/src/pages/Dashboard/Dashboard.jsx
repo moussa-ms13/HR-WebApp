@@ -25,10 +25,16 @@ const Dashboard = () => {
   const isAdmin = user?.role === 'Admin';
 
   // Stats + recent activity
-  const { data: statsData, error: statsError, isLoading: isStatsLoading } = useSWR('/dashboard/stats', fetcher);
+  const { data: statsData, error: statsError, isLoading: isStatsLoading } = useSWR('/dashboard/stats', fetcher, {
+    keepPreviousData: true,
+    dedupingInterval: 30000,
+  });
 
   // Province PieChart data (DB-level groupBy)
-  const { data: provinceData, isLoading: isProvinceLoading } = useSWR('/dashboard/employees-by-province', fetcher);
+  const { data: provinceData, isLoading: isProvinceLoading } = useSWR('/dashboard/employees-by-province', fetcher, {
+    keepPreviousData: true,
+    dedupingInterval: 30000,
+  });
 
   // Resuming soon panel — optimized: keep stale data visible, dedupe within 30s
   const { data: resumingData, isLoading: isResumingLoading } = useSWR('/dashboard/resuming-soon', fetcher, {

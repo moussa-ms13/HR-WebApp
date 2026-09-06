@@ -9,6 +9,7 @@ const employeesRoutes = require("./employees.routes");
 const jobTitlesRoutes = require("./jobTitles.routes");
 const employeeStatesRoutes = require("./employeeStates.routes");
 const dashboardRoutes = require("./dashboard.routes");
+const specialCasesGlobalRoutes = require("./specialCasesGlobal.routes");
 const employeeFilesDownloadRoutes = require("./employeeFilesDownload.routes");
 const settingsRoutes = require("./settings.routes");
 
@@ -20,6 +21,7 @@ router.use("/system-records", systemRecordsRoutes);
 router.use("/employees", employeesRoutes);
 router.use("/job-titles", jobTitlesRoutes);
 router.use("/employee-states", employeeStatesRoutes);
+router.use("/special-cases", specialCasesGlobalRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/employee-files", employeeFilesDownloadRoutes);
 router.use("/settings", settingsRoutes);

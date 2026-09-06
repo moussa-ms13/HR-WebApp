@@ -210,10 +210,29 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess, preSelectedEmployee = n
         undefined,
         { revalidate: true }
       );
+      // 1b. Invalidate the global special-cases list (any matching key)
+      mutate(
+        key => Array.isArray(key) && key[0] === '/api/special-cases',
+        undefined,
+        { revalidate: true }
+      );
       // 2. Invalidate the employee profile summary cache
       mutate(`/employees/${employeeId}/summary`);
       // 3. Invalidate special-cases list (custom key used in EmployeeProfile)
       mutate([`special-cases-${employeeId}`]);
+      // 4. Invalidate dashboard stats + widgets (global endpoints)
+      mutate('/dashboard/stats');
+      mutate('/dashboard/overdue-resumes');
+      mutate('/dashboard/resuming-soon');
+      mutate(
+        key => typeof key === 'string' && key.startsWith('/dashboard/user-kpis'),
+        undefined,
+        { revalidate: true }
+      );
+      // 5. Legacy aliases (in case other hooks use /api prefix)
+      mutate('/api/dashboard/stats');
+      mutate('/api/leaves');
+      mutate('/api/special-cases');
 
       onSuccess?.();
       onClose();

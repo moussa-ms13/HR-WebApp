@@ -21,17 +21,55 @@ exports.getDashboardStats = async (req, res, next) => {
       return res.json({ success: true, data: cached });
     }
 
-    // Execute ALL count queries concurrently at the DB level
-    const [totalEmployees, activeLeaves, totalJobTitles, totalDocuments] =
-      await Promise.all([
-        prisma.employees.count(),
-        prisma.employeeStates.count({ where: { IsResumed: false } }),
-        prisma.jobTitles.count(),
-        prisma.employeeFiles.count(),
-      ]);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Active: CURRENT_DATE >= StartDate AND (CURRENT_DATE <= EndDate OR EndDate IS NULL)
+    // Late: EndDate < CURRENT_DATE AND not resumed
+    const [
+      totalEmployees,
+      activeLeaves,
+      activeCases,
+      lateLeaves,
+      lateCases,
+      totalJobTitles,
+      totalDocuments,
+    ] = await Promise.all([
+      prisma.employees.count(),
+      prisma.employeeStates.count({
+        where: {
+          StartDate: { lte: today },
+          OR: [{ EndDate: { gte: today } }, { EndDate: null }],
+        },
+      }),
+      prisma.specialCases.count({
+        where: {
+          IsActive: true,
+          StartDate: { lte: today },
+          OR: [{ EndDate: { gte: today } }, { EndDate: null }],
+        },
+      }),
+      prisma.employeeStates.count({
+        where: { EndDate: { lt: today }, IsResumed: false },
+      }),
+      prisma.specialCases.count({
+        where: { EndDate: { lt: today }, IsActive: true },
+      }),
+      prisma.jobTitles.count(),
+      prisma.employeeFiles.count(),
+    ]);
+
+    const activeLeavesCases = activeLeaves + activeCases;
+    const lateToResume = lateLeaves + lateCases;
 
     const result = {
-      stats: { totalEmployees, activeLeaves, totalJobTitles, totalDocuments },
+      stats: {
+        totalEmployees,
+        activeLeaves: activeLeavesCases,
+        lateToResume,
+        totalJobTitles,
+        totalDocuments,
+      },
     };
 
     dashboardCache.set(cacheKey, result);
@@ -89,25 +127,58 @@ exports.getResumingSoon = async (req, res, next) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const states = await prisma.employeeStates.findMany({
-      where: {
-        IsResumed: false,
-        EndDate: { gte: today },
-      },
-      select: {
-        Id: true,
-        StateTypeOrReason: true,
-        EndDate: true,
-        Employee: {
-          select: { Name: true, LastName: true },
+    const [states, cases] = await Promise.all([
+      prisma.employeeStates.findMany({
+        where: {
+          IsResumed: false,
+          EndDate: { gte: today },
         },
-      },
-      orderBy: { EndDate: "asc" },
-      take: 5,
-    });
+        select: {
+          Id: true,
+          StateTypeOrReason: true,
+          EndDate: true,
+          Employee: {
+            select: { Name: true, LastName: true },
+          },
+        },
+        orderBy: { EndDate: "asc" },
+        take: 5,
+      }),
+      prisma.specialCases.findMany({
+        where: {
+          IsActive: true,
+          OR: [{ EndDate: { gte: today } }, { EndDate: null }],
+        },
+        select: {
+          Id: true,
+          CaseType: true,
+          EndDate: true,
+          Employee: {
+            select: { Name: true, LastName: true },
+          },
+        },
+        orderBy: { EndDate: "asc" },
+        take: 5,
+      }),
+    ]);
 
-    dashboardCache.set(cacheKey, states);
-    res.json({ success: true, data: states });
+    const mappedCases = cases.map((c) => ({
+      Id: `case-${c.Id}`,
+      StateTypeOrReason: c.CaseType,
+      EndDate: c.EndDate,
+      Employee: c.Employee,
+    }));
+
+    const combined = [...states, ...mappedCases]
+      .sort((a, b) => {
+        if (!a.EndDate) return 1;
+        if (!b.EndDate) return -1;
+        return new Date(a.EndDate) - new Date(b.EndDate);
+      })
+      .slice(0, 5);
+
+    dashboardCache.set(cacheKey, combined);
+    res.json({ success: true, data: combined });
   } catch (error) {
     next(error);
   }
@@ -129,31 +200,59 @@ exports.getOverdueResumes = async (req, res, next) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const states = await prisma.employeeStates.findMany({
-      where: {
-        IsResumed: false,
-        EndDate: { lt: today },
-      },
-      select: {
-        Id: true,
-        StateTypeOrReason: true,
-        EndDate: true,
-        Employee: {
-          select: { Name: true, LastName: true },
+    const [states, cases] = await Promise.all([
+      prisma.employeeStates.findMany({
+        where: {
+          IsResumed: false,
+          EndDate: { lt: today },
         },
-      },
-      orderBy: { EndDate: "asc" },
-      take: 10,
-    });
+        select: {
+          Id: true,
+          StateTypeOrReason: true,
+          EndDate: true,
+          Employee: {
+            select: { Name: true, LastName: true },
+          },
+        },
+        orderBy: { EndDate: "asc" },
+        take: 10,
+      }),
+      prisma.specialCases.findMany({
+        where: {
+          IsActive: true,
+          EndDate: { lt: today },
+        },
+        select: {
+          Id: true,
+          CaseType: true,
+          EndDate: true,
+          Employee: {
+            select: { Name: true, LastName: true },
+          },
+        },
+        orderBy: { EndDate: "asc" },
+        take: 10,
+      }),
+    ]);
+
+    const mappedCases = cases.map((c) => ({
+      Id: `case-${c.Id}`,
+      StateTypeOrReason: c.CaseType,
+      EndDate: c.EndDate,
+      Employee: c.Employee,
+    }));
 
     // Calculate overdue days for each record
-    const data = states.map((s) => {
-      const endDate = new Date(s.EndDate);
-      endDate.setHours(0, 0, 0, 0);
-      const diffMs = today - endDate;
-      const overdueDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      return { ...s, overdueDays };
-    });
+    const data = [...states, ...mappedCases]
+      .map((s) => {
+        const endDate = new Date(s.EndDate);
+        endDate.setHours(0, 0, 0, 0);
+        const diffMs = today - endDate;
+        const overdueDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        return { ...s, overdueDays };
+      })
+      .sort((a, b) => new Date(a.EndDate) - new Date(b.EndDate))
+      .slice(0, 10);
 
     dashboardCache.set(cacheKey, data);
     res.json({ success: true, data });
@@ -235,4 +334,11 @@ exports.getUserKpis = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+/**
+ * Invalidate all dashboard caches — call after any leave/case write.
+ */
+exports.clearDashboardCache = () => {
+  dashboardCache.flushAll();
 };

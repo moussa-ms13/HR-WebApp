@@ -7,6 +7,14 @@ const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
 const { ROLES, getAllowedProvinces } = require("../config/constants");
 
+const clearDashboardCacheSafe = () => {
+  try {
+    require("../controllers/dashboard.controller").clearDashboardCache?.();
+  } catch (_) {
+    // controller may not be loaded — ignore
+  }
+};
+
 class EmployeeStatesService {
   /**
    * Fetch all employee states with pagination and geographic RBAC.
@@ -197,6 +205,8 @@ class EmployeeStatesService {
       employeesId: data.EmployeesId,
     });
 
+    clearDashboardCacheSafe();
+
     return state;
   }
 
@@ -228,6 +238,8 @@ class EmployeeStatesService {
       employeesId: state.EmployeesId,
     });
 
+    clearDashboardCacheSafe();
+
     return state;
   }
 
@@ -245,6 +257,8 @@ class EmployeeStatesService {
       description: `State '${existing.StateTypeOrReason}' deleted for employee '${existing.Employee.Name} ${existing.Employee.LastName}' by '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
     });
+
+    clearDashboardCacheSafe();
 
     return { message: "State deleted successfully." };
   }

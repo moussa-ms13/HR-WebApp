@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import EmployeeStatesService from '../../services/employeeStatesService';
+import SpecialCasesService from '../../services/specialCasesService';
 import EmployeeStateModal from './EmployeeStateModal';
 import UnifiedEntryModal from './UnifiedEntryModal';
 import ConfirmModal from '../../components/ui/ConfirmModal';
@@ -13,6 +14,12 @@ import { DateText } from '../../utils/formatDate';
 
 const fetcher = async ([url, page, limit, category, search, directorate, province]) => {
   const result = await EmployeeStatesService.getAll(page, limit, category, search, directorate, province);
+  if (!result.success) throw new Error("Failed to fetch");
+  return result;
+};
+
+const casesFetcher = async ([url, page, limit, search, directorate, province]) => {
+  const result = await SpecialCasesService.getAll(page, limit, search, province, directorate);
   if (!result.success) throw new Error("Failed to fetch");
   return result;
 };
@@ -29,14 +36,21 @@ const EmployeeStatesList = () => {
   const [provinceFilter, setProvinceFilter] = useState('');
   const [directorateFilter, setDirectorateFilter] = useState('');
   const [search, setSearch] = useState(() => searchParams.get('search')?.trim() || '');
+  const [activeTab, setActiveTab] = useState('leaves'); // 'leaves' | 'cases'
 
   const allowedProvinces = getAllowedProvinces(useAuth().user);
   const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
   const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
 
   const { data, error, isLoading, mutate } = useSWR(
-    ['/api/employee-states', page, limit, categoryFilter, search, directorateFilter, provinceFilter],
+    activeTab === 'leaves' ? ['/api/employee-states', page, limit, categoryFilter, search, directorateFilter, provinceFilter] : null,
     fetcher,
+    { revalidateOnFocus: false, keepPreviousData: true }
+  );
+
+  const { data: casesData, isLoading: isCasesLoading, mutate: mutateCases } = useSWR(
+    activeTab === 'cases' ? ['/api/special-cases', page, limit, search, directorateFilter, provinceFilter] : null,
+    casesFetcher,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
 
@@ -58,7 +72,12 @@ const EmployeeStatesList = () => {
   }, []);
 
   const states = Array.isArray(data) ? data : (data?.records || data?.data || []);
-  const meta = data?.meta || { total: 0, totalPages: 0, page: 1 };
+  const leavesMeta = data?.meta || { total: 0, totalPages: 0, page: 1 };
+  const specialCases = Array.isArray(casesData) ? casesData : (casesData?.records || casesData?.data || []);
+  const casesMeta = casesData?.meta || { total: 0, totalPages: 0, page: 1 };
+  const meta = activeTab === 'leaves' ? leavesMeta : casesMeta;
+  const showLeavesLoading = isLoading && !data;
+  const showCasesLoading = isCasesLoading && !casesData;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUnifiedModalOpen, setIsUnifiedModalOpen] = useState(false);
@@ -78,6 +97,10 @@ const EmployeeStatesList = () => {
     const { stateId } = confirmState;
     setConfirmState({ open: false, stateId: null, stateName: '' });
     try {
+      if (activeTab === 'cases') {
+        toast.error('حذف الحالات الخاصة يتم من صفحة الموظف');
+        return;
+      }
       await EmployeeStatesService.delete(stateId);
       mutate();
       toast.success('تم حذف السجل بنجاح');
@@ -92,6 +115,7 @@ const EmployeeStatesList = () => {
 
   const handleUnifiedSuccess = () => {
     mutate();
+    mutateCases();
     toast.success('تمت الإضافة بنجاح');
   };
 
@@ -244,7 +268,23 @@ const EmployeeStatesList = () => {
 
 
 
+      <div className="flex gap-1 bg-white p-1 rounded-xl border border-gray-200 mb-4 w-fit">
+        <button
+          onClick={() => { setActiveTab('leaves'); setPage(1); }}
+          className={`px-6 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'leaves' ? 'bg-emerald-500 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}
+        >
+          العطل ({leavesMeta.total})
+        </button>
+        <button
+          onClick={() => { setActiveTab('cases'); setPage(1); }}
+          className={`px-6 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === 'cases' ? 'bg-emerald-500 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-50'}`}
+        >
+          الحالات الخاصة ({casesMeta.total})
+        </button>
+      </div>
+
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col">
+        {activeTab === 'leaves' ? (
         <div className="overflow-x-auto flex-1 custom-scrollbar">
           <table className="w-full text-right border-collapse">
             <thead className="sticky top-0 z-10">
@@ -260,7 +300,7 @@ const EmployeeStatesList = () => {
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-gray-100">
-              {isLoading ? (
+              {showLeavesLoading ? (
                 <tr>
                   <td colSpan="8" className="py-12 text-center text-gray-400">
                     <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
@@ -344,6 +384,71 @@ const EmployeeStatesList = () => {
             </tbody>
           </table>
         </div>
+        ) : (
+        <div className="overflow-x-auto flex-1 custom-scrollbar">
+          <table className="w-full text-right border-collapse">
+            <thead className="sticky top-0 z-10">
+              <tr>
+                <HeaderCell label="الموظف" />
+                <HeaderCell label="نوع الحالة" />
+                <HeaderCell label="تاريخ البداية" />
+                <HeaderCell label="تاريخ النهاية" />
+                <HeaderCell label="الوجهة" />
+                <HeaderCell label="المقرر" />
+                <HeaderCell label="الحالة" />
+              </tr>
+            </thead>
+            <tbody className="text-sm divide-y divide-gray-100">
+              {showCasesLoading ? (
+                <tr>
+                  <td colSpan="7" className="py-12 text-center text-gray-400">
+                    <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
+                    جاري تحميل البيانات...
+                  </td>
+                </tr>
+              ) : specialCases.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="py-12 text-center text-gray-400">
+                    <CalendarOff size={32} className="mx-auto text-gray-300 mb-2" />
+                    لا توجد حالات خاصة لعرضها
+                  </td>
+                </tr>
+              ) : (
+                specialCases.map((c) => {
+                  const status = getRowStatus(c.EndDate, !c.IsActive);
+                  return (
+                    <tr key={c.Id} className={`${getRowBgStyles(status)} transition-colors group`}>
+                      <td className="py-3 px-4 font-bold text-slate-800">
+                        {c?.Employee?.Name || 'غير محدد'} {c?.Employee?.LastName || ''}
+                      </td>
+                      <td className="py-3 px-4 text-gray-500 font-medium max-w-[150px] truncate" title={c?.CaseType}>
+                        {c?.CaseType || '-'}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-gray-600">
+                        <DateText value={c?.StartDate} />
+                      </td>
+                      <td className="py-3 px-4 font-mono text-gray-600">
+                        {c?.EndDate ? <DateText value={c?.EndDate} /> : <span className="text-amber-600 font-medium">دائمة</span>}
+                      </td>
+                      <td className="py-3 px-4 text-gray-500 font-medium max-w-[150px] truncate" title={c?.Destination}>
+                        {c?.Destination || '-'}
+                      </td>
+                      <td className="py-3 px-4 text-gray-500 font-medium max-w-[150px] truncate" title={c?.ReferenceDoc}>
+                        {c?.ReferenceDoc || '-'}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-bold ${getStatusStyles(status)}`}>
+                          {!c.IsActive ? 'غير نشطة' : getStatusLabel(status)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+        )}
 
         <div className="bg-white px-6 py-4 border-t border-gray-100 flex items-center justify-between">
           <div className="flex gap-2">
@@ -367,7 +472,7 @@ const EmployeeStatesList = () => {
           </div>
 
           <div className="text-sm font-medium text-gray-500">
-            إظهار {states.length} من أصل {meta.total} مدخل
+            إظهار {activeTab === 'leaves' ? states.length : specialCases.length} من أصل {meta.total} مدخل
           </div>
 
           <div className="flex items-center gap-2 text-sm font-medium text-gray-600">

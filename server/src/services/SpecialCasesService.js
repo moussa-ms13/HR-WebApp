@@ -8,6 +8,14 @@ const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
 const { ROLES, getAllowedProvinces } = require("../config/constants");
 
+const clearDashboardCacheSafe = () => {
+  try {
+    require("../controllers/dashboard.controller").clearDashboardCache?.();
+  } catch (_) {
+    // ignore
+  }
+};
+
 // Maps case_type -> employee status value
 const CASE_TYPE_STATUS_MAP = Object.freeze({
   "انتداب": "منتدب",
@@ -17,6 +25,87 @@ const CASE_TYPE_STATUS_MAP = Object.freeze({
 });
 
 class SpecialCasesService {
+  /**
+   * GET /api/special-cases — global paginated list with RBAC + search.
+   */
+  static async getAll(requestingUser, page = 1, limit = 25, search = "", province = "", directorate = "") {
+    const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
+    const safePage = Math.max(Number(page) || 1, 1);
+    const skip = (safePage - 1) * safeLimit;
+
+    let employeeFilter = {};
+    if (requestingUser.role !== ROLES.ADMIN) {
+      const allowed = getAllowedProvinces(requestingUser.permissions || {});
+      if (allowed.length === 0) {
+        return { data: [], meta: { total: 0, page: safePage, limit: safeLimit, totalPages: 0 } };
+      }
+      employeeFilter.Province = { in: allowed };
+    }
+    if (province) {
+      if (requestingUser.role === ROLES.ADMIN || employeeFilter.Province?.in?.includes(province)) {
+        employeeFilter.Province = province;
+      }
+    }
+    if (directorate) {
+      employeeFilter.Directorate = directorate;
+    }
+
+    const whereClause = { Employee: employeeFilter };
+    const trimmedSearch = (search || "").trim();
+    if (trimmedSearch) {
+      const terms = trimmedSearch.split(/\s+/);
+      if (terms.length >= 2) {
+        whereClause.OR = [
+          {
+            Employee: {
+              ...employeeFilter,
+              AND: [
+                { Name: { contains: terms[0] } },
+                { LastName: { contains: terms.slice(1).join(" ") } },
+              ],
+            },
+          },
+          { CaseType: { contains: trimmedSearch } },
+        ];
+        delete whereClause.Employee;
+      } else {
+        whereClause.OR = [
+          { Employee: { ...employeeFilter, Name: { contains: trimmedSearch } } },
+          { Employee: { ...employeeFilter, LastName: { contains: trimmedSearch } } },
+          { CaseType: { contains: trimmedSearch } },
+        ];
+        delete whereClause.Employee;
+      }
+    }
+
+    const [total, cases] = await Promise.all([
+      prisma.specialCases.count({ where: whereClause }),
+      prisma.specialCases.findMany({
+        where: whereClause,
+        select: {
+          Id: true,
+          EmployeesId: true,
+          CaseType: true,
+          StartDate: true,
+          EndDate: true,
+          Destination: true,
+          ReferenceDoc: true,
+          IsActive: true,
+          CreatedAt: true,
+          Employee: { select: { Name: true, LastName: true, Province: true } },
+        },
+        skip,
+        take: safeLimit,
+        orderBy: { Id: "desc" },
+      }),
+    ]);
+
+    return {
+      data: cases,
+      meta: { total, page: safePage, limit: safeLimit, totalPages: Math.ceil(total / safeLimit) },
+    };
+  }
+
   /**
    * Sync the Employee.EmployeeStatus column based on case_type.
    * Called after create/update of a SpecialCase.
@@ -112,6 +201,8 @@ class SpecialCasesService {
       employeesId: employeeId,
     });
 
+    clearDashboardCacheSafe();
+
     return record;
   }
 
@@ -154,6 +245,8 @@ class SpecialCasesService {
       employeesId: employeeId,
     });
 
+    clearDashboardCacheSafe();
+
     return record;
   }
 
@@ -179,6 +272,8 @@ class SpecialCasesService {
       usersId: requestingUser.id,
       employeesId: employeeId,
     });
+
+    clearDashboardCacheSafe();
 
     return { message: "Special case deleted successfully." };
   }
