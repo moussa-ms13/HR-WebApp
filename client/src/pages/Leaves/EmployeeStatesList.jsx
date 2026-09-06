@@ -43,6 +43,10 @@ const EmployeeStatesList = () => {
   const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
   const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
 
+  // SWR keys are bound ONLY to the debounced value; API search fires from 2+ chars
+  const debouncedSearch = useDebounce(searchInput, 500);
+  const search = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : '';
+
   const { data, error, isLoading, mutate } = useSWR(
     activeTab === 'leaves' ? ['/api/employee-states', page, limit, categoryFilter, search, directorateFilter, provinceFilter] : null,
     fetcher,
@@ -54,10 +58,6 @@ const EmployeeStatesList = () => {
     casesFetcher,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
-
-  // SWR keys are bound ONLY to the debounced value; API search fires from 2+ chars
-  const debouncedSearch = useDebounce(searchInput, 500);
-  const search = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : '';
 
   const handleSearchChange = (e) => {
     setSearchInput(e.target.value);
