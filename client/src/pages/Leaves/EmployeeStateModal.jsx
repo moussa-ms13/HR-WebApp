@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Loader2, Calendar, Search, Check, ChevronDown } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
+import useDebounce from '../../hooks/useDebounce';
 import EmployeeStatesService from '../../services/employeeStatesService';
 import EmployeeService from '../../services/employeeService';
+
+// Minimum characters before the employee search API is triggered
+const MIN_SEARCH_CHARS = 2;
 
 const LEAVE_TYPES = [
   "عطلة سنوية",
@@ -46,55 +50,62 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
 
   // Search and Filter States for Employees
   const [searchTerm, setSearchTerm] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
   const [provinceFilter, setProvinceFilter] = useState('');
   const [directorateFilter, setDirectorateFilter] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  
+
+  // API is triggered ONLY by the debounced value, and only from 2+ chars
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+  const searchQuery = debouncedSearchTerm.trim().length >= MIN_SEARCH_CHARS ? debouncedSearchTerm.trim() : '';
+
   const { user } = useAuth();
   const allowedProvinces = getAllowedProvinces(user);
   const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
   const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
-  const debounceRef = useRef(null);
 
   const handleSearchChange = (e) => {
-    const value = e.target.value;
-    setSearchTerm(value);
+    setSearchTerm(e.target.value);
     setIsDropdownOpen(true);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setSearchQuery(value.trim());
-    }, 300);
   };
 
   useEffect(() => {
-    if (isOpen) {
-      if (record) {
-        // Edit mode: fetch single employee just to display the name
-        const fetchOne = async () => {
-          try {
-            const res = await EmployeeService.getById(record.EmployeesId);
-            if (res.success) {
-              setSearchTerm(`${res.data.Name} ${res.data.LastName} (${res.data.Id})`);
-            }
-          } catch(err) {}
-        };
-        fetchOne();
-      } else {
-        // Add mode: fetch filtered employees
-        const fetchEmployeesForSelect = async () => {
-          try {
-            const res = await EmployeeService.getAll(1, 50, searchQuery, provinceFilter, directorateFilter, '');
-            if (res.success) {
-              setEmployees(res.data);
-            }
-          } catch (err) {
-            console.error("Failed to load employees for dropdown", err);
+    if (!isOpen) return;
+    if (record) {
+      // Edit mode: fetch single employee just to display the name
+      const fetchOne = async () => {
+        try {
+          const res = await EmployeeService.getById(record.EmployeesId);
+          if (res.success) {
+            setSearchTerm(`${res.data.Name} ${res.data.LastName} (${res.data.Id})`);
           }
-        };
-        fetchEmployeesForSelect();
-      }
+        } catch(err) {}
+      };
+      fetchOne();
+      return;
     }
+    // Add mode: lightweight debounced search (min 2 chars, abortable)
+    if (!searchQuery) {
+      setEmployees([]);
+      return;
+    }
+    const controller = new AbortController();
+    const fetchEmployeesForSelect = async () => {
+      try {
+        const res = await EmployeeService.search(searchQuery, {
+          province: provinceFilter,
+          directorate: directorateFilter,
+          signal: controller.signal,
+        });
+        if (res.success) {
+          setEmployees(Array.isArray(res.data) ? res.data : []);
+        }
+      } catch (err) {
+        if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') return; // aborted
+        console.error("Failed to load employees for dropdown", err);
+      }
+    };
+    fetchEmployeesForSelect();
+    return () => controller.abort();
   }, [isOpen, record, searchQuery, provinceFilter, directorateFilter]);
 
   useEffect(() => {
@@ -124,7 +135,6 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
         });
         setActiveTab('تسجيل عطلة');
         setSearchTerm('');
-        setSearchQuery('');
         setProvinceFilter('');
         setDirectorateFilter('');
         setIsDropdownOpen(false);
@@ -324,7 +334,9 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
                     {isDropdownOpen && !record && (
                       <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                         {employees.length === 0 ? (
-                          <div className="p-3 text-sm text-gray-500 text-center">لا توجد نتائج</div>
+                          <div className="p-3 text-sm text-gray-500 text-center">
+                            {searchTerm.trim().length < MIN_SEARCH_CHARS ? 'اكتب حرفين على الأقل للبحث...' : 'لا توجد نتائج'}
+                          </div>
                         ) : (
                           employees.map(emp => (
                             <div

@@ -3,6 +3,7 @@ import useSWR from 'swr';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
+import useDebounce from '../../hooks/useDebounce';
 import EmployeeStatesService from '../../services/employeeStatesService';
 import SpecialCasesService from '../../services/specialCasesService';
 import EmployeeStateModal from './EmployeeStateModal';
@@ -35,7 +36,7 @@ const EmployeeStatesList = () => {
   const [categoryFilter, setCategoryFilter] = useState('');
   const [provinceFilter, setProvinceFilter] = useState('');
   const [directorateFilter, setDirectorateFilter] = useState('');
-  const [search, setSearch] = useState(() => searchParams.get('search')?.trim() || '');
+  const [searchInput, setSearchInput] = useState(() => searchParams.get('search')?.trim() || '');
   const [activeTab, setActiveTab] = useState('leaves'); // 'leaves' | 'cases'
 
   const allowedProvinces = getAllowedProvinces(useAuth().user);
@@ -54,22 +55,14 @@ const EmployeeStatesList = () => {
     { revalidateOnFocus: false, keepPreviousData: true }
   );
 
-  const debounceRef = React.useRef(null);
-  const searchInputRef = React.useRef(null);
-  const handleSearchChange = (e) => {
-    const value = e.target.value;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      setSearch(value.trim());
-      setPage(1);
-    }, 500);
-  };
+  // SWR keys are bound ONLY to the debounced value; API search fires from 2+ chars
+  const debouncedSearch = useDebounce(searchInput, 500);
+  const search = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : '';
 
-  React.useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
+  const handleSearchChange = (e) => {
+    setSearchInput(e.target.value);
+    setPage(1);
+  };
 
   const states = Array.isArray(data) ? data : (data?.records || data?.data || []);
   const leavesMeta = data?.meta || { total: 0, totalPages: 0, page: 1 };
@@ -242,7 +235,7 @@ const EmployeeStatesList = () => {
             <input
               type="text"
               placeholder="البحث باسم الموظف..."
-              defaultValue={search}
+              value={searchInput}
               onChange={handleSearchChange}
               className="w-full pr-10 pl-4 py-2 bg-gray-50 border-none rounded-lg outline-none text-sm text-slate-700 focus:ring-1 focus:ring-gray-200"
             />

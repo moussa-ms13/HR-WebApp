@@ -15,6 +15,19 @@ class EmployeeService {
     return response.data; // Expected: { success, data: [], meta: { total, page, limit, totalPages, totalCompletedFiles } }
   }
 
+  /**
+   * Lightweight autocomplete search (GET /api/employees/search).
+   * Strict DTO (Id, Name, LastName, Province, Directorate) — max 15 results.
+   * Pass an AbortSignal to cancel stale requests while typing.
+   */
+  static async search(query, { province = '', directorate = '', signal } = {}) {
+    const response = await apiClient.get('/employees/search', {
+      params: { q: query, province, directorate },
+      signal,
+    });
+    return response.data;
+  }
+
   static async getById(id) {
     const response = await apiClient.get(`/employees/${id}`);
     return response.data;

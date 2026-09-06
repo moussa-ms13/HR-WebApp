@@ -1,11 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { mutate } from 'swr';
 import { X, Loader2, Calendar, Search, Check, MapPin, FileText } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
+import useDebounce from '../../hooks/useDebounce';
 import EmployeeStatesService from '../../services/employeeStatesService';
 import SpecialCasesService from '../../services/specialCasesService';
 import EmployeeService from '../../services/employeeService';
+
+// Minimum characters before the employee search API is triggered
+const MIN_SEARCH_CHARS = 2;
 
 // ── Type Constants ──────────────────────────────────────────
 const LEAVE_TYPES = [
@@ -47,11 +51,13 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess, preSelectedEmployee = n
   const [employees, setEmployees] = useState([]);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
   const [provinceFilter, setProvinceFilter] = useState('');
   const [directorateFilter, setDirectorateFilter] = useState('');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const debounceRef = useRef(null);
+
+  // API is triggered ONLY by the debounced value, and only from 2+ chars
+  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+  const searchQuery = debouncedSearchTerm.trim().length >= MIN_SEARCH_CHARS ? debouncedSearchTerm.trim() : '';
 
   // ── Leave Fields ──
   const [leaveForm, setLeaveForm] = useState({
@@ -76,17 +82,29 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess, preSelectedEmployee = n
   const needsDestination = DESTINATION_CASES.has(caseForm.CaseType);
 
   // ── Fetch employees for searchable dropdown (skip when pre-selected) ──
+  // Debounced + min 2 chars + AbortController cancels stale in-flight requests.
   useEffect(() => {
     if (!isOpen || preSelectedEmployee) return;
+    if (!searchQuery) {
+      setEmployees([]);
+      return;
+    }
+    const controller = new AbortController();
     const fetchEmployees = async () => {
       try {
-        const res = await EmployeeService.getAll(1, 50, searchQuery, provinceFilter, directorateFilter, '');
-        if (res.success) setEmployees(res.data);
+        const res = await EmployeeService.search(searchQuery, {
+          province: provinceFilter,
+          directorate: directorateFilter,
+          signal: controller.signal,
+        });
+        if (res.success) setEmployees(Array.isArray(res.data) ? res.data : []);
       } catch (err) {
+        if (err?.code === 'ERR_CANCELED' || err?.name === 'CanceledError') return; // aborted
         console.error("Failed to load employees", err);
       }
     };
     fetchEmployees();
+    return () => controller.abort();
   }, [isOpen, searchQuery, provinceFilter, directorateFilter, preSelectedEmployee]);
 
   // ── Auto-calc EndDate for leaves ──
@@ -121,7 +139,6 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess, preSelectedEmployee = n
         setSelectedEmployee(null);
         setSearchTerm('');
       }
-      setSearchQuery('');
       setProvinceFilter('');
       setDirectorateFilter('');
       setIsDropdownOpen(false);
@@ -143,16 +160,11 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess, preSelectedEmployee = n
     }
   }, [isOpen, defaultCategory, preSelectedEmployee]);
 
-  // ── Search handler with debounce ──
+  // ── Search handler (API call is debounced via useDebounce) ──
   const handleSearchChange = (e) => {
-    const value = e.target.value;
-    setSearchTerm(value);
+    setSearchTerm(e.target.value);
     setIsDropdownOpen(true);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setSearchQuery(value.trim()), 300);
   };
-
-  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
   // ── Select employee ──
   const handleSelectEmployee = (emp) => {
@@ -380,7 +392,9 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess, preSelectedEmployee = n
                     {isDropdownOpen && (
                       <div className="absolute z-20 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
                         {employees.length === 0 ? (
-                          <div className="p-3 text-sm text-gray-500 text-center">لا توجد نتائج</div>
+                          <div className="p-3 text-sm text-gray-500 text-center">
+                            {searchTerm.trim().length < MIN_SEARCH_CHARS ? 'اكتب حرفين على الأقل للبحث...' : 'لا توجد نتائج'}
+                          </div>
                         ) : (
                           employees.map(emp => (
                             <div

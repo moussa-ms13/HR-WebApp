@@ -31,6 +31,17 @@ router.get("/export", async (req, res) => {
 
 
 /**
+ * GET /api/employees/search?q=&province=&directorate=
+ * Lightweight autocomplete lookup — strict DTO, max 15 results.
+ * MUST be registered before /:id so "search" is not parsed as an id.
+ */
+router.get("/search", async (req, res) => {
+  const { q, province, directorate } = req.query;
+  const data = await EmployeesService.search(req.user, q || "", province || "", directorate || "");
+  res.json({ success: true, data });
+});
+
+/**
  * GET /api/employees
  * Fetches employees with server-side pagination and Geographic RBAC
  */

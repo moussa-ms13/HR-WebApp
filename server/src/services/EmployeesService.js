@@ -138,6 +138,77 @@ class EmployeesService {
     };
   }
 
+  /**
+   * Lightweight autocomplete lookup for search dropdowns.
+   * Strict DTO (Id, Name, LastName, Province, Directorate, Department) —
+   * no relations/files/career history, hard take: 15.
+   */
+  static async search(requestingUser, query = "", province = "", directorate = "") {
+    const whereClause = {};
+
+    // Geographic RBAC
+    if (requestingUser.role !== ROLES.ADMIN) {
+      const allowedProvinces = getAllowedProvinces(requestingUser.permissions || {});
+      if (allowedProvinces.length === 0) return [];
+      whereClause.Province = { in: allowedProvinces };
+    }
+
+    if (province) {
+      if (requestingUser.role === ROLES.ADMIN || (whereClause.Province?.in || []).includes(province)) {
+        whereClause.Province = province;
+      }
+    }
+    if (directorate) {
+      whereClause.AND = [
+        ...(whereClause.AND || []),
+        { OR: [{ Directorate: directorate }, { Department: directorate }] },
+      ];
+    }
+
+    const term = (query || "").trim();
+    if (term) {
+      const terms = term.split(/\s+/);
+      const orConditions = [];
+      if (terms.length >= 2) {
+        // Full-name match (normal order), then reversed order
+        orConditions.push({
+          AND: [
+            { Name: { contains: terms[0] } },
+            { LastName: { contains: terms.slice(1).join(" ") } },
+          ],
+        });
+        orConditions.push({
+          AND: [
+            { Name: { contains: terms.slice(0, -1).join(" ") } },
+            { LastName: { contains: terms[terms.length - 1] } },
+          ],
+        });
+      }
+      orConditions.push({ Name: { contains: term } });
+      orConditions.push({ LastName: { contains: term } });
+      orConditions.push({ NIN: { contains: term } });
+      const numericId = Number(term);
+      if (!Number.isNaN(numericId)) {
+        orConditions.push({ Id: numericId });
+      }
+      whereClause.AND = [...(whereClause.AND || []), { OR: orConditions }];
+    }
+
+    return prisma.employees.findMany({
+      where: whereClause,
+      select: {
+        Id: true,
+        Name: true,
+        LastName: true,
+        Province: true,
+        Directorate: true,
+        Department: true,
+      },
+      take: 15,
+      orderBy: [{ Name: "asc" }, { LastName: "asc" }],
+    });
+  }
+
   static async getById(id, requestingUser) {
     const employee = await prisma.employees.findUnique({
       where: { Id: id },
