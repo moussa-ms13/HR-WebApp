@@ -39,7 +39,7 @@ exports.getDashboardStats = async (req, res, next) => {
       prisma.employeeStates.count({
         where: {
           StartDate: { lte: today },
-          OR: [{ EndDate: { gte: today } }, { EndDate: null }],
+          EndDate: { gte: today },
         },
       }),
       prisma.specialCases.count({
