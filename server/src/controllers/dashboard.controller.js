@@ -126,12 +126,13 @@ exports.getResumingSoon = async (req, res, next) => {
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const in14Days = new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000);
 
     const [states, cases] = await Promise.all([
       prisma.employeeStates.findMany({
         where: {
           IsResumed: false,
-          EndDate: { gte: today },
+          EndDate: { gte: today, lte: in14Days },
         },
         select: {
           Id: true,
@@ -147,7 +148,7 @@ exports.getResumingSoon = async (req, res, next) => {
       prisma.specialCases.findMany({
         where: {
           IsActive: true,
-          OR: [{ EndDate: { gte: today } }, { EndDate: null }],
+          EndDate: { not: null, gte: today, lte: in14Days },
         },
         select: {
           Id: true,

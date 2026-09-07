@@ -33,7 +33,7 @@ const EmployeeStatesList = () => {
 
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
-  const [categoryFilter, setCategoryFilter] = useState('');
+
   const [provinceFilter, setProvinceFilter] = useState('');
   const [directorateFilter, setDirectorateFilter] = useState('');
   const [searchInput, setSearchInput] = useState(() => searchParams.get('search')?.trim() || '');
@@ -48,7 +48,7 @@ const EmployeeStatesList = () => {
   const search = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : '';
 
   const { data, error, isLoading, mutate } = useSWR(
-    activeTab === 'leaves' ? ['/api/employee-states', page, limit, categoryFilter, search, directorateFilter, provinceFilter] : null,
+    activeTab === 'leaves' ? ['/api/employee-states', page, limit, '', search, directorateFilter, provinceFilter] : null,
     fetcher,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
@@ -181,19 +181,6 @@ const EmployeeStatesList = () => {
       <div className="flex flex-col sm:flex-row justify-between items-center mb-6 bg-white p-3 rounded-xl border border-gray-200">
 
         <div className="flex items-center gap-3">
-          <select
-            value={categoryFilter}
-            onChange={(e) => { setCategoryFilter(e.target.value); setPage(1); }}
-            className="flex items-center gap-2 text-sm font-medium text-gray-600 px-3 py-2 hover:bg-gray-50 rounded-lg outline-none bg-transparent cursor-pointer appearance-none"
-          >
-            <option value="">الفئة: الكل</option>
-            <option value="عطل">عطل</option>
-            <option value="غيابات">غيابات</option>
-            <option value="حالات أخرى">حالات أخرى</option>
-          </select>
-          <ChevronDown size={14} className="-mr-6 text-gray-500 pointer-events-none" />
-
-          <div className="h-4 w-px bg-gray-200 ml-2"></div>
 
           <select
             value={provinceFilter}
