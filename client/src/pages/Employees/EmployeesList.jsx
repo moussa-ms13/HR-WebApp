@@ -50,11 +50,15 @@ const EmployeesList = () => {
   const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
   const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
 
-  const { data, error, isLoading, mutate } = useSWR(
+  const { data, error, isLoading, isValidating, mutate } = useSWR(
     ['/api/employees', page, limit, search, provinceFilter, directorateFilter, fileStatusFilter],
     fetcher,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
+
+  // Semantic SWR States — WAN UX
+  const isInitialLoading = !data && isLoading;
+  const isRefreshing = !!data && isValidating;
 
   const employees = data?.data || [];
   const meta = data?.meta || { total: 0, totalPages: 0 };
@@ -263,7 +267,14 @@ const EmployeesList = () => {
 
 
       {/* DataGrid */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col relative">
+        {/* Refreshing indicator — subtle top bar */}
+        {isRefreshing && (
+          <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center gap-2 py-1.5 bg-emerald-50/90 border-b border-emerald-200 text-emerald-700 text-xs font-medium backdrop-blur-sm">
+            <Loader2 size={14} className="animate-spin" />
+            جاري التحديث...
+          </div>
+        )}
         <div className="overflow-x-auto flex-1 custom-scrollbar">
           <table className="w-full text-right border-collapse">
             <thead className="sticky top-0 z-10">
@@ -276,8 +287,8 @@ const EmployeesList = () => {
                 <th className="py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center">الإجراء</th>
               </tr>
             </thead>
-            <tbody className="text-sm divide-y divide-gray-100">
-              {isLoading && !data ? (
+            <tbody className={`text-sm divide-y divide-gray-100 transition-opacity duration-200 ${isRefreshing ? 'opacity-50' : 'opacity-100'}`}>
+              {isInitialLoading ? (
                 <tr>
                   <td colSpan="6" className="py-12 text-center text-gray-400">
                     <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />

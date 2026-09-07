@@ -104,12 +104,16 @@ class EmployeesService {
       whereClause.IsProfileComplete = false;
     }
 
-    // Search Filter: trim & split to handle full-name queries and trailing spaces
+    // ─── Typed Search Parser ──────────────────────────────────
+    // String fields: { contains } (SQL Server — no mode:'insensitive')
+    // Integer fields (Id): ONLY if input is pure digits — prevents Prisma 500
     const trimmedSearch = (search || "").trim();
     if (trimmedSearch) {
       const searchTerms = trimmedSearch.split(/\s+/);
+      const isNumeric = /^\d+$/.test(trimmedSearch);
       let searchOrConditions = [];
 
+      // Multi-word: cross-match Name+LastName in both orders
       if (searchTerms.length >= 2) {
         searchOrConditions.push({
           AND: [
@@ -135,16 +139,17 @@ class EmployeesService {
             { LastName: { contains: searchTerms.slice(0, -1).join(" ") } },
           ],
         });
-      } 
-      
+      }
+
+      // String field matches (always safe)
       searchOrConditions.push({ Name: { contains: trimmedSearch } });
       searchOrConditions.push({ LastName: { contains: trimmedSearch } });
       searchOrConditions.push({ NIN: { contains: trimmedSearch } });
       searchOrConditions.push({ JobTitle: { RankName: { contains: trimmedSearch } } });
 
-      const numericId = Number(trimmedSearch);
-      if (!Number.isNaN(numericId) && Number.isInteger(numericId)) {
-        searchOrConditions.push({ Id: numericId });
+      // Integer field — ONLY if pure digits (prevents text→int Prisma crash)
+      if (isNumeric) {
+        searchOrConditions.push({ Id: parseInt(trimmedSearch, 10) });
       }
 
       whereClause.AND = [
@@ -191,14 +196,14 @@ class EmployeesService {
       orderBy = { JobTitle: { RankName: safeOrder } };
     }
 
-    const completedFilesPromise = fileStatus === "incomplete"
-      ? Promise.resolve(0)
+    // ─── Prisma $transaction — atomic count+findMany ─────────
+    const completedWhere = fileStatus === "incomplete"
+      ? null
       : fileStatus === "complete"
       ? null
-      : prisma.employees.count({ where: { ...whereClause, IsProfileComplete: true } });
+      : { ...whereClause, IsProfileComplete: true };
 
-    // Execute queries concurrently with strict lightweight select DTO
-    const [total, employees, rawCompletedFiles] = await Promise.all([
+    const [total, employees, rawCompletedFiles] = await prisma.$transaction([
       prisma.employees.count({ where: whereClause }),
       prisma.employees.findMany({
         where: whereClause,
@@ -216,10 +221,10 @@ class EmployeesService {
         take: safeLimit,
         orderBy,
       }),
-      completedFilesPromise !== null ? completedFilesPromise : Promise.resolve(null),
+      ...(completedWhere ? [prisma.employees.count({ where: completedWhere })] : []),
     ]);
 
-    const totalCompletedFiles = fileStatus === "complete" ? total : (rawCompletedFiles ?? 0);
+    const totalCompletedFiles = fileStatus === "complete" ? total : fileStatus === "incomplete" ? 0 : (rawCompletedFiles ?? 0);
 
     return {
       data: employees,

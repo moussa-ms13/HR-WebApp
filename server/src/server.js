@@ -6,6 +6,7 @@ console.log('--- SERVER RESTARTED AT:', new Date().toISOString(), '---');
 require("express-async-errors"); // Must be imported before routes
 const express = require("express");
 const cors = require("cors");
+const compression = require("compression");
 const helmet = require("helmet");
 const morgan = require("morgan");
 const dotenv = require("dotenv");
@@ -42,6 +43,7 @@ app.use(
     credentials: true,
   })
 );
+app.use(compression());
 
 // Mount file uploads BEFORE express.json() to prevent multipart stream consumption
 const employeeFilesRoutes = require('./routes/employeeFiles.routes');
