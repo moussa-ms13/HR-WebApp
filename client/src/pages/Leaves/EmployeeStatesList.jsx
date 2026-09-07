@@ -79,26 +79,34 @@ const EmployeeStatesList = () => {
   const toast = useToast();
 
   // Delete confirm state
-  const [confirmState, setConfirmState] = useState({ open: false, stateId: null, stateName: '' });
+  const [confirmState, setConfirmState] = useState({ open: false, stateId: null, stateName: '', employeeId: null });
 
   const handleDelete = (st) => {
     setMenuOpenId(null);
-    setConfirmState({ open: true, stateId: st.Id, stateName: st.StateTypeOrReason || '' });
+    setConfirmState({ 
+      open: true, 
+      stateId: st.Id, 
+      stateName: st.StateTypeOrReason || st.CaseType || '', 
+      employeeId: st.EmployeesId || st.EmployeeId 
+    });
   };
 
   const confirmDelete = async () => {
-    const { stateId } = confirmState;
-    setConfirmState({ open: false, stateId: null, stateName: '' });
+    const { stateId, employeeId } = confirmState;
+    setConfirmState({ open: false, stateId: null, stateName: '', employeeId: null });
     try {
       if (activeTab === 'cases') {
-        toast.error('حذف الحالات الخاصة يتم من صفحة الموظف');
-        return;
+        if (!employeeId) throw new Error("رقم الموظف غير متوفر");
+        await SpecialCasesService.delete(employeeId, stateId);
+        mutateCases();
+        toast.success('تم حذف الحالة الخاصة بنجاح');
+      } else {
+        await EmployeeStatesService.delete(stateId);
+        mutate();
+        toast.success('تم حذف السجل بنجاح');
       }
-      await EmployeeStatesService.delete(stateId);
-      mutate();
-      toast.success('تم حذف السجل بنجاح');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'حدث خطأ أثناء الحذف');
+      toast.error(err.response?.data?.message || err.message || 'حدث خطأ أثناء الحذف');
     }
   };
 
@@ -376,6 +384,7 @@ const EmployeeStatesList = () => {
                 <HeaderCell label="الوجهة" />
                 <HeaderCell label="المقرر" />
                 <HeaderCell label="الحالة" />
+                <th className="py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center">الإجراءات</th>
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-gray-100">
@@ -420,6 +429,46 @@ const EmployeeStatesList = () => {
                         <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-bold ${getStatusStyles(status)}`}>
                           {!c.IsActive ? 'غير نشطة' : getStatusLabel(status)}
                         </span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <div className="relative inline-block text-right">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuOpenId(menuOpenId === c.Id ? null : c.Id);
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-emerald-600 border border-transparent hover:border-gray-200 rounded-lg transition-all"
+                          >
+                            <MoreVertical size={18} />
+                          </button>
+
+                          {menuOpenId === c.Id && (
+                            <div className="absolute left-0 mt-2 w-40 rounded-xl shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                              <div className="py-1" role="menu">
+                                <button
+                                  onClick={(e) => { 
+                                    e.stopPropagation(); 
+                                    setSelectedState(c); 
+                                    setIsUnifiedModalOpen(true); 
+                                    setMenuOpenId(null); 
+                                  }}
+                                  className="w-full text-right px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                >
+                                  تعديل الحالة الخاصة
+                                </button>
+                                {hasPermission('checkBoxDelete') && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDelete(c); }}
+                                    className="w-full text-right px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                  >
+                                    <Trash2 size={14} />
+                                    حذف
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
