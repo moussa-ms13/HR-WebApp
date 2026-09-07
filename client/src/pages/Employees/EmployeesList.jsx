@@ -10,8 +10,8 @@ import * as XLSX from 'xlsx';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 
-const fetcher = async ([url, page, limit, search, province, directorate, fileStatus]) => {
-  const result = await EmployeeService.getAll(page, limit, search, province, directorate, fileStatus);
+const fetcher = async ([url, page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder]) => {
+  const result = await EmployeeService.getAll(page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder);
   if (!result.success) throw new Error("Failed to fetch");
   return result;
 };
@@ -277,7 +277,7 @@ const EmployeesList = () => {
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-gray-100">
-              {isLoading ? (
+              {isLoading && !data ? (
                 <tr>
                   <td colSpan="6" className="py-12 text-center text-gray-400">
                     <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />

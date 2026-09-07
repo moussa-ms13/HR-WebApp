@@ -41,23 +41,13 @@ router.get("/search", async (req, res) => {
   res.json({ success: true, data });
 });
 
+const EmployeesController = require("../controllers/employees.controller");
+
 /**
  * GET /api/employees
  * Fetches employees with server-side pagination and Geographic RBAC
  */
-router.get("/", async (req, res) => {
-  const { page, limit, search, province, directorate, fileStatus } = req.query;
-  const result = await EmployeesService.getAll(
-    req.user,
-    Number(page) || 1,
-    Number(limit) || 25,
-    search || "",
-    province || "",
-    directorate || "",
-    fileStatus || ""
-  );
-  res.json({ success: true, ...result });
-});
+router.get("/", EmployeesController.getAll);
 
 /**
  * GET /api/employees/:id/summary

@@ -8,9 +8,9 @@ class EmployeeService {
    * @param {string} search 
    * @param {string} province 
    */
-  static async getAll(page = 1, limit = 20, search = '', province = '', directorate = '', fileStatus = '') {
+  static async getAll(page = 1, limit = 25, search = '', province = '', directorate = '', fileStatus = '', category = '', sortBy = '', sortOrder = '') {
     const response = await apiClient.get('/employees', {
-      params: { page, limit, search, province, directorate, fileStatus }
+      params: { page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder }
     });
     return response.data; // Expected: { success, data: [], meta: { total, page, limit, totalPages, totalCompletedFiles } }
   }

@@ -11,51 +11,96 @@ class EmployeesService {
   /**
    * Fetch paginated and filtered employees based on geographic RBAC.
    */
-  static async getAll(requestingUser, page = 1, limit = 25, search = "", province = "", directorate = "", fileStatus = "") {
+  static async getAll(
+    requestingUser,
+    page = 1,
+    limit = 25,
+    search = "",
+    province = "",
+    directorate = "",
+    fileStatus = "",
+    category = "",
+    sortBy = "Id",
+    sortOrder = "desc"
+  ) {
+    if (typeof page === "object" && page !== null) {
+      const opts = page;
+      page = opts.page;
+      limit = opts.limit;
+      search = opts.search;
+      province = opts.province;
+      directorate = opts.directorate;
+      fileStatus = opts.fileStatus;
+      category = opts.category;
+      sortBy = opts.sortBy || opts.sort;
+      sortOrder = opts.sortOrder || opts.order;
+    }
+
     const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
     const safePage = Math.max(Number(page) || 1, 1);
     const skip = (safePage - 1) * safeLimit;
-    
+
     // Base Geographic Filter
     let whereClause = {};
-    const allowedProvinces = getAllowedProvinces(requestingUser.permissions || {});
-    
-    if (requestingUser.role !== ROLES.ADMIN) {
-      if (allowedProvinces.length === 0) {
-        // If they are not Admin and have NO provinces checked, they shouldn't see anyone.
+    const allowedProvinces = getAllowedProvinces(requestingUser?.permissions || {});
+
+    if (requestingUser?.role !== ROLES.ADMIN) {
+      if (!allowedProvinces || allowedProvinces.length === 0) {
         return {
           data: [],
-          meta: { total: 0, page: safePage, limit: safeLimit, totalPages: 0 }
+          meta: { total: 0, page: safePage, limit: safeLimit, totalPages: 0, totalCompletedFiles: 0 }
         };
       }
-      whereClause.Province = { in: allowedProvinces };
-    }
-
-    // Additional User-Selected Province Filter
-    if (province) {
-      // Validate that the requested province is within their allowed provinces (unless admin)
-      if (requestingUser.role === ROLES.ADMIN || allowedProvinces.includes(province)) {
-        whereClause.Province = province;
+      if (province && String(province).trim()) {
+        const trimmedProv = String(province).trim();
+        if (allowedProvinces.includes(trimmedProv)) {
+          whereClause.Province = trimmedProv;
+        } else {
+          whereClause.Province = { in: [] };
+        }
+      } else {
+        whereClause.Province = { in: allowedProvinces };
+      }
+    } else {
+      if (province && String(province).trim()) {
+        whereClause.Province = String(province).trim();
       }
     }
 
-    // Directorate Filter (الجهة)
-    if (directorate) {
+    // Directorate / Department Filter (الجهة / المصلحة)
+    if (directorate && String(directorate).trim()) {
+      const trimmedDir = String(directorate).trim();
       whereClause.AND = [
         ...(whereClause.AND || []),
         {
           OR: [
-            { Directorate: directorate },
-            { Department: directorate }
-          ]
-        }
+            { Directorate: trimmedDir },
+            { Department: trimmedDir },
+          ],
+        },
+      ];
+    }
+
+    // Category Filter (فئة / رتبة / حالة)
+    if (category && String(category).trim()) {
+      const trimmedCat = String(category).trim();
+      whereClause.AND = [
+        ...(whereClause.AND || []),
+        {
+          OR: [
+            { JobTitle: { EmploymentCategory: trimmedCat } },
+            { JobTitle: { CategoryLevel: trimmedCat } },
+            { JobTitle: { RankName: trimmedCat } },
+            { EmployeeStatus: trimmedCat },
+          ],
+        },
       ];
     }
 
     // File Status Filter (اكتمال الملف)
-    if (fileStatus === 'complete') {
+    if (fileStatus === "complete") {
       whereClause.IsProfileComplete = true;
-    } else if (fileStatus === 'incomplete') {
+    } else if (fileStatus === "incomplete") {
       whereClause.IsProfileComplete = false;
     }
 
@@ -66,7 +111,6 @@ class EmployeesService {
       let searchOrConditions = [];
 
       if (searchTerms.length >= 2) {
-        // Multi-word: cross-match first+last name in both normal and reversed orders
         searchOrConditions.push({
           AND: [
             { Name: { contains: searchTerms[0] } },
@@ -79,7 +123,6 @@ class EmployeesService {
             { LastName: { contains: searchTerms[searchTerms.length - 1] } },
           ],
         });
-        // Reversed combinations
         searchOrConditions.push({
           AND: [
             { Name: { contains: searchTerms.slice(1).join(" ") } },
@@ -94,11 +137,15 @@ class EmployeesService {
         });
       } 
       
-      // Single word or fallback match
       searchOrConditions.push({ Name: { contains: trimmedSearch } });
       searchOrConditions.push({ LastName: { contains: trimmedSearch } });
       searchOrConditions.push({ NIN: { contains: trimmedSearch } });
       searchOrConditions.push({ JobTitle: { RankName: { contains: trimmedSearch } } });
+
+      const numericId = Number(trimmedSearch);
+      if (!Number.isNaN(numericId) && Number.isInteger(numericId)) {
+        searchOrConditions.push({ Id: numericId });
+      }
 
       whereClause.AND = [
         ...(whereClause.AND || []),
@@ -106,8 +153,52 @@ class EmployeesService {
       ];
     }
 
-    // Execute queries concurrently for performance
-    const [total, employees, totalCompletedFiles] = await Promise.all([
+    // Strict Schema-based Sort Mapping (Prevents PrismaClientValidationError on bad sort fields)
+    const SORT_MAPPING = {
+      id: "Id",
+      Id: "Id",
+      name: "Name",
+      Name: "Name",
+      lastName: "LastName",
+      LastName: "LastName",
+      province: "Province",
+      Province: "Province",
+      directorate: "Directorate",
+      Directorate: "Directorate",
+      department: "Department",
+      Department: "Department",
+      status: "EmployeeStatus",
+      Status: "EmployeeStatus",
+      employeeStatus: "EmployeeStatus",
+      EmployeeStatus: "EmployeeStatus",
+      isProfileComplete: "IsProfileComplete",
+      IsProfileComplete: "IsProfileComplete",
+      installationDate: "InstallationDate",
+      InstallationDate: "InstallationDate",
+      degree: "Degree",
+      Degree: "Degree",
+      nin: "NIN",
+      NIN: "NIN",
+    };
+
+    const safeOrder = String(sortOrder || "").toLowerCase() === "asc" ? "asc" : "desc";
+    let orderBy = { Id: "desc" };
+
+    if (sortBy && SORT_MAPPING[sortBy]) {
+      const field = SORT_MAPPING[sortBy];
+      orderBy = { [field]: safeOrder };
+    } else if (sortBy === "jobTitle" || sortBy === "RankName" || sortBy === "rank") {
+      orderBy = { JobTitle: { RankName: safeOrder } };
+    }
+
+    const completedFilesPromise = fileStatus === "incomplete"
+      ? Promise.resolve(0)
+      : fileStatus === "complete"
+      ? null
+      : prisma.employees.count({ where: { ...whereClause, IsProfileComplete: true } });
+
+    // Execute queries concurrently with strict lightweight select DTO
+    const [total, employees, rawCompletedFiles] = await Promise.all([
       prisma.employees.count({ where: whereClause }),
       prisma.employees.findMany({
         where: whereClause,
@@ -115,16 +206,20 @@ class EmployeesService {
           Id: true,
           Name: true,
           LastName: true,
+          Department: true,
           Province: true,
+          Directorate: true,
           EmployeeStatus: true,
           IsProfileComplete: true,
         },
         skip,
         take: safeLimit,
-        orderBy: { Id: "desc" },
+        orderBy,
       }),
-      prisma.employees.count({ where: { ...whereClause, IsProfileComplete: true } }),
+      completedFilesPromise !== null ? completedFilesPromise : Promise.resolve(null),
     ]);
+
+    const totalCompletedFiles = fileStatus === "complete" ? total : (rawCompletedFiles ?? 0);
 
     return {
       data: employees,
