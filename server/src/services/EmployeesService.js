@@ -196,33 +196,37 @@ class EmployeesService {
       orderBy = { JobTitle: { RankName: safeOrder } };
     }
 
-    // ─── Prisma $transaction — atomic count+findMany ─────────
+    // ─── Execute Queries Sequentially ─────────────────────────
+    // AVOID $transaction with SQL Server for heavy aggregations to prevent EINVALIDSTATE / Deadlocks
     const completedWhere = fileStatus === "incomplete"
       ? null
       : fileStatus === "complete"
       ? null
       : { ...whereClause, IsProfileComplete: true };
 
-    const [total, employees, rawCompletedFiles] = await prisma.$transaction([
-      prisma.employees.count({ where: whereClause }),
-      prisma.employees.findMany({
-        where: whereClause,
-        select: {
-          Id: true,
-          Name: true,
-          LastName: true,
-          Department: true,
-          Province: true,
-          Directorate: true,
-          EmployeeStatus: true,
-          IsProfileComplete: true,
-        },
-        skip,
-        take: safeLimit,
-        orderBy,
-      }),
-      ...(completedWhere ? [prisma.employees.count({ where: completedWhere })] : []),
-    ]);
+    const total = await prisma.employees.count({ where: whereClause });
+    
+    const employees = await prisma.employees.findMany({
+      where: whereClause,
+      select: {
+        Id: true,
+        Name: true,
+        LastName: true,
+        Department: true,
+        Province: true,
+        Directorate: true,
+        EmployeeStatus: true,
+        IsProfileComplete: true,
+      },
+      skip,
+      take: safeLimit,
+      orderBy,
+    });
+
+    let rawCompletedFiles = 0;
+    if (completedWhere) {
+      rawCompletedFiles = await prisma.employees.count({ where: completedWhere });
+    }
 
     const totalCompletedFiles = fileStatus === "complete" ? total : fileStatus === "incomplete" ? 0 : (rawCompletedFiles ?? 0);
 
