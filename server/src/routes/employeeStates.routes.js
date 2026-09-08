@@ -64,6 +64,18 @@ router.put("/:id", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
 });
 
 /**
+ * PUT /api/employee-states/:id/resume
+ */
+router.put("/:id/resume", hasPermission(PERMISSIONS.EDIT), async (req, res, next) => {
+  try {
+    const state = await EmployeeStatesService.resumeLeaveEarly(Number(req.params.id), req.body, req.user);
+    res.json({ success: true, data: state });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
  * DELETE /api/employee-states/:id
  */
 router.delete("/:id", hasPermission(PERMISSIONS.DELETE), async (req, res) => {

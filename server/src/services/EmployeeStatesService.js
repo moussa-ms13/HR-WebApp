@@ -168,7 +168,6 @@ class EmployeeStatesService {
    * Implements Annual Leave Engine and Balance Tracking.
    */
   static async create(data, requestingUser) {
-    // Verify the employee exists and user has geographic access
     const employee = await prisma.employees.findFirst({
       where: { Id: Number(data.EmployeesId) },
       include: { JobTitle: true },
@@ -182,67 +181,73 @@ class EmployeeStatesService {
       }
     }
 
-    let remainingBalanceAfter = null;
     const reqDays = parseInt(data.RequestedDays || data.DaysCount || 0, 10);
+    let remainingBalanceAfter = null;
+    let balanceId = null;
 
-    // Annual Leave Balance Engine
     if (reqDays > 0) {
       if (!prisma.leaveBalance) {
         throw new Error("[EmployeeStatesService] prisma.leaveBalance is undefined. Prisma Client is out of sync. Run npx prisma generate.");
       }
       const currentYear = new Date(data.StartDate).getFullYear();
-      let balance = await prisma.leaveBalance.findFirst({
-        where: { EmployeeId: data.EmployeesId, Year: currentYear }
+
+      // Atomic get-or-create — safe under concurrency thanks to the unique(EmployeeId, Year) constraint
+      const balance = await prisma.leaveBalance.upsert({
+        where: { EmployeeId_Year: { EmployeeId: Number(data.EmployeesId), Year: currentYear } },
+        create: { EmployeeId: Number(data.EmployeesId), Year: currentYear, TotalDays: 30, ConsumedDays: 0, RemainingDays: 30 },
+        update: {},
       });
+      balanceId = balance.Id;
 
-      if (!balance) {
-        // Initialize balance if missing
-        balance = await prisma.leaveBalance.create({
-          data: {
-            EmployeeId: data.EmployeesId,
-            Year: currentYear,
-            TotalDays: 30,
-            ConsumedDays: 0,
-            RemainingDays: 30
-          }
-        });
-      }
-
-      if (reqDays > balance.RemainingDays) {
-        throw ApiError.badRequest(`Requested days (${reqDays}) exceeds remaining balance (${balance.RemainingDays}) for year ${currentYear}.`);
-      }
-
-      // Deduct balance
-      await prisma.leaveBalance.update({
-        where: { Id: balance.Id },
+      // Single-statement atomic deduction — the balance check happens inside the WHERE, not in JS
+      const deduction = await prisma.leaveBalance.updateMany({
+        where: { Id: balance.Id, RemainingDays: { gte: reqDays } },
         data: {
-          ConsumedDays: balance.ConsumedDays + reqDays,
-          RemainingDays: balance.RemainingDays - reqDays
-        }
+          ConsumedDays: { increment: reqDays },
+          RemainingDays: { decrement: reqDays },
+        },
       });
 
-      remainingBalanceAfter = balance.RemainingDays - reqDays;
+      if (deduction.count === 0) {
+        const fresh = await prisma.leaveBalance.findUnique({ where: { Id: balance.Id } });
+        throw ApiError.badRequest(
+          `Requested days (${reqDays}) exceeds remaining balance (${fresh?.RemainingDays ?? 0}) for year ${currentYear}.`
+        );
+      }
+
+      const fresh = await prisma.leaveBalance.findUnique({ where: { Id: balance.Id } });
+      remainingBalanceAfter = fresh.RemainingDays;
     }
 
-    const state = await prisma.employeeStates.create({
-      data: {
-        EmployeesId: data.EmployeesId,
-        RecordCategory: data.RecordCategory,
-        CurrentJobTitle: data.CurrentJobTitle || employee.JobTitle?.RankName || "",
-        StateTypeOrReason: data.StateTypeOrReason,
-        DaysCount: reqDays,
-        StartDate: new Date(data.StartDate),
-        EndDate: new Date(data.EndDate),
-        AddedDate: new Date(),
-        UsersId: requestingUser.userName,
-        IsResumed: data.IsResumed || false,
-        ActualReturnDate: data.ActualReturnDate ? new Date(data.ActualReturnDate) : null,
-        RequestedDays: reqDays > 0 ? reqDays : null,
-        ResumptionDate: data.ResumptionDate ? new Date(data.ResumptionDate) : null,
-        IsResumedEarly: data.IsResumedEarly || false,
-        RemainingBalanceAfter: remainingBalanceAfter,
-      },
-    });
+    let state;
+    try {
+      state = await prisma.employeeStates.create({
+        data: {
+          EmployeesId: Number(data.EmployeesId),
+          RecordCategory: data.RecordCategory,
+          CurrentJobTitle: data.CurrentJobTitle || employee.JobTitle?.RankName || "",
+          StateTypeOrReason: data.StateTypeOrReason,
+          DaysCount: reqDays,
+          StartDate: new Date(data.StartDate),
+          EndDate: new Date(data.EndDate),
+          AddedDate: new Date(),
+          UsersId: requestingUser.userName,
+          IsResumed: false,
+          RequestedDays: reqDays > 0 ? reqDays : null,
+          IsResumedEarly: false,
+          RemainingBalanceAfter: remainingBalanceAfter,
+        },
+      });
+    } catch (err) {
+      // Compensate: refund the balance since the leave record failed to persist
+      if (reqDays > 0 && balanceId) {
+        await prisma.leaveBalance.updateMany({
+          where: { Id: balanceId },
+          data: { ConsumedDays: { decrement: reqDays }, RemainingDays: { increment: reqDays } },
+        });
+      }
+      throw err;
+    }
 
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
@@ -253,15 +258,15 @@ class EmployeeStatesService {
     });
 
     clearDashboardCacheSafe();
-
     return state;
+  }tate;
   }
 
   /**
    * Update an existing employee state.
    */
   static async update(id, data, requestingUser) {
-    const existing = await this.getById(id, requestingUser); // RBAC checked inside
+    const existing = await this.getById(id, requestingUser); 
 
     const state = await prisma.employeeStates.update({
       where: { Id: id },

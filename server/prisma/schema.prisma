@@ -110,6 +110,7 @@ model LeaveBalance {
   RemainingDays Int       @default(30)
   Employee      Employees @relation(fields: [EmployeeId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_LeaveBalance_Employees_EmployeeId")
 
+  @@unique([EmployeeId, Year], map: "UQ_LeaveBalance_EmployeeId_Year")
   @@index([EmployeeId], map: "IX_LeaveBalance_EmployeeId")
   @@map("LeaveBalance")
 }

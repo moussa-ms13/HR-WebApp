@@ -111,10 +111,11 @@ class EmployeesService {
     if (trimmedSearch) {
       const searchTerms = trimmedSearch.split(/\s+/);
       const isNumeric = /^\d+$/.test(trimmedSearch);
-      let searchOrConditions = [];
+      const searchOrConditions = [];
 
-      // Multi-word: cross-match Name+LastName in both orders
       if (searchTerms.length >= 2) {
+        // Only 2 distinct orderings exist for a 2-word name — the old 4-permutation
+        // version duplicated each one (slice(0,-1) === terms[0] for length 2).
         searchOrConditions.push({
           AND: [
             { Name: { contains: searchTerms[0] } },
@@ -123,39 +124,20 @@ class EmployeesService {
         });
         searchOrConditions.push({
           AND: [
-            { Name: { contains: searchTerms.slice(0, -1).join(" ") } },
-            { LastName: { contains: searchTerms[searchTerms.length - 1] } },
-          ],
-        });
-        searchOrConditions.push({
-          AND: [
             { Name: { contains: searchTerms.slice(1).join(" ") } },
             { LastName: { contains: searchTerms[0] } },
           ],
         });
-        searchOrConditions.push({
-          AND: [
-            { Name: { contains: searchTerms[searchTerms.length - 1] } },
-            { LastName: { contains: searchTerms.slice(0, -1).join(" ") } },
-          ],
-        });
+      } else {
+        searchOrConditions.push({ Name: { contains: trimmedSearch } });
+        searchOrConditions.push({ LastName: { contains: trimmedSearch } });
       }
 
-      // String field matches (always safe)
-      searchOrConditions.push({ Name: { contains: trimmedSearch } });
-      searchOrConditions.push({ LastName: { contains: trimmedSearch } });
       searchOrConditions.push({ NIN: { contains: trimmedSearch } });
       searchOrConditions.push({ JobTitle: { RankName: { contains: trimmedSearch } } });
+      if (isNumeric) searchOrConditions.push({ Id: parseInt(trimmedSearch, 10) });
 
-      // Integer field — ONLY if pure digits (prevents text→int Prisma crash)
-      if (isNumeric) {
-        searchOrConditions.push({ Id: parseInt(trimmedSearch, 10) });
-      }
-
-      whereClause.AND = [
-        ...(whereClause.AND || []),
-        { OR: searchOrConditions }
-      ];
+      whereClause.AND = [...(whereClause.AND || []), { OR: searchOrConditions }];
     }
 
     // Strict Schema-based Sort Mapping (Prevents PrismaClientValidationError on bad sort fields)
@@ -204,41 +186,24 @@ class EmployeesService {
       ? null
       : { ...whereClause, IsProfileComplete: true };
 
-    const total = await prisma.employees.count({ where: whereClause });
-    
-    const employees = await prisma.employees.findMany({
-      where: whereClause,
-      select: {
-        Id: true,
-        Name: true,
-        LastName: true,
-        Department: true,
-        Province: true,
-        Directorate: true,
-        EmployeeStatus: true,
-        IsProfileComplete: true,
-      },
-      skip,
-      take: safeLimit,
-      orderBy,
-    });
-
-    let rawCompletedFiles = 0;
-    if (completedWhere) {
-      rawCompletedFiles = await prisma.employees.count({ where: completedWhere });
-    }
+    // ─── Parallelize instead of three sequential awaits ───────
+    const [total, employees, rawCompletedFiles] = await Promise.all([
+      prisma.employees.count({ where: whereClause }),
+      prisma.employees.findMany({
+        where: whereClause,
+        select: { Id: true, Name: true, LastName: true, Department: true, Province: true, Directorate: true, EmployeeStatus: true, IsProfileComplete: true },
+        skip,
+        take: safeLimit,
+        orderBy,
+      }),
+      completedWhere ? prisma.employees.count({ where: completedWhere }) : Promise.resolve(0),
+    ]);
 
     const totalCompletedFiles = fileStatus === "complete" ? total : fileStatus === "incomplete" ? 0 : (rawCompletedFiles ?? 0);
 
     return {
       data: employees,
-      meta: {
-        total,
-        page: safePage,
-        limit: safeLimit,
-        totalPages: Math.ceil(total / safeLimit),
-        totalCompletedFiles,
-      }
+      meta: { total, page: safePage, limit: safeLimit, totalPages: Math.ceil(total / safeLimit), totalCompletedFiles },
     };
   }
 
