@@ -363,7 +363,7 @@ const EmployeeStatesList = () => {
                                 >
                                   تعديل السجل
                                 </button>
-                                {(st.RecordCategory === 'عطلة' || st.StateTypeOrReason === 'سنوية') && (
+                                {(st.RecordCategory?.includes('عطلة') || st.StateTypeOrReason === 'سنوية') && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handlePrint(st); }}
                                     className="w-full text-right px-4 py-2 text-sm text-emerald-600 hover:bg-emerald-50 flex items-center gap-2"
