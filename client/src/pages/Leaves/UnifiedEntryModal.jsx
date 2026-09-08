@@ -192,14 +192,15 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess, preSelectedEmployee = n
         // Route → POST /api/employee-states
         const payload = {
           EmployeesId: employeeId,
-          RecordCategory: 'تسجيل عطلة',
+          RecordCategory: 'تسجيل عطلة', // or 'عطلة'
           StateTypeOrReason: leaveForm.StateTypeOrReason,
           DaysCount: Number(leaveForm.DaysCount),
+          RequestedDays: Number(leaveForm.DaysCount),
           StartDate: leaveForm.StartDate,
           EndDate: leaveForm.EndDate,
           IsResumed: false,
           ActualReturnDate: null,
-          CurrentJobTitle: selectedEmployee.JobTitle?.RankName || ""
+          CurrentJobTitle: selectedEmployee?.JobTitle?.RankName || ""
         };
         await EmployeeStatesService.create(payload);
       } else {
