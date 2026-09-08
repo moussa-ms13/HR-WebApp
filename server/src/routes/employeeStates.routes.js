@@ -41,9 +41,14 @@ router.get("/:id", async (req, res) => {
 /**
  * POST /api/employee-states
  */
-router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res) => {
-  const state = await EmployeeStatesService.create(req.body, req.user);
-  res.status(201).json({ success: true, data: state });
+router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res, next) => {
+  try {
+    const state = await EmployeeStatesService.create(req.body, req.user);
+    res.status(201).json({ success: true, data: state });
+  } catch (error) {
+    console.error("🔥 CRITICAL LEAVE CREATE ERROR:", error);
+    next(error);
+  }
 });
 
 /**
