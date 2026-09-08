@@ -42,11 +42,15 @@ router.get("/:id", async (req, res) => {
  * POST /api/employee-states
  */
 router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res, next) => {
+  console.log("=> LEAVE CREATION API HIT. Body:", JSON.stringify(req.body));
+  console.log("=> req.user:", JSON.stringify(req.user));
   try {
     const state = await EmployeeStatesService.create(req.body, req.user);
+    console.log("=> LEAVE CREATION SUCCESS. State ID:", state?.Id);
     res.status(201).json({ success: true, data: state });
   } catch (error) {
-    console.error("🔥 CRITICAL LEAVE CREATE ERROR:", error);
+    console.error("🔥 INSTANT CRASH:", error?.message, error?.code, error?.meta);
+    console.error("🔥 FULL STACK:", error);
     next(error);
   }
 });
