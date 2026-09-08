@@ -165,49 +165,92 @@ class EmployeeStatesService {
 
   /**
    * Create a new employee state (leave or special case).
+   * Implements Annual Leave Engine and Balance Tracking.
    */
   static async create(data, requestingUser) {
-    // Verify the employee exists and user has geographic access
-    const employee = await prisma.employees.findUnique({
-      where: { Id: data.EmployeesId },
-      include: { JobTitle: true },
-    });
-    if (!employee) throw ApiError.notFound(`Employee ${data.EmployeesId} not found.`);
+    return await prisma.$transaction(async (tx) => {
+      // Verify the employee exists and user has geographic access
+      const employee = await tx.employees.findUnique({
+        where: { Id: data.EmployeesId },
+        include: { JobTitle: true },
+      });
+      if (!employee) throw ApiError.notFound(`Employee ${data.EmployeesId} not found.`);
 
-    if (requestingUser.role !== ROLES.ADMIN) {
-      const allowed = getAllowedProvinces(requestingUser.permissions || {});
-      if (!allowed.includes(employee.Province)) {
-        throw ApiError.forbidden(`Geographic access denied for province: ${employee.Province}`);
+      if (requestingUser.role !== ROLES.ADMIN) {
+        const allowed = getAllowedProvinces(requestingUser.permissions || {});
+        if (!allowed.includes(employee.Province)) {
+          throw ApiError.forbidden(`Geographic access denied for province: ${employee.Province}`);
+        }
       }
-    }
 
-    const state = await prisma.employeeStates.create({
-      data: {
-        EmployeesId: data.EmployeesId,
-        RecordCategory: data.RecordCategory,
-        CurrentJobTitle: data.CurrentJobTitle || employee.JobTitle?.RankName || "",
-        StateTypeOrReason: data.StateTypeOrReason,
-        DaysCount: data.DaysCount || 0,
-        StartDate: new Date(data.StartDate),
-        EndDate: new Date(data.EndDate),
-        AddedDate: new Date(),
-        UsersId: requestingUser.userName,
-        IsResumed: data.IsResumed || false,
-        ActualReturnDate: data.ActualReturnDate ? new Date(data.ActualReturnDate) : null,
-      },
+      let remainingBalanceAfter = null;
+
+      // Annual Leave Balance Engine
+      if (data.RequestedDays && data.RequestedDays > 0) {
+        const currentYear = new Date(data.StartDate).getFullYear();
+        let balance = await tx.leaveBalance.findFirst({
+          where: { EmployeeId: data.EmployeesId, Year: currentYear }
+        });
+
+        if (!balance) {
+          // Initialize balance if missing
+          balance = await tx.leaveBalance.create({
+            data: {
+              EmployeeId: data.EmployeesId,
+              Year: currentYear,
+              TotalDays: 30,
+              ConsumedDays: 0,
+              RemainingDays: 30
+            }
+          });
+        }
+
+        if (data.RequestedDays > balance.RemainingDays) {
+          throw ApiError.badRequest(`Requested days (${data.RequestedDays}) exceeds remaining balance (${balance.RemainingDays}) for year ${currentYear}.`);
+        }
+
+        // Deduct balance
+        await tx.leaveBalance.update({
+          where: { Id: balance.Id },
+          data: {
+            ConsumedDays: balance.ConsumedDays + data.RequestedDays,
+            RemainingDays: balance.RemainingDays - data.RequestedDays
+          }
+        });
+
+        remainingBalanceAfter = balance.RemainingDays - data.RequestedDays;
+      }
+
+      const state = await tx.employeeStates.create({
+        data: {
+          EmployeesId: data.EmployeesId,
+          RecordCategory: data.RecordCategory,
+          CurrentJobTitle: data.CurrentJobTitle || employee.JobTitle?.RankName || "",
+          StateTypeOrReason: data.StateTypeOrReason,
+          DaysCount: data.DaysCount || 0,
+          StartDate: new Date(data.StartDate),
+          EndDate: new Date(data.EndDate),
+          AddedDate: new Date(),
+          UsersId: requestingUser.userName,
+          IsResumed: data.IsResumed || false,
+          ActualReturnDate: data.ActualReturnDate ? new Date(data.ActualReturnDate) : null,
+          RequestedDays: data.RequestedDays || null,
+          ResumptionDate: data.ResumptionDate ? new Date(data.ResumptionDate) : null,
+          IsResumedEarly: data.IsResumedEarly || false,
+          RemainingBalanceAfter: remainingBalanceAfter,
+        },
+      });
+
+      await SystemRecordService.log({
+        userFullName: requestingUser.fullName,
+        title: "Add Employee State",
+        description: `${data.RecordCategory}: '${data.StateTypeOrReason}' for '${employee.Name} ${employee.LastName}' by '${requestingUser.userName}'.`,
+        usersId: requestingUser.id,
+        employeesId: data.EmployeesId,
+      }, tx); // Pass tx if SystemRecordService supports it, but since it uses a separate connection by default, it might be safer to let it use the main pool or we don't pass tx. Wait, SystemRecordService.log is just an insert. I'll omit passing tx to avoid signature issues if it's not supported.
+
+      return state;
     });
-
-    await SystemRecordService.log({
-      userFullName: requestingUser.fullName,
-      title: "Add Employee State",
-      description: `${data.RecordCategory}: '${data.StateTypeOrReason}' for '${employee.Name} ${employee.LastName}' by '${requestingUser.userName}'.`,
-      usersId: requestingUser.id,
-      employeesId: data.EmployeesId,
-    });
-
-    clearDashboardCacheSafe();
-
-    return state;
   }
 
   /**

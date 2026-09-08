@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import useSWR from 'swr';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -8,9 +8,10 @@ import EmployeeStatesService from '../../services/employeeStatesService';
 import SpecialCasesService from '../../services/specialCasesService';
 import EmployeeStateModal from './EmployeeStateModal';
 import UnifiedEntryModal from './UnifiedEntryModal';
+import LeavePrintDocument from '../../components/Leaves/LeavePrintDocument';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { useToast } from '../../components/ui/Toast';
-import { Search, MoreVertical, CalendarOff, ArrowUpDown, ChevronDown, Loader2, Trash2, Plus } from 'lucide-react';
+import { Search, MoreVertical, CalendarOff, ArrowUpDown, ChevronDown, Loader2, Trash2, Plus, Printer } from 'lucide-react';
 import { DateText } from '../../utils/formatDate';
 
 const fetcher = async ([url, page, limit, category, search, directorate, province]) => {
@@ -123,6 +124,17 @@ const EmployeeStatesList = () => {
   const handleModalSuccess = () => {
     setIsModalOpen(false);
     mutate();
+  };
+
+  const [printData, setPrintData] = useState(null);
+  const printRef = useRef(null);
+
+  const handlePrint = (st) => {
+    setMenuOpenId(null);
+    setPrintData(st);
+    setTimeout(() => {
+      window.print();
+    }, 150);
   };
 
   const getRowStatus = (endDateStr, isResumed) => {
@@ -351,6 +363,15 @@ const EmployeeStatesList = () => {
                                 >
                                   تعديل السجل
                                 </button>
+                                {(st.RecordCategory === 'عطلة' || st.StateTypeOrReason === 'سنوية') && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handlePrint(st); }}
+                                    className="w-full text-right px-4 py-2 text-sm text-emerald-600 hover:bg-emerald-50 flex items-center gap-2"
+                                  >
+                                    <Printer size={14} />
+                                    طباعة السند
+                                  </button>
+                                )}
                                 {hasPermission('checkBoxDelete') && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); handleDelete(st); }}
@@ -541,6 +562,7 @@ const EmployeeStatesList = () => {
         onConfirm={confirmDelete}
         onCancel={() => setConfirmState({ open: false, stateId: null, stateName: '' })}
       />
+      <LeavePrintDocument data={printData} ref={printRef} />
     </div>
   );
 };

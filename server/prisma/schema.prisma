@@ -71,6 +71,7 @@ model Employees {
   NIN               String             @db.NVarChar(Max)
   SIS               String             @db.NVarChar(Max)
   AssignedPosition  String             @db.NVarChar(Max)
+  CorpsType         String?            @db.NVarChar(Max) @default("سلك_مشترك")
   ConfirmationDate  DateTime?
   Degree            Int
   EmployeeStatus    String?            @default("نشط") @db.NVarChar(50)
@@ -88,6 +89,7 @@ model Employees {
   JobTitle          JobTitles          @relation(fields: [JobTitleId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_Employees_JobTitles_JobTitleId")
   EmployeesRecords  EmployeesRecords[]
   EmployeeStates    EmployeeStates[]
+  LeaveBalances     LeaveBalance[]
   SpecialCases      SpecialCases[]
   PositionHistories PositionHistory[]
   RankHistories     RankHistory[]
@@ -97,6 +99,19 @@ model Employees {
   @@index([JobTitleId], map: "IX_Employees_JobTitleId")
   @@index([EmployeeStatus], map: "IX_Employees_EmployeeStatus")
   @@map("Employees")
+}
+
+model LeaveBalance {
+  Id            Int       @id(map: "PK_LeaveBalance") @default(autoincrement())
+  EmployeeId    Int
+  Year          Int
+  TotalDays     Int       @default(30)
+  ConsumedDays  Int       @default(0)
+  RemainingDays Int       @default(30)
+  Employee      Employees @relation(fields: [EmployeeId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_LeaveBalance_Employees_EmployeeId")
+
+  @@index([EmployeeId], map: "IX_LeaveBalance_EmployeeId")
+  @@map("LeaveBalance")
 }
 
 model DegreeHistory {
@@ -155,19 +170,23 @@ model EmployeesRecords {
 }
 
 model EmployeeStates {
-  Id                Int       @id(map: "PK_EmployeeStates") @default(autoincrement())
-  EmployeesId       Int
-  RecordCategory    String    @db.NVarChar(Max)
-  CurrentJobTitle   String    @db.NVarChar(Max)
-  StateTypeOrReason String    @db.NVarChar(Max)
-  DaysCount         Int
-  StartDate         DateTime
-  EndDate           DateTime
-  AddedDate         DateTime
-  UsersId           String    @db.NVarChar(Max)
-  ActualReturnDate  DateTime?
-  IsResumed         Boolean
-  Employee          Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_EmployeeStates_Employees_EmployeesId")
+  Id                    Int       @id(map: "PK_EmployeeStates") @default(autoincrement())
+  EmployeesId           Int
+  RecordCategory        String    @db.NVarChar(Max)
+  CurrentJobTitle       String    @db.NVarChar(Max)
+  StateTypeOrReason     String    @db.NVarChar(Max)
+  DaysCount             Int
+  StartDate             DateTime
+  EndDate               DateTime
+  AddedDate             DateTime
+  UsersId               String    @db.NVarChar(Max)
+  ActualReturnDate      DateTime?
+  IsResumed             Boolean
+  RequestedDays         Int?
+  ResumptionDate        DateTime?
+  IsResumedEarly        Boolean   @default(false)
+  RemainingBalanceAfter Int?
+  Employee              Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_EmployeeStates_Employees_EmployeesId")
 
   @@index([EndDate])
   @@index([IsResumed])
