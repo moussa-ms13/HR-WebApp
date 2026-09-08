@@ -169,8 +169,8 @@ class EmployeeStatesService {
    */
   static async create(data, requestingUser) {
     // Verify the employee exists and user has geographic access
-    const employee = await prisma.employees.findUnique({
-      where: { Id: data.EmployeesId },
+    const employee = await prisma.employees.findFirst({
+      where: { Id: Number(data.EmployeesId) },
       include: { JobTitle: true },
     });
     if (!employee) throw ApiError.notFound(`Employee ${data.EmployeesId} not found.`);
