@@ -187,6 +187,9 @@ class EmployeeStatesService {
 
     // Annual Leave Balance Engine
     if (reqDays > 0) {
+      if (!prisma.leaveBalance) {
+        throw new Error("[EmployeeStatesService] prisma.leaveBalance is undefined. Prisma Client is out of sync. Run npx prisma generate.");
+      }
       const currentYear = new Date(data.StartDate).getFullYear();
       let balance = await prisma.leaveBalance.findFirst({
         where: { EmployeeId: data.EmployeesId, Year: currentYear }
