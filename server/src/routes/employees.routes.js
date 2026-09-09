@@ -1,6 +1,5 @@
 // ============================================================
 // Employees Routes — /api/employees
-// Handles Employee CRUD operations, enforcing RBAC
 // ============================================================
 const express = require("express");
 const EmployeesService = require("../services/EmployeesService");

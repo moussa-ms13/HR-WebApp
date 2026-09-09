@@ -264,35 +264,35 @@ class EmployeeStatesService {
   /**
    * Update an existing employee state.
    */
-   static async update(id, data, requestingUser) {
-  const existing = await this.getById(id, requestingUser);
+  static async update(id, data, requestingUser) {
+    const existing = await this.getById(id, requestingUser);
 
-  const state = await prisma.employeeStates.update({
-    where: { Id: id },
-    data: {
-      RecordCategory: data.RecordCategory ?? existing.RecordCategory,
-      CurrentJobTitle: data.CurrentJobTitle ?? existing.CurrentJobTitle,
-      StateTypeOrReason: data.StateTypeOrReason ?? existing.StateTypeOrReason,
-      DaysCount: data.DaysCount ?? existing.DaysCount,
-      StartDate: data.StartDate ? new Date(data.StartDate) : existing.StartDate,
-      EndDate: data.EndDate ? new Date(data.EndDate) : existing.EndDate,
-      IsResumed: data.IsResumed !== undefined ? data.IsResumed : existing.IsResumed,
-      ActualReturnDate: data.ActualReturnDate ? new Date(data.ActualReturnDate) : existing.ActualReturnDate,
-    },
-  });
+    const state = await prisma.employeeStates.update({
+      where: { Id: id },
+      data: {
+        RecordCategory: data.RecordCategory ?? existing.RecordCategory,
+        CurrentJobTitle: data.CurrentJobTitle ?? existing.CurrentJobTitle,
+        StateTypeOrReason: data.StateTypeOrReason ?? existing.StateTypeOrReason,
+        DaysCount: data.DaysCount ?? existing.DaysCount,
+        StartDate: data.StartDate ? new Date(data.StartDate) : existing.StartDate,
+        EndDate: data.EndDate ? new Date(data.EndDate) : existing.EndDate,
+        IsResumed: data.IsResumed !== undefined ? data.IsResumed : existing.IsResumed,
+        ActualReturnDate: data.ActualReturnDate ? new Date(data.ActualReturnDate) : existing.ActualReturnDate,
+      },
+    });
 
-  await SystemRecordService.log({
-    userFullName: requestingUser.fullName,
-    title: "Edit Employee State",
-    description: `State '${state.StateTypeOrReason}' updated for employee ID ${state.EmployeesId} by '${requestingUser.userName}'.`,
-    usersId: requestingUser.id,
-    employeesId: state.EmployeesId,
-  });
+    await SystemRecordService.log({
+      userFullName: requestingUser.fullName,
+      title: "Edit Employee State",
+      description: `State '${state.StateTypeOrReason}' updated for employee ID ${state.EmployeesId} by '${requestingUser.userName}'.`,
+      usersId: requestingUser.id,
+      employeesId: state.EmployeesId,
+    });
 
-  clearDashboardCacheSafe();
+    clearDashboardCacheSafe();
 
-  return state;
-}
+    return state;
+  }
 
   /**
    * Delete an employee state.
@@ -305,7 +305,7 @@ class EmployeeStatesService {
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
       title: "Delete Employee State",
-      description: `State '${existing.StateTypeOrReason}' deleted for employee '${existing.Employee.Name} ${existing.Employee.LastName}' by ${requestingUser.userName}`,
+      description: `State '${existing.StateTypeOrReason}' deleted for employee '${existing.Employee.Name} ${existing.Employee.LastName}' by '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
     });
 
@@ -313,6 +313,83 @@ class EmployeeStatesService {
 
     return { message: "State deleted successfully." };
   }
+
+  /**
+   * Resume a leave early — saga pattern with balance refund.
+   * Marks the leave as resumed, sets the actual return date,
+   * and refunds unused days back to the employee's balance.
+   */
+  static async resumeLeaveEarly(id, data, requestingUser) {
+    const existing = await this.getById(id, requestingUser);
+
+    if (existing.IsResumed) {
+      throw ApiError.badRequest(`Leave record ${id} is already resumed.`);
+    }
+
+    const actualReturnDate = new Date(data.ActualReturnDate || new Date());
+    const startDate = new Date(existing.StartDate);
+    const originalDays = existing.RequestedDays || existing.DaysCount || 0;
+
+    // Calculate consumed days (at least 1)
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const consumedDays = Math.max(1, Math.ceil((actualReturnDate - startDate) / msPerDay));
+    const refundDays = Math.max(0, originalDays - consumedDays);
+
+    let state;
+    try {
+      // Step 1: Update the leave record
+      state = await prisma.employeeStates.update({
+        where: { Id: id },
+        data: {
+          IsResumed: true,
+          IsResumedEarly: true,
+          ActualReturnDate: actualReturnDate,
+          DaysCount: consumedDays,
+        },
+      });
+
+      // Step 2: Refund unused days to balance
+      if (refundDays > 0) {
+        const currentYear = startDate.getFullYear();
+        await prisma.leaveBalance.updateMany({
+          where: {
+            EmployeeId: existing.EmployeesId,
+            Year: currentYear,
+          },
+          data: {
+            ConsumedDays: { decrement: refundDays },
+            RemainingDays: { increment: refundDays },
+          },
+        });
+      }
+    } catch (err) {
+      // Compensate: revert the leave record if balance refund failed
+      if (state) {
+        await prisma.employeeStates.update({
+          where: { Id: id },
+          data: {
+            IsResumed: false,
+            IsResumedEarly: false,
+            ActualReturnDate: null,
+            DaysCount: originalDays,
+          },
+        }).catch(() => {}); // best-effort rollback
+      }
+      throw err;
+    }
+
+    await SystemRecordService.log({
+      userFullName: requestingUser.fullName,
+      title: "Resume Leave Early",
+      description: `Leave '${existing.StateTypeOrReason}' resumed early for employee ID ${existing.EmployeesId}. Refunded ${refundDays} days by '${requestingUser.userName}'.`,
+      usersId: requestingUser.id,
+      employeesId: existing.EmployeesId,
+    });
+
+    clearDashboardCacheSafe();
+    return state;
+  }
 }
 
 module.exports = EmployeeStatesService;
+
