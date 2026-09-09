@@ -34,9 +34,10 @@ const LeavePrintDocument = React.forwardRef(({ data }, ref) => {
   const postTense = isFemale ? 'بمنصبها' : 'بمنصبه';
 
   // Dynamic Corps Logic
-  const corpsDecree = emp.CorpsType === 'سلك_خاص'
+  const isSpecialCorps = emp.CorpsType === 'سلك_خاص' || (emp.JobTitle && emp.JobTitle.EmploymentCategory && emp.JobTitle.EmploymentCategory.includes('خاص'));
+  const corpsDecree = isSpecialCorps
     ? 'وبمقتضى المرسوم التنفيذي رقم 10-300 المؤرخ في 23 ذي الحجة عام 1431 الموافق 29 نوفمبر سنة 2010 المتضمن القانون الأساسي الخاص بالموظفين المنتمين للأسلاك الخاصة بالإدارة المكلفة بأملاك الدولة والحفظ العقاري ومسح الأراضي،'
-    : 'وبمقتضى المرسوم التنفيذي الخاص بالأسلاك المشتركة،';
+    : 'وبمقتضى المرسوم التنفيذي رقم 08-04 المؤرخ في 11 محرم عام 1429 الموافق 19 جانفي سنة 2008، المتضمن القانون الأساسي الخاص بالموظفين المنتمين للأسلاك المشتركة في المؤسسات والإدارات العمومية، المعدل والمتمم،';
 
   const formattedStartDate = new Date(data.StartDate).toLocaleDateString('en-GB');
   const formattedEndDate = data.EndDate ? new Date(data.EndDate).toLocaleDateString('en-GB') : '';
