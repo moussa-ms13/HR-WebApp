@@ -1,4 +1,21 @@
 import React from 'react';
+import QRCode from 'react-qr-code';
+
+const arabicToLatin = (text) => {
+  if (!text) return '';
+  const map = {
+    'أ':'A','ا':'A','إ':'E','آ':'A',
+    'ب':'B','ت':'T','ث':'T',
+    'ج':'J','ح':'H','خ':'K',
+    'د':'D','ذ':'D','ر':'R','ز':'Z',
+    'س':'S','ش':'S','ص':'S','ض':'D',
+    'ط':'T','ظ':'Z','ع':'A','غ':'G',
+    'ف':'F','ق':'K','ك':'K','ل':'L',
+    'م':'M','ن':'N','ه':'H','و':'O',
+    'ي':'Y','ى':'A','ة':'A','ئ':'E','ؤ':'O'
+  };
+  return text.split('').map(char => map[char] || char).join('');
+};
 
 const LeavePrintDocument = React.forwardRef(({ data }, ref) => {
   if (!data) return null;
@@ -26,14 +43,40 @@ const LeavePrintDocument = React.forwardRef(({ data }, ref) => {
   const formattedResumptionDate = data.ResumptionDate ? new Date(data.ResumptionDate).toLocaleDateString('en-GB') : '';
   const currentYear = new Date(data.StartDate).getFullYear();
 
+  // Unique Code Logic
+  const latinName = arabicToLatin(emp.Name).replace(/[^A-Z]/ig, '').toUpperCase();
+  const latinLastName = arabicToLatin(emp.LastName).replace(/[^A-Z]/ig, '').toUpperCase();
+  const namePrefix = (latinName + 'XX').substring(0, 2);
+  const lastNamePrefix = (latinLastName + 'XX').substring(0, 2);
+
+  const formatCodeDate = (dateString) => {
+    if (!dateString) return '00000000';
+    const d = new Date(dateString);
+    if (isNaN(d)) return '00000000';
+    return d.toISOString().split('T')[0].replace(/-/g, '');
+  };
+
+  const DOB = formatCodeDate(emp.DateOfBirth);
+  const HireDate = formatCodeDate(emp.InstallationDate);
+  const referenceCode = `${namePrefix}-${lastNamePrefix}-${DOB}-${HireDate}`;
+
   return (
     <div ref={ref} className="hidden print:block print-container bg-white text-black p-8 text-right font-arabic" dir="rtl" style={{ fontFamily: '"Times New Roman", Times, serif', fontSize: '14pt', lineHeight: '1.6' }}>
       <div className="flex justify-between items-start mb-6">
-        <div></div>
+        <div className="flex flex-col items-center border border-gray-300 p-2 rounded-lg bg-gray-50">
+          <QRCode 
+            value={`الرقم المرجعي: ${referenceCode} | الموظف: ${emp.Name} ${emp.LastName} | من: ${formattedStartDate} إلى: ${formattedEndDate}`} 
+            size={80} 
+            level="M" 
+          />
+          <span className="mt-2 text-xs font-mono font-bold" dir="ltr" style={{ fontFamily: 'monospace' }}>
+            {referenceCode}
+          </span>
+        </div>
         <div className="text-center font-bold">
           <p>الجمهورية الجزائرية الديمقراطية الشعبية</p>
         </div>
-        <div></div>
+        <div className="w-[100px]"></div> {/* Spacer to balance flex layout */}
       </div>
 
       <div className="mb-8">
