@@ -25,5 +25,6 @@ router.use("/special-cases", specialCasesGlobalRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/employee-files", employeeFilesDownloadRoutes);
 router.use("/settings", settingsRoutes);
+router.use("/leave-balances", require("./leaveBalances.routes"));
 
 module.exports = router;

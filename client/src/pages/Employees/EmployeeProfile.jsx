@@ -91,6 +91,13 @@ const EmployeeProfile = () => {
   );
   const leaves = leavesData?.data || [];
 
+  const currentYear = new Date().getFullYear();
+  const { data: leaveBalanceData } = useSWR(
+    id && activeTab === 'leaves' ? `/leave-balances/employee/${id}/${currentYear}` : null,
+    fetcher
+  );
+  const leaveBalance = leaveBalanceData?.data || null;
+
   // --- Special Cases State (lazy loaded on tab switch) ---
   const { data: specialCasesData, isLoading: isSpecialCasesLoading, mutate: mutateSpecialCases } = useSWR(
     id && activeTab === 'special-cases' ? [`special-cases-${id}`] : null,
@@ -846,6 +853,25 @@ const EmployeeProfile = () => {
           <div className="p-6 border-b border-gray-200 flex justify-between items-center">
             <h3 className="text-lg font-bold text-slate-800">سجل الإجازات والحالات</h3>
           </div>
+          
+          {/* Leave Balance Dashboard */}
+          {leaveBalance && (
+            <div className="grid grid-cols-3 gap-4 p-6 bg-slate-50 border-b border-gray-200">
+              <div className="bg-white border border-blue-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
+                <span className="text-xs font-semibold text-blue-600 mb-1">الرصيد السنوي ({currentYear})</span>
+                <span className="text-2xl font-bold text-blue-800">{leaveBalance.TotalDays}</span>
+              </div>
+              <div className="bg-white border border-orange-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
+                <span className="text-xs font-semibold text-orange-600 mb-1">المستهلك</span>
+                <span className="text-2xl font-bold text-orange-800">{leaveBalance.ConsumedDays}</span>
+              </div>
+              <div className="bg-white border border-emerald-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
+                <span className="text-xs font-semibold text-emerald-600 mb-1">الرصيد المتبقي</span>
+                <span className="text-2xl font-bold text-emerald-800">{leaveBalance.RemainingDays}</span>
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto flex-1 custom-scrollbar">
             <table className="w-full text-right border-collapse whitespace-nowrap">
               <thead className="bg-white text-gray-500 text-sm border-b border-gray-200 sticky top-0">

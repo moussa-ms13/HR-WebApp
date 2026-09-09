@@ -259,41 +259,40 @@ class EmployeeStatesService {
 
     clearDashboardCacheSafe();
     return state;
-  }tate;
   }
 
   /**
    * Update an existing employee state.
    */
-  static async update(id, data, requestingUser) {
-    const existing = await this.getById(id, requestingUser); 
+   static async update(id, data, requestingUser) {
+  const existing = await this.getById(id, requestingUser);
 
-    const state = await prisma.employeeStates.update({
-      where: { Id: id },
-      data: {
-        RecordCategory: data.RecordCategory ?? existing.RecordCategory,
-        CurrentJobTitle: data.CurrentJobTitle ?? existing.CurrentJobTitle,
-        StateTypeOrReason: data.StateTypeOrReason ?? existing.StateTypeOrReason,
-        DaysCount: data.DaysCount ?? existing.DaysCount,
-        StartDate: data.StartDate ? new Date(data.StartDate) : existing.StartDate,
-        EndDate: data.EndDate ? new Date(data.EndDate) : existing.EndDate,
-        IsResumed: data.IsResumed !== undefined ? data.IsResumed : existing.IsResumed,
-        ActualReturnDate: data.ActualReturnDate ? new Date(data.ActualReturnDate) : existing.ActualReturnDate,
-      },
-    });
+  const state = await prisma.employeeStates.update({
+    where: { Id: id },
+    data: {
+      RecordCategory: data.RecordCategory ?? existing.RecordCategory,
+      CurrentJobTitle: data.CurrentJobTitle ?? existing.CurrentJobTitle,
+      StateTypeOrReason: data.StateTypeOrReason ?? existing.StateTypeOrReason,
+      DaysCount: data.DaysCount ?? existing.DaysCount,
+      StartDate: data.StartDate ? new Date(data.StartDate) : existing.StartDate,
+      EndDate: data.EndDate ? new Date(data.EndDate) : existing.EndDate,
+      IsResumed: data.IsResumed !== undefined ? data.IsResumed : existing.IsResumed,
+      ActualReturnDate: data.ActualReturnDate ? new Date(data.ActualReturnDate) : existing.ActualReturnDate,
+    },
+  });
 
-    await SystemRecordService.log({
-      userFullName: requestingUser.fullName,
-      title: "Edit Employee State",
-      description: `State '${state.StateTypeOrReason}' updated for employee ID ${state.EmployeesId} by '${requestingUser.userName}'.`,
-      usersId: requestingUser.id,
-      employeesId: state.EmployeesId,
-    });
+  await SystemRecordService.log({
+    userFullName: requestingUser.fullName,
+    title: "Edit Employee State",
+    description: `State '${state.StateTypeOrReason}' updated for employee ID ${state.EmployeesId} by '${requestingUser.userName}'.`,
+    usersId: requestingUser.id,
+    employeesId: state.EmployeesId,
+  });
 
-    clearDashboardCacheSafe();
+  clearDashboardCacheSafe();
 
-    return state;
-  }
+  return state;
+}
 
   /**
    * Delete an employee state.
@@ -306,7 +305,7 @@ class EmployeeStatesService {
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
       title: "Delete Employee State",
-      description: `State '${existing.StateTypeOrReason}' deleted for employee '${existing.Employee.Name} ${existing.Employee.LastName}' by '${requestingUser.userName}'.`,
+      description: `State '${existing.StateTypeOrReason}' deleted for employee '${existing.Employee.Name} ${existing.Employee.LastName}' by ${requestingUser.userName}`,
       usersId: requestingUser.id,
     });
 
