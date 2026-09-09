@@ -24,8 +24,12 @@ router.use("/:id/special-cases", specialCasesRoutes);
  * GET /api/employees/export
  * Export employees to Excel
  */
-router.get("/export", async (req, res) => {
-  await ExportService.exportEmployeesToExcel(res);
+router.get("/export", async (req, res, next) => {
+  try {
+    await ExportService.exportEmployeesToExcel(res);
+  } catch (error) {
+    next(error);
+  }
 });
 
 
@@ -34,10 +38,14 @@ router.get("/export", async (req, res) => {
  * Lightweight autocomplete lookup — strict DTO, max 15 results.
  * MUST be registered before /:id so "search" is not parsed as an id.
  */
-router.get("/search", async (req, res) => {
-  const { q, province, directorate } = req.query;
-  const data = await EmployeesService.search(req.user, q || "", province || "", directorate || "");
-  res.json({ success: true, data });
+router.get("/search", async (req, res, next) => {
+  try {
+    const { q, province, directorate } = req.query;
+    const data = await EmployeesService.search(req.user, q || "", province || "", directorate || "");
+    res.json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
 });
 
 const EmployeesController = require("../controllers/employees.controller");

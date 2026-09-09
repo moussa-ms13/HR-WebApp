@@ -15,27 +15,35 @@ router.use(authenticate);
  * GET /api/employee-states
  * Paginated list with optional category filter
  */
-router.get("/", async (req, res) => {
-  const { page, limit, category, employeeId, search, directorate, province } = req.query;
-  const result = await EmployeeStatesService.getAll(
-    req.user,
-    Number(page) || 1,
-    Number(limit) || 25,
-    category || "",
-    employeeId || null,
-    search || "",
-    directorate || "",
-    province || ""
-  );
-  res.json({ success: true, ...result });
+router.get("/", async (req, res, next) => {
+  try {
+    const { page, limit, category, employeeId, search, directorate, province } = req.query;
+    const result = await EmployeeStatesService.getAll(
+      req.user,
+      Number(page) || 1,
+      Number(limit) || 25,
+      category || "",
+      employeeId || null,
+      search || "",
+      directorate || "",
+      province || ""
+    );
+    res.json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * GET /api/employee-states/:id
  */
-router.get("/:id", async (req, res) => {
-  const state = await EmployeeStatesService.getById(Number(req.params.id), req.user);
-  res.json({ success: true, data: state });
+router.get("/:id", async (req, res, next) => {
+  try {
+    const state = await EmployeeStatesService.getById(Number(req.params.id), req.user);
+    res.json({ success: true, data: state });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -58,9 +66,13 @@ router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res, next) => {
 /**
  * PUT /api/employee-states/:id
  */
-router.put("/:id", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
-  const state = await EmployeeStatesService.update(Number(req.params.id), req.body, req.user);
-  res.json({ success: true, data: state });
+router.put("/:id", hasPermission(PERMISSIONS.EDIT), async (req, res, next) => {
+  try {
+    const state = await EmployeeStatesService.update(Number(req.params.id), req.body, req.user);
+    res.json({ success: true, data: state });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
@@ -78,9 +90,13 @@ router.put("/:id/resume", hasPermission(PERMISSIONS.EDIT), async (req, res, next
 /**
  * DELETE /api/employee-states/:id
  */
-router.delete("/:id", hasPermission(PERMISSIONS.DELETE), async (req, res) => {
-  const result = await EmployeeStatesService.delete(Number(req.params.id), req.user);
-  res.json({ success: true, ...result });
+router.delete("/:id", hasPermission(PERMISSIONS.DELETE), async (req, res, next) => {
+  try {
+    const result = await EmployeeStatesService.delete(Number(req.params.id), req.user);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
 });
 
 module.exports = router;
