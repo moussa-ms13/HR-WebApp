@@ -15,8 +15,12 @@ router.use(authenticate);
  */
 router.get("/", async (req, res, next) => {
   try {
-    const files = await EmployeeFilesService.getFilesByEmployee(Number(req.params.id), req.user);
-    res.json({ success: true, data: files });
+    const result = await EmployeeFilesService.getFilesByEmployee(
+      Number(req.params.id),
+      req.user,
+      { page: req.query.page, limit: req.query.limit }
+    );
+    res.json({ success: true, ...result });
   } catch (error) {
     next(error);
   }

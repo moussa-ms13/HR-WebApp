@@ -84,39 +84,45 @@ class EmployeeFilesService {
   }
 
   /**
-   * Get all files for a specific employee — metadata only, no file bytes or paths.
+   * Get files for a specific employee — paginated, metadata only.
    */
-  static async getFilesByEmployee(employeeId, requestingUser) {
+  static async getFilesByEmployee(employeeId, requestingUser, { page = 1, limit = 1000 } = {}) {
     // RBAC check
     await EmployeesService.getById(employeeId, requestingUser);
 
-    const records = await prisma.employeeFiles.findMany({
-      where: { EmployeesId: employeeId },
-      select: {
-        Id: true,
-        DocumentName: true,
-        FileName: true,
-        FilePath: true,
-        Category: true,
-        UploadDate: true,
-      },
-      orderBy: { UploadDate: 'desc' }
-    });
+    const safeLimit = Math.min(Math.max(Number(limit) || 1000, 1), 1000);
+    const safePage = Math.max(Number(page) || 1, 1);
+    const skip = (safePage - 1) * safeLimit;
 
-    return records.map(file => {
-      let isMissing = false;
-      try {
-        if (file.FilePath) {
-          const fullPath = this.getPhysicalPath(file.FilePath);
-          if (!fs.existsSync(fullPath)) {
-            isMissing = true;
-          }
-        }
-      } catch (err) {
-        isMissing = true; // Flag as missing if path resolution or fs fails
-      }
-      return { ...file, isMissing };
-    });
+    const where = { EmployeesId: employeeId };
+
+    const [total, records] = await Promise.all([
+      prisma.employeeFiles.count({ where }),
+      prisma.employeeFiles.findMany({
+        where,
+        select: {
+          Id: true,
+          DocumentName: true,
+          FileName: true,
+          FilePath: true,
+          Category: true,
+          UploadDate: true,
+        },
+        orderBy: { UploadDate: 'desc' },
+        skip,
+        take: safeLimit,
+      }),
+    ]);
+
+    return {
+      data: records,
+      pagination: {
+        page: safePage,
+        pageSize: safeLimit,
+        total,
+        totalPages: Math.ceil(total / safeLimit),
+      },
+    };
   }
 
   /**

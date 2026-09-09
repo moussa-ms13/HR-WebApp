@@ -268,13 +268,6 @@ const EmployeesList = () => {
 
       {/* DataGrid */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col relative">
-        {/* Refreshing indicator — subtle top bar */}
-        {isRefreshing && (
-          <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-center gap-2 py-1.5 bg-emerald-50/90 border-b border-emerald-200 text-emerald-700 text-xs font-medium backdrop-blur-sm">
-            <Loader2 size={14} className="animate-spin" />
-            جاري التحديث...
-          </div>
-        )}
         <div className="overflow-x-auto flex-1 custom-scrollbar">
           <table className="w-full text-right border-collapse">
             <thead className="sticky top-0 z-10">

@@ -346,11 +346,12 @@ const EmployeeProfile = () => {
 
   // --- Files State (Conditional SWR — lazy loaded on tab switch) ---
   const { data: filesData, isLoading: isFilesLoading, mutate: mutateFiles } = useSWR(
-    id && activeTab === 'documents' ? `/employees/${id}/files` : null,
+    id && activeTab === 'documents' ? `/employees/${id}/files?limit=100` : null,
     fetcher,
     { keepPreviousData: true }
   );
   const files = filesData?.data || [];
+  const filesTotalCount = filesData?.pagination?.total ?? files.length;
 
   // --- Upload State (Batch Upload) ---
   const [isUploading, setIsUploading] = useState(false);
@@ -1327,7 +1328,7 @@ const EmployeeProfile = () => {
             </div>
             <div className="border border-gray-200 rounded-xl p-3 flex flex-col items-center justify-center min-w-[120px] bg-slate-50">
               <div className="flex items-center gap-2 text-slate-800 mb-1">
-                <span className="text-2xl font-bold">{files.length}</span>
+                <span className="text-2xl font-bold">{filesTotalCount}</span>
                 <FileText size={20} className="text-emerald-500" />
               </div>
               <span className="text-xs font-medium text-gray-500">عدد الملفات</span>
