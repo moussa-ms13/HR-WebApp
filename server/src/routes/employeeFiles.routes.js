@@ -13,47 +13,59 @@ router.use(authenticate);
  * GET /api/employees/:id/files
  * Fetch all files for an employee
  */
-router.get("/", async (req, res) => {
-  const files = await EmployeeFilesService.getFilesByEmployee(Number(req.params.id), req.user);
-  res.json({ success: true, data: files });
+router.get("/", async (req, res, next) => {
+  try {
+    const files = await EmployeeFilesService.getFilesByEmployee(Number(req.params.id), req.user);
+    res.json({ success: true, data: files });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * POST /api/employees/:id/files
  * Batch upload up to 15 files under the 'files' form-data key
  */
-router.post("/", hasPermission(PERMISSIONS.EDIT), upload.any(), async (req, res) => {
-  const files = req.files || [];
+router.post("/", hasPermission(PERMISSIONS.EDIT), upload.any(), async (req, res, next) => {
+  try {
+    const files = req.files || [];
 
-  if (files.length === 0) {
-    return res.status(400).json({ success: false, message: "لم يتم تحديد أي ملفات للرفع." });
+    if (files.length === 0) {
+      return res.status(400).json({ success: false, message: "لم يتم تحديد أي ملفات للرفع." });
+    }
+
+    const result = await EmployeeFilesService.uploadMultipleFiles(
+      Number(req.params.id),
+      files,
+      req.body || {},
+      req.user
+    );
+    res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
   }
-
-  const result = await EmployeeFilesService.uploadMultipleFiles(
-    Number(req.params.id),
-    files,
-    req.body || {},
-    req.user
-  );
-  res.status(201).json({ success: true, data: result });
 });
 
 /**
  * POST /api/employees/:id/files/batch
  * Alias batch upload endpoint
  */
-router.post("/batch", hasPermission(PERMISSIONS.EDIT), upload.any(), async (req, res) => {
-  const files = req.files || [];
-  if (files.length === 0) {
-    return res.status(400).json({ success: false, message: "لم يتم تحديد أي ملفات للرفع." });
+router.post("/batch", hasPermission(PERMISSIONS.EDIT), upload.any(), async (req, res, next) => {
+  try {
+    const files = req.files || [];
+    if (files.length === 0) {
+      return res.status(400).json({ success: false, message: "لم يتم تحديد أي ملفات للرفع." });
+    }
+    const result = await EmployeeFilesService.uploadMultipleFiles(
+      Number(req.params.id),
+      files,
+      req.body || {},
+      req.user
+    );
+    res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    next(error);
   }
-  const result = await EmployeeFilesService.uploadMultipleFiles(
-    Number(req.params.id),
-    files,
-    req.body || {},
-    req.user
-  );
-  res.status(201).json({ success: true, data: result });
 });
 
 /**
@@ -65,37 +77,49 @@ router.post("/batch", hasPermission(PERMISSIONS.EDIT), upload.any(), async (req,
  * BEFORE the global express.json() middleware in server.js (required for
  * multipart upload routes). Without it, req.body is undefined.
  */
-router.post("/bulk-delete", express.json(), hasPermission(PERMISSIONS.DELETE), async (req, res) => {
-  const { documentIds } = req.body;
-  const result = await EmployeeFilesService.bulkDeleteFiles(
-    Number(req.params.id),
-    documentIds,
-    req.user
-  );
-  res.json({ success: true, ...result });
+router.post("/bulk-delete", express.json(), hasPermission(PERMISSIONS.DELETE), async (req, res, next) => {
+  try {
+    const { documentIds } = req.body;
+    const result = await EmployeeFilesService.bulkDeleteFiles(
+      Number(req.params.id),
+      documentIds,
+      req.user
+    );
+    res.json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * DELETE /api/employees/:id/files/:fileId
  * Delete a document
  */
-router.delete("/:fileId", hasPermission(PERMISSIONS.DELETE), async (req, res) => {
-  const result = await EmployeeFilesService.deleteFile(Number(req.params.fileId), req.user);
-  res.json({ success: true, ...result });
+router.delete("/:fileId", hasPermission(PERMISSIONS.DELETE), async (req, res, next) => {
+  try {
+    const result = await EmployeeFilesService.deleteFile(Number(req.params.fileId), req.user);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
 });
 
 /**
  * PUT /api/employees/:id/files/:fileId
  * Update a document's metadata
  */
-router.put("/:fileId", hasPermission(PERMISSIONS.EDIT), upload.single("file"), async (req, res) => {
-  const result = await EmployeeFilesService.updateFile(
-    Number(req.params.fileId),
-    req.body || {},
-    req.file,
-    req.user
-  );
-  res.json({ success: true, data: result });
+router.put("/:fileId", hasPermission(PERMISSIONS.EDIT), upload.single("file"), async (req, res, next) => {
+  try {
+    const result = await EmployeeFilesService.updateFile(
+      Number(req.params.fileId),
+      req.body || {},
+      req.file,
+      req.user
+    );
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
 });
 
 module.exports = router;

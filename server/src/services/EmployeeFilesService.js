@@ -90,17 +90,32 @@ class EmployeeFilesService {
     // RBAC check
     await EmployeesService.getById(employeeId, requestingUser);
 
-    return await prisma.employeeFiles.findMany({
+    const records = await prisma.employeeFiles.findMany({
       where: { EmployeesId: employeeId },
       select: {
         Id: true,
         DocumentName: true,
         FileName: true,
+        FilePath: true,
         Category: true,
-        DocumentDate: true,
         UploadDate: true,
       },
       orderBy: { UploadDate: 'desc' }
+    });
+
+    return records.map(file => {
+      let isMissing = false;
+      try {
+        if (file.FilePath) {
+          const fullPath = this.getPhysicalPath(file.FilePath);
+          if (!fs.existsSync(fullPath)) {
+            isMissing = true;
+          }
+        }
+      } catch (err) {
+        isMissing = true; // Flag as missing if path resolution or fs fails
+      }
+      return { ...file, isMissing };
     });
   }
 
