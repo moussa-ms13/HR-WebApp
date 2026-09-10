@@ -562,7 +562,59 @@ const EmployeeStatesList = () => {
         onConfirm={confirmDelete}
         onCancel={() => setConfirmState({ open: false, stateId: null, stateName: '' })}
       />
-      <LeavePrintDocument data={printData} ref={printRef} />
+      {printData && (() => {
+        const st = printData;
+        const emp = st.Employee || {};
+        const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '';
+        const startYear = st.StartDate ? new Date(st.StartDate).getFullYear() : new Date().getFullYear();
+        const isSpecial = emp.CorpsType === 'سلك_خاص' || (emp.JobTitle?.EmploymentCategory?.includes?.('خاص'));
+
+        return (
+          <LeavePrintDocument
+            corpsType={isSpecial ? 'special' : 'common'}
+            header={{
+              wilaya: emp.Province || 'الشلف',
+              subDirectorate: 'الإدارة العامة',
+              referenceNumber: '',
+            }}
+            employee={{
+              name: `${emp.Name || ''} ${emp.LastName || ''}`.trim(),
+              gender: emp.Gender === 'أنثى' ? 'female' : 'male',
+              rank: emp.JobTitle?.RankName || st.CurrentJobTitle || '',
+              jobTitle: emp.AssignedPosition || '',
+              province: emp.Province || 'الشلف',
+            }}
+            decision={{
+              directorateName: `المديرية الجهوية للأملاك الوطنية ناحية ${emp.Province || 'الشلف'}`,
+            }}
+            leave={{
+              year: `${startYear}`,
+              days: st.DaysCount || '',
+              daysInWords: st.DaysCount ? `${st.DaysCount}` : '',
+              startDate: fmtDate(st.StartDate),
+              endDate: fmtDate(st.EndDate),
+              resumeDate: fmtDate(st.ResumptionDate || st.ActualReturnDate),
+              remaining: st.RemainingBalanceAfter != null ? [
+                { year: `${startYear}`, days: st.RemainingBalanceAfter, daysInWords: `${st.RemainingBalanceAfter}` }
+              ] : [],
+            }}
+            signature={{ place: 'الشلف' }}
+            verification={{
+              code: (() => {
+                const arabicToLatin = (text) => {
+                  if (!text) return '';
+                  const map = {'أ':'A','ا':'A','إ':'E','آ':'A','ب':'B','ت':'T','ث':'T','ج':'J','ح':'H','خ':'K','د':'D','ذ':'D','ر':'R','ز':'Z','س':'S','ش':'S','ص':'S','ض':'D','ط':'T','ظ':'Z','ع':'A','غ':'G','ف':'F','ق':'K','ك':'K','ل':'L','م':'M','ن':'N','ه':'H','و':'O','ي':'Y','ى':'A','ة':'A','ئ':'E','ؤ':'O'};
+                  return text.split('').map(c => map[c] || c).join('');
+                };
+                const ln = (arabicToLatin(emp.Name) + 'XX').replace(/[^A-Z]/ig, '').toUpperCase().substring(0, 2);
+                const lln = (arabicToLatin(emp.LastName) + 'XX').replace(/[^A-Z]/ig, '').toUpperCase().substring(0, 2);
+                return `${ln}-${lln}-${st.EmployeesId || '0000'}`;
+              })(),
+              url: '',
+            }}
+          />
+        );
+      })()}
     </div>
   );
 };

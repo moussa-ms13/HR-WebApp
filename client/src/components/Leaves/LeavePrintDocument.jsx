@@ -1,297 +1,296 @@
-import React from 'react';
-import QRCode from 'react-qr-code';
+import React from "react";
+import { QRCodeSVG as QRCode } from "qrcode.react";
 
-const arabicToLatin = (text) => {
-  if (!text) return '';
-  const map = {
-    'أ':'A','ا':'A','إ':'E','آ':'A',
-    'ب':'B','ت':'T','ث':'T',
-    'ج':'J','ح':'H','خ':'K',
-    'د':'D','ذ':'D','ر':'R','ز':'Z',
-    'س':'S','ش':'S','ص':'S','ض':'D',
-    'ط':'T','ظ':'Z','ع':'A','غ':'G',
-    'ف':'F','ق':'K','ك':'K','ل':'L',
-    'م':'M','ن':'N','ه':'H','و':'O',
-    'ي':'Y','ى':'A','ة':'A','ئ':'E','ؤ':'O'
-  };
-  return text.split('').map(char => map[char] || char).join('');
+const LTR = ({ children }) => (
+  <span dir="ltr" style={{ unicodeBidi: "embed" }}>
+    {children}
+  </span>
+);
+
+const CORPS_DECREES = {
+  common: {
+    text:
+      "وبمقتضى المرسوم التنفيذي رقم 04-08 المؤرخ في 11 محرم عام 1429 الموافق 19 جانفي سنة 2008 " +
+      "المتضمن القانون الأساسي الخاص بالموظفين المنتمين للأسلاك المشتركة في المؤسسات والإدارات " +
+      "العمومية، المعدل والمتمم،",
+  },
+  special: {
+    text:
+      "وبمقتضى المرسوم التنفيذي رقم 300-10 المؤرخ في 23 ذي الحجة عام 1431 الموافق 29 نوفمبر سنة 2010 " +
+      "المتضمن القانون الأساسي الخاص بالموظفين المنتمين للأسلاك الخاصة بالإدارة المكلفة بأملاك الدولة " +
+      "والحفظ العقاري ومسح الأراضي،",
+  },
 };
 
-const LeavePrintDocument = React.forwardRef(({ data }, ref) => {
-  if (!data) return null;
+const LEAVE_TYPES_LEGEND =
+  "سنوية – مرضية – استثنائية – زواج – إرضاع – أبوة – حكومة/ختان – تعويضية/وفاة";
 
-  const emp = data.Employee;
-  if (!emp) return null;
+function genderWord(gender, female, male) {
+  return gender === "female" ? female : male;
+}
 
-  // Dynamic Grammar (Gender)
-  const isFemale = emp.Gender === 'أنثى';
-  const title = isFemale ? 'السيدة' : 'السيد';
-  const positionTense = isFemale ? 'بصفتها' : 'بصفته';
-  const requestedBy = isFemale ? 'المعنية' : 'المعني';
-  const resumeVerb = isFemale ? 'تستأنف' : 'يستأنف';
-  const workTense = isFemale ? 'عملها' : 'عمله';
-  const uponTense = isFemale ? 'عليها' : 'عليه';
-  const postTense = isFemale ? 'بمنصبها' : 'بمنصبه';
-
-  // Dynamic Corps Logic
-  const isSpecialCorps = emp.CorpsType === 'سلك_خاص' || (emp.JobTitle && emp.JobTitle.EmploymentCategory && emp.JobTitle.EmploymentCategory.includes('خاص'));
-  const corpsDecree = isSpecialCorps
-    ? 'وبمقتضى المرسوم التنفيذي رقم 10-300 المؤرخ في 23 ذي الحجة عام 1431 الموافق 29 نوفمبر سنة 2010 المتضمن القانون الأساسي الخاص بالموظفين المنتمين للأسلاك الخاصة بالإدارة المكلفة بأملاك الدولة والحفظ العقاري ومسح الأراضي،'
-    : 'وبمقتضى المرسوم التنفيذي رقم 08-04 المؤرخ في 11 محرم عام 1429 الموافق 19 جانفي سنة 2008، المتضمن القانون الأساسي الخاص بالموظفين المنتمين للأسلاك المشتركة في المؤسسات والإدارات العمومية، المعدل والمتمم،';
-
-  const formattedStartDate = new Date(data.StartDate).toLocaleDateString('en-GB');
-  const formattedEndDate = data.EndDate ? new Date(data.EndDate).toLocaleDateString('en-GB') : '';
-  const formattedResumptionDate = data.ResumptionDate ? new Date(data.ResumptionDate).toLocaleDateString('en-GB') : '';
-  const currentYear = new Date(data.StartDate).getFullYear();
-
-  // Unique Code Logic
-  const latinName = arabicToLatin(emp.Name).replace(/[^A-Z]/ig, '').toUpperCase();
-  const latinLastName = arabicToLatin(emp.LastName).replace(/[^A-Z]/ig, '').toUpperCase();
-  const namePrefix = (latinName + 'XX').substring(0, 2);
-  const lastNamePrefix = (latinLastName + 'XX').substring(0, 2);
-
-  const formatCodeDate = (dateString) => {
-    if (!dateString) return '00000000';
-    const d = new Date(dateString);
-    if (isNaN(d)) return '00000000';
-    return d.toISOString().split('T')[0].replace(/-/g, '');
-  };
-
-  const DOB = formatCodeDate(emp.DateOfBirth);
-  const HireDate = formatCodeDate(emp.InstallationDate);
-  const referenceCode = `${namePrefix}-${lastNamePrefix}-${DOB}-${HireDate}`;
-
-  // QR Data payload
-  const qrData = `الاسم: ${emp.Name} ${emp.LastName}\nالمدة: ${data.DaysCount || ''} يوم\nالرمز: ${referenceCode}`;
+export default function LeavePrintDocument({
+  corpsType = "common",
+  header,
+  employee,
+  decision,
+  leave,
+  signature = {},
+  verification = {},
+}) {
+  const decree = CORPS_DECREES[corpsType] ?? CORPS_DECREES.common;
+  const sirSeed = genderWord(employee.gender, "السيدة", "السيد");
+  const bisifat = genderWord(employee.gender, "بصفتها", "بصفته");
+  const maani = genderWord(employee.gender, "المعنية", "المعني");
+  const yastanif = genderWord(employee.gender, "تستأنف عملها", "يستأنف عمله");
+  const alayha = genderWord(employee.gender, "عليها", "عليه");
+  const bimansibiha = genderWord(employee.gender, "بمنصبها", "بمنصبه");
 
   return (
-    <>
+    <div className="leave-doc-page" dir="rtl">
       <style>{`
+        @page {
+          size: A4;
+          margin: 15mm;
+        }
+        .leave-doc-page {
+          width: 100%;
+          box-sizing: border-box;
+          font-family: 'Amiri', 'Traditional Arabic', 'Noto Naskh Arabic', 'Tahoma', sans-serif;
+          color: #111;
+          font-size: 12.5px;
+          line-height: 1.45;
+        }
+        .leave-doc-page * {
+          box-sizing: border-box;
+        }
+        @media screen {
+          .leave-doc-page {
+            max-width: 210mm;
+            margin: 24px auto;
+            padding: 15mm;
+            background: #fff;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+          }
+        }
         @media print {
-          @page {
-            size: A4;
-            margin: 15mm;
+          .leave-doc-page {
+            box-shadow: none;
+            margin: 0;
+            padding: 0;
           }
-          body * {
-            visibility: hidden !important;
-          }
-          .leave-print-root,
-          .leave-print-root * {
-            visibility: visible !important;
-          }
-          .leave-print-root {
-            display: block !important;
-            position: fixed !important;
-            top: 0;
-            left: 0;
-            width: 100% !important;
-            box-sizing: border-box !important;
-            background: white !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-            padding: 0 !important;
-            margin: 0 !important;
-          }
+        }
+        .doc-header {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+        .doc-republic {
+          text-align: center;
+          font-weight: bold;
+          margin-bottom: 6px;
+        }
+        .doc-header-row {
+          display: flex;
+          flex-direction: row;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+        }
+        .doc-ministry-block {
+          text-align: center;
+        }
+        .doc-ministry-block div {
+          white-space: nowrap;
+        }
+        .doc-subdirectorate-block {
+          display: flex;
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 6px;
+          min-width: 90px;
+        }
+        .doc-qr-wrap {
+          flex-shrink: 0;
+          min-width: 80px;
+          min-height: 80px;
+          width: 80px;
+          height: 80px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .doc-qr-fallback {
+          font-size: 10px;
+          text-align: center;
+          margin-top: 4px;
+        }
+        .doc-refnum {
+          text-align: right;
+          margin: 8px 0;
+        }
+        .doc-title {
+          text-align: center;
+          font-weight: bold;
+          font-size: 17px;
+          text-decoration: underline;
+          margin: 10px 0 14px;
+        }
+        .doc-intro {
+          font-weight: bold;
+          margin-bottom: 8px;
+        }
+        .doc-whereas {
+          margin: 0 0 8px;
+          padding-right: 18px;
+          text-indent: -18px;
+        }
+        .doc-decides {
+          text-align: center;
+          font-weight: bold;
+          margin: 14px 0;
+          letter-spacing: 2px;
+        }
+        .doc-article {
+          margin-bottom: 6px;
+        }
+        .doc-article-line {
+          margin: 6px 0;
+        }
+        .doc-article-line strong {
+          font-weight: bold;
+        }
+        .doc-note-line {
+          margin: 4px 0 4px 0;
+        }
+        .doc-remark {
+          margin-top: 12px;
+        }
+        .doc-remark-label {
+          font-weight: bold;
+          text-decoration: underline;
+        }
+        .doc-signature {
+          margin-top: 26px;
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+        .doc-signature-place {
+          margin-bottom: 20px;
+        }
+        .doc-signature-title {
+          font-weight: bold;
+          text-align: center;
+        }
+        .doc-legend {
+          margin-top: 24px;
+          text-align: left;
+          font-style: italic;
+          font-size: 12px;
+          color: #333;
         }
       `}</style>
 
-      <div
-        ref={ref}
-        className="leave-print-root"
-        dir="rtl"
-        style={{
-          display: 'none',
-          fontFamily: '"Times New Roman", Times, serif',
-          fontSize: '13pt',
-          lineHeight: '1.8',
-          color: '#000',
-          background: '#fff',
-          padding: 0,
-          margin: 0,
-        }}
-      >
-        {/* ═══════ HEADER: Republic + QR ═══════ */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          marginBottom: '6mm',
-        }}>
-          {/* RIGHT side (RTL start): Republic title */}
-          <div style={{ flex: 1, textAlign: 'center' }}>
-            <p style={{ fontWeight: 'bold', fontSize: '15pt', margin: 0 }}>الجمهورية الجزائرية الديمقراطية الشعبية</p>
+      <div className="doc-header">
+        <div className="doc-republic">الجمهورية الجزائرية الديمقراطية الشعبية</div>
+
+        <div className="doc-header-row">
+          <div className="doc-ministry-block">
+            <div>وزارة المالية</div>
+            <div>المديرية العامة للأملاك الوطنية</div>
+            <div>المديرية الجهوية للأملاك الوطنية بـ{header.wilaya}</div>
           </div>
 
-          {/* LEFT side (RTL end): QR Code — strict 80px container */}
-          <div style={{
-            flexShrink: 0,
-            flexGrow: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            width: '88px',
-            minWidth: '88px',
-          }}>
-            <div style={{
-              width: '80px',
-              height: '80px',
-              minWidth: '80px',
-              minHeight: '80px',
-              flexShrink: 0,
-              background: '#fff',
-            }}>
-              <QRCode value={qrData || 'N/A'} size={80} level="M" />
-            </div>
-            <span style={{
-              fontFamily: 'Consolas, "Courier New", monospace',
-              fontSize: '6.5pt',
-              marginTop: '3px',
-              direction: 'ltr',
-              textAlign: 'center',
-              whiteSpace: 'nowrap',
-            }}>
-              {referenceCode}
-            </span>
+          <div className="doc-subdirectorate-block">
+            {verification.url && (
+              <div className="doc-qr-wrap">
+                <QRCode value={verification.url} size={72} />
+              </div>
+            )}
+            {verification.code && !verification.url && (
+              <div className="doc-qr-fallback">{verification.code}</div>
+            )}
+            <div>المديرية الفرعية لـ{header.subDirectorate}</div>
           </div>
         </div>
 
-        {/* ═══════ MINISTRY HIERARCHY ═══════ */}
-        <div style={{
-          textAlign: 'right',
-          lineHeight: '1.5',
-          fontSize: '12pt',
-          marginBottom: '3mm',
-        }}>
-          <p style={{ margin: '0 0 1px' }}>وزارة المالية</p>
-          <p style={{ margin: '0 0 1px' }}>المديرية العامة للأملاك الوطنية</p>
-          <p style={{ margin: '0 0 1px' }}>المديرية الجهوية للأملاك الوطنية بالشلف</p>
-          <p style={{ margin: '0 0 1px' }}>المديرية الفرعية للإدارة العامة</p>
-          <p style={{ margin: '0 0 1px' }}>رقم: .................</p>
-        </div>
-
-        {/* ═══════ TITLE ═══════ */}
-        <h1 style={{
-          textAlign: 'center',
-          fontWeight: 'bold',
-          fontSize: '20pt',
-          margin: '8mm 0',
-          textDecoration: 'underline',
-          textUnderlineOffset: '4px',
-        }}>
-          سند عطلة سنوية
-        </h1>
-
-        {/* ═══════ LEGAL BODY ═══════ */}
-        <div style={{ marginBottom: '4mm', textAlign: 'justify', lineHeight: '1.6' }}>
-          <p style={{ fontWeight: 'bold', marginBottom: '4mm' }}>إن وزير المالية، (المدير الجهوي)</p>
-
-          <p style={{ margin: '0 0 2mm', paddingRight: '3mm' }}>
-            - بمقتضى القانون رقم 81-08 المؤرخ في 27 جوان سنة 1981 المتعلق بالعطل السنوية،
-          </p>
-          <p style={{ margin: '0 0 2mm', paddingRight: '3mm' }}>
-            - {corpsDecree}
-          </p>
-          <p style={{ margin: '0 0 2mm', paddingRight: '3mm' }}>
-            - وبمقتضى المرسوم التنفيذي رقم 21-393 المؤرخ في 18 أكتوبر سنة 2021، يحدد تنظيم المصالح الخارجية للمديرية العامة للأملاك الوطنية وصلاحياتها،
-          </p>
-          <p style={{ margin: '0 0 2mm', paddingRight: '3mm' }}>
-            - وبناءا على المقرر المتضمن تعيين {title}{' '}
-            <span style={{ fontWeight: 'bold' }}>{emp.Name} {emp.LastName}</span>{' '}
-            {positionTense}{' '}
-            <span style={{ fontWeight: 'bold' }}>{emp.JobTitle?.RankName || data.CurrentJobTitle}</span>{' '}
-            لدى المديرية الجهوية للأملاك الوطنية ناحية الشلف،
-          </p>
-          <p style={{ margin: '0 0 2mm', paddingRight: '3mm' }}>
-            - وبعد الإطلاع على الطلب المحرر من طرف {requestedBy} المتضمن طلب العطلة السنوية بعنوان سنة {currentYear}
-          </p>
-          <p style={{ margin: '0 0 2mm', paddingRight: '3mm' }}>
-            - وبإقتراح من السيد المدير الفرعي للإدارة العامة.
-          </p>
-        </div>
-
-        {/* ═══════ DECISION ═══════ */}
-        <div style={{
-          textAlign: 'center',
-          fontWeight: 'bold',
-          fontSize: '16pt',
-          margin: '5mm 0',
-        }}>
-          *** يـقـــــرر ***
-        </div>
-
-        {/* ═══════ ARTICLE ═══════ */}
-        <div style={{ marginBottom: '4mm', lineHeight: '1.8' }}>
-          <p style={{ margin: '0 0 2mm' }}>
-            <span style={{ fontWeight: 'bold' }}>المادة الوحيدة:</span>{' '}
-            تمنح عطلة سنوية مدفوعة الأجر مدتها {data.DaysCount ? `${data.DaysCount} (${data.DaysCount}) يوم.` : '.'}
-          </p>
-          <div style={{ paddingRight: '10mm', lineHeight: '1.8' }}>
-            <p style={{ margin: '0 0 1mm' }}>
-              <span style={{ fontWeight: 'bold' }}>السنة:</span> {currentYear}
-            </p>
-            <p style={{ margin: '0 0 1mm' }}>
-              <span style={{ fontWeight: 'bold' }}>للـسيد(ة):</span> {emp.Name} {emp.LastName}
-            </p>
-            <p style={{ margin: '0 0 1mm' }}>
-              <span style={{ fontWeight: 'bold' }}>الرتبة:</span> {emp.JobTitle?.RankName || data.CurrentJobTitle}
-            </p>
-            <p style={{ margin: '0 0 1mm' }}>
-              <span style={{ fontWeight: 'bold' }}>الوظيفة:</span> {emp.AssignedPosition || '-'}
-            </p>
-            <p style={{ margin: '0 0 1mm' }}>
-              <span style={{ fontWeight: 'bold' }}>الفترة:</span> من {formattedStartDate} إلى {formattedEndDate}
-            </p>
-            <p style={{ margin: '0 0 1mm' }}>
-              - العنوان الشخصي للمستفيد ولاية الشلف
-            </p>
-            <p style={{ margin: '0 0 1mm' }}>
-              - {resumeVerb} {workTense} يوم {formattedResumptionDate}، لذا {uponTense} إبلاغنا بتاريخ الالتحاق {postTense} في نفس اليوم.
-            </p>
-          </div>
-        </div>
-
-        {/* ═══════ NOTE ═══════ */}
-        <div style={{ marginBottom: '8mm' }}>
-          <p style={{ margin: 0 }}>
-            <span style={{ fontWeight: 'bold', textDecoration: 'underline' }}>ملاحظة:</span>{' '}
-            تبقى {data.RemainingBalanceAfter !== undefined && data.RemainingBalanceAfter !== null ? data.RemainingBalanceAfter : '(رصيد غير متوفر)'} يوم من العطلة السنوية ({currentYear})
-          </p>
-        </div>
-
-        {/* ═══════ SIGNATURE ═══════ */}
-        <div style={{
-          display: 'flex',
-          justifyContent: 'flex-end',
-          marginTop: '12mm',
-          marginBottom: '10mm',
-        }}>
-          <div style={{ textAlign: 'center' }}>
-            <p style={{ margin: 0 }}>حرر بالشلف في، .....................</p>
-            <p style={{ fontWeight: 'bold', marginTop: '18mm', margin: '18mm 0 0' }}>الـمـديــر</p>
-          </div>
-        </div>
-
-        {/* ═══════ FOOTER ═══════ */}
-        <div style={{
-          borderTop: '1px solid #000',
-          paddingTop: '3mm',
-          fontSize: '10pt',
-          textAlign: 'center',
-          marginTop: '10mm',
-        }}>
-          <span>سنوية</span>{' - '}
-          <span style={{ textDecoration: 'line-through' }}>مرضية</span>{' - '}
-          <span style={{ textDecoration: 'line-through' }}>استثنائية</span>{' - '}
-          <span style={{ textDecoration: 'line-through' }}>زواج</span>{' - '}
-          <span style={{ textDecoration: 'line-through' }}>إزدياد</span>{' - '}
-          <span style={{ textDecoration: 'line-through' }}>أمومة</span>{' - '}
-          <span style={{ textDecoration: 'line-through' }}>ختان</span>{' - '}
-          <span style={{ textDecoration: 'line-through' }}>تعويضية</span>{' - '}
-          <span style={{ textDecoration: 'line-through' }}>وفاة</span>
+        <div className="doc-refnum">
+          رقم: {header.referenceNumber ? <LTR>{header.referenceNumber}</LTR> : "................."}
         </div>
       </div>
-    </>
-  );
-});
 
-export default LeavePrintDocument;
+      <div className="doc-title">سند عطلة سنوية</div>
+
+      <div className="doc-intro">إن وزير المالية، (المدير الجهوي)</div>
+
+      <p className="doc-whereas">
+        - بمقتضى القانون رقم 08-81 المؤرخ في 27 جوان سنة 1981 المتعلق بالعطل السنوية،
+      </p>
+      <p className="doc-whereas">- و{decree.text}</p>
+      <p className="doc-whereas">
+        - وبمقتضى المرسوم التنفيذي رقم 393-21 المؤرخ في 18 أكتوبر سنة 2021، يحدد تنظيم المصالح
+        الخارجية للمديرية العامة للأملاك الوطنية وصلاحياتها،
+      </p>
+      <p className="doc-whereas">
+        - وبناءا على المقرر المتضمن تعيين {sirSeed} <strong>{employee.name}</strong> {bisifat}{" "}
+        <strong>{employee.rank}</strong> لدى {decision.directorateName}،
+      </p>
+      <p className="doc-whereas">
+        - وبعد الإطلاع على الطلب المحرر من طرف {maani} المتضمن طلب العطلة السنوية بعنوان سنة{" "}
+        <LTR>{leave.year}</LTR>
+      </p>
+      <p className="doc-whereas">- وبإقتراح من السيد المدير الفرعي للإدارة العامة.</p>
+
+      <div className="doc-decides">*** يـقـرر ***</div>
+
+      <div className="doc-article">
+        <div className="doc-article-line">
+          <strong>المادة الوحيدة:</strong> تمنح عطلة سنوية مدفوعة الأجر مدتها{" "}
+          <strong>{leave.daysInWords}</strong> (<LTR>{leave.days}</LTR>) يوم.
+        </div>
+        <div className="doc-article-line">
+          <strong>السنة:</strong> <LTR>{leave.year}</LTR>
+        </div>
+        <div className="doc-article-line">
+          <strong>للسيد(ة):</strong> {employee.name}
+        </div>
+        <div className="doc-article-line">
+          <strong>الرتبة:</strong> {employee.rank}
+        </div>
+        <div className="doc-article-line">
+          <strong>الوظيفة:</strong> {employee.jobTitle || "/"}
+        </div>
+        <div className="doc-article-line">
+          <strong>الفترة:</strong> <LTR>{leave.startDate}</LTR> إلى <LTR>{leave.endDate}</LTR>
+        </div>
+        <div className="doc-note-line">- العنوان الشخصي للمستفيد(ة) ولاية {employee.province}</div>
+        <div className="doc-note-line">
+          - {yastanif} يوم <LTR>{leave.resumeDate}</LTR>، لذا {alayha} إبلاغنا بتاريخ الالتحاق{" "}
+          {bimansibiha} في نفس اليوم.
+        </div>
+      </div>
+
+      {leave.remaining?.length > 0 && (
+        <div className="doc-remark">
+          <span className="doc-remark-label">ملاحظة:</span> تبقى{" "}
+          {leave.remaining.map((r, i) => (
+            <React.Fragment key={r.year}>
+              {i > 0 && " و "}
+              <strong>{r.daysInWords}</strong> (<LTR>{r.days}</LTR>) يوم من{" "}
+              {i === 0 ? "العطلة السنوية" : "سنة"} (<LTR>{r.year}</LTR>)
+            </React.Fragment>
+          ))}
+          .
+        </div>
+      )}
+
+      <div className="doc-signature">
+        <div className="doc-signature-place">
+          حرر بـ{signature.place || "الشلف"} في {signature.date ? <LTR>{signature.date}</LTR> : "............."}
+        </div>
+        <div className="doc-signature-title">المدير</div>
+      </div>
+
+      <div className="doc-legend">{LEAVE_TYPES_LEGEND}</div>
+    </div>
+  );
+}
