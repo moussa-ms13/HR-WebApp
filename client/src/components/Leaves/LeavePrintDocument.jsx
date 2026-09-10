@@ -51,7 +51,7 @@ export default function LeavePrintDocument({
       <style>{`
         @page {
           size: A4;
-          margin: 0;
+          margin: 8mm 15mm 15mm 15mm;
         }
         @media print {
           body * {
@@ -73,7 +73,7 @@ export default function LeavePrintDocument({
           .leave-doc-page {
             width: 100% !important;
             margin: 0 !important;
-            padding: 12mm 15mm !important;
+            padding: 0 !important;
             box-shadow: none !important;
             background: white !important;
             -webkit-print-color-adjust: exact;
@@ -84,13 +84,12 @@ export default function LeavePrintDocument({
           }
         }
         .leave-doc-page {
-          width: 210mm;
-          min-height: 297mm;
+          width: 100%;
           box-sizing: border-box;
-          font-family: 'Amiri', 'Traditional Arabic', 'Noto Naskh Arabic', 'Tahoma', sans-serif;
+          font-family: 'Amiri', 'Traditional Arabic', 'Tahoma', sans-serif;
           color: #111;
-          font-size: 12.5px;
-          line-height: 1.45;
+          font-size: 15px;
+          line-height: 1.6;
         }
         .leave-doc-page * {
           box-sizing: border-box;
@@ -135,10 +134,10 @@ export default function LeavePrintDocument({
         }
         .doc-qr-wrap {
           flex-shrink: 0;
-          min-width: 80px;
-          min-height: 80px;
-          width: 80px;
-          height: 80px;
+          min-width: 96px; /* Increased */
+          min-height: 96px; /* Increased */
+          width: 96px;
+          height: 96px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -229,7 +228,7 @@ export default function LeavePrintDocument({
               <div className="doc-qr-wrap">
                 <QRCode
                   value={verification.url}
-                  size={72}
+                  size={96}
                   level="M"
                   fgColor="#000000"
                   bgColor="#FFFFFF"

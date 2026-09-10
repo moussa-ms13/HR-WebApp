@@ -583,16 +583,37 @@ const EmployeeStatesList = () => {
         const startYear = st.StartDate ? new Date(st.StartDate).getFullYear() : new Date().getFullYear();
         const isSpecial = emp.CorpsType === 'سلك_خاص' || (emp.JobTitle?.EmploymentCategory?.includes?.('خاص'));
 
+        const formatDateToYYYYMMDD = (dateString) => {
+          if (!dateString) return "00000000";
+          const d = new Date(dateString);
+          if (isNaN(d.getTime())) return "00000000";
+          return d.getFullYear().toString() +
+                 (d.getMonth() + 1).toString().padStart(2, '0') +
+                 d.getDate().toString().padStart(2, '0');
+        };
+
+        const formatDateForDisplay = (dateString) => {
+          if (!dateString) return "";
+          const d = new Date(dateString);
+          if (isNaN(d.getTime())) return "";
+          return d.toLocaleDateString('en-GB'); // DD/MM/YYYY
+        };
+
         const safeName = emp.Name || '';
         const safeLastName = emp.LastName || '';
         const latName = (arabicToLatin(safeName) + 'XX').substring(0, 2).padEnd(2, 'X');
         const latLastName = (arabicToLatin(safeLastName) + 'XX').substring(0, 2).padEnd(2, 'X');
-        const hireDate = emp.HireDate ? new Date(emp.HireDate).toISOString().slice(0, 10).replace(/-/g, '') : "00000000";
-        const dob = emp.DateOfBirth ? new Date(emp.DateOfBirth).toISOString().slice(0, 10).replace(/-/g, '') : "00000000";
-        const referenceCode = `${latName}-${latLastName}-${dob}-${hireDate}`;
 
-        // MUST be a simple string, NOT an object
-        const qrPayload = `الاسم: ${safeName} ${safeLastName}\nالمدة: ${st.DaysCount || ''} يوم\nالرمز: ${referenceCode}`;
+        // Extract Dates
+        const dobFormatted = formatDateToYYYYMMDD(emp.DateOfBirth);
+        const startFormatted = formatDateToYYYYMMDD(st.StartDate);
+        const referenceCode = `${latName}-${latLastName}-${dobFormatted}-${startFormatted}`;
+
+        // Display Dates for QR
+        const startDisplay = formatDateForDisplay(st.StartDate);
+        const returnDisplay = formatDateForDisplay(st.ActualReturnDate || st.EndDate); // Fallback to EndDate if not resumed
+
+        const qrPayload = `الاسم: ${safeName} ${safeLastName}\nتاريخ الخروج: ${startDisplay}\nتاريخ العودة: ${returnDisplay}\nالرمز: ${referenceCode}`;
 
         return (
           <div>
