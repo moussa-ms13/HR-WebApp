@@ -70,7 +70,7 @@ const LeavePrintDocument = React.forwardRef(({ data }, ref) => {
         @media print {
           @page {
             size: A4;
-            margin: 15mm 20mm;
+            margin: 15mm;
           }
           body * {
             visibility: hidden !important;
@@ -81,14 +81,16 @@ const LeavePrintDocument = React.forwardRef(({ data }, ref) => {
           }
           .leave-print-root {
             display: block !important;
-            position: absolute !important;
+            position: fixed !important;
             top: 0;
             left: 0;
-            right: 0;
-            width: 100%;
+            width: 100% !important;
+            box-sizing: border-box !important;
             background: white !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
+            padding: 0 !important;
+            margin: 0 !important;
           }
         }
       `}</style>
@@ -120,30 +122,33 @@ const LeavePrintDocument = React.forwardRef(({ data }, ref) => {
             <p style={{ fontWeight: 'bold', fontSize: '15pt', margin: 0 }}>الجمهورية الجزائرية الديمقراطية الشعبية</p>
           </div>
 
-          {/* LEFT side (RTL end): QR Code — strict 64px container */}
+          {/* LEFT side (RTL end): QR Code — strict 80px container */}
           <div style={{
             flexShrink: 0,
+            flexGrow: 0,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            width: '72px',
+            width: '88px',
+            minWidth: '88px',
           }}>
             <div style={{
-              width: '64px',
-              height: '64px',
-              overflow: 'hidden',
+              width: '80px',
+              height: '80px',
+              minWidth: '80px',
+              minHeight: '80px',
               flexShrink: 0,
+              background: '#fff',
             }}>
-              <QRCode value={qrData} size={64} level="M" />
+              <QRCode value={qrData || 'N/A'} size={80} level="M" />
             </div>
             <span style={{
               fontFamily: 'Consolas, "Courier New", monospace',
-              fontSize: '6pt',
-              marginTop: '2px',
+              fontSize: '6.5pt',
+              marginTop: '3px',
               direction: 'ltr',
               textAlign: 'center',
               whiteSpace: 'nowrap',
-              letterSpacing: '-0.3px',
             }}>
               {referenceCode}
             </span>
