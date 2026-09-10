@@ -28,6 +28,20 @@ const casesFetcher = async ([url, page, limit, search, directorate, province]) =
 
 
 
+const arabicToLatin = (text) => {
+  if (!text) return 'XX';
+  const map = {
+    'ا':'A','أ':'A','إ':'E','آ':'A','ى':'A','ة':'A','ئ':'E','ؤ':'O',
+    'ب':'B','ت':'T','ث':'TH','ج':'J','ح':'H','خ':'KH','د':'D','ذ':'DZ',
+    'ر':'R','ز':'Z','س':'S','ش':'CH','ص':'S','ض':'D','ط':'T','ظ':'Z',
+    'ع':'A','غ':'GH','ف':'F','ق':'K','ك':'K','ل':'L','م':'M','ن':'N',
+    'ه':'H','و':'W','ي':'Y'
+  };
+  let result = '';
+  for (let char of text) { result += map[char] || char; }
+  return result.replace(/[^A-Z]/g, '').toUpperCase();
+};
+
 const EmployeeStatesList = () => {
   const { hasPermission } = useAuth();
   const [searchParams] = useSearchParams();
@@ -569,15 +583,16 @@ const EmployeeStatesList = () => {
         const startYear = st.StartDate ? new Date(st.StartDate).getFullYear() : new Date().getFullYear();
         const isSpecial = emp.CorpsType === 'سلك_خاص' || (emp.JobTitle?.EmploymentCategory?.includes?.('خاص'));
 
-        const arabicToLatin = (text) => {
-          if (!text) return '';
-          const map = {'أ':'A','ا':'A','إ':'E','آ':'A','ب':'B','ت':'T','ث':'T','ج':'J','ح':'H','خ':'K','د':'D','ذ':'D','ر':'R','ز':'Z','س':'S','ش':'S','ص':'S','ض':'D','ط':'T','ظ':'Z','ع':'A','غ':'G','ف':'F','ق':'K','ك':'K','ل':'L','م':'M','ن':'N','ه':'H','و':'O','ي':'Y','ى':'A','ة':'A','ئ':'E','ؤ':'O'};
-          return text.split('').map(c => map[c] || c).join('');
-        };
-        const ln = (arabicToLatin(emp.Name) + 'XX').replace(/[^A-Z]/ig, '').toUpperCase().substring(0, 2);
-        const lln = (arabicToLatin(emp.LastName) + 'XX').replace(/[^A-Z]/ig, '').toUpperCase().substring(0, 2);
-        const refCode = `${ln}-${lln}-${st.EmployeesId || '0000'}`;
-        const qrPayload = `الاسم: ${emp.Name || ''} ${emp.LastName || ''}\nالمدة: ${st.DaysCount || ''} يوم\nالرمز: ${refCode}`;
+        const safeName = emp.Name || '';
+        const safeLastName = emp.LastName || '';
+        const latName = (arabicToLatin(safeName) + 'XX').substring(0, 2).padEnd(2, 'X');
+        const latLastName = (arabicToLatin(safeLastName) + 'XX').substring(0, 2).padEnd(2, 'X');
+        const hireDate = emp.HireDate ? new Date(emp.HireDate).toISOString().slice(0, 10).replace(/-/g, '') : "00000000";
+        const dob = emp.DateOfBirth ? new Date(emp.DateOfBirth).toISOString().slice(0, 10).replace(/-/g, '') : "00000000";
+        const referenceCode = `${latName}-${latLastName}-${dob}-${hireDate}`;
+
+        // MUST be a simple string, NOT an object
+        const qrPayload = `الاسم: ${safeName} ${safeLastName}\nالمدة: ${st.DaysCount || ''} يوم\nالرمز: ${referenceCode}`;
 
         return (
           <div>
@@ -629,40 +644,42 @@ const EmployeeStatesList = () => {
               </button>
             </div>
 
-            <LeavePrintDocument
-              corpsType={isSpecial ? 'special' : 'common'}
-              header={{
-                wilaya: emp.Province || 'الشلف',
-                subDirectorate: 'الإدارة العامة',
-                referenceNumber: '',
-              }}
-              employee={{
-                name: `${emp.Name || ''} ${emp.LastName || ''}`.trim(),
-                gender: emp.Gender === 'أنثى' ? 'female' : 'male',
-                rank: emp.JobTitle?.RankName || st.CurrentJobTitle || '',
-                jobTitle: emp.AssignedPosition || '',
-                province: emp.Province || 'الشلف',
-              }}
-              decision={{
-                directorateName: `المديرية الجهوية للأملاك الوطنية ناحية ${emp.Province || 'الشلف'}`,
-              }}
-              leave={{
-                year: `${startYear}`,
-                days: st.DaysCount || '',
-                daysInWords: st.DaysCount ? `${st.DaysCount}` : '',
-                startDate: fmtDate(st.StartDate),
-                endDate: fmtDate(st.EndDate),
-                resumeDate: fmtDate(st.ResumptionDate || st.ActualReturnDate),
-                remaining: st.RemainingBalanceAfter != null ? [
-                  { year: `${startYear}`, days: st.RemainingBalanceAfter, daysInWords: `${st.RemainingBalanceAfter}` }
-                ] : [],
-              }}
-              signature={{ place: 'الشلف' }}
-              verification={{
-                url: qrPayload,
-                code: refCode,
-              }}
-            />
+            <div className="print-preview-container">
+              <LeavePrintDocument
+                corpsType={isSpecial ? 'special' : 'common'}
+                header={{
+                  wilaya: emp.Province || 'الشلف',
+                  subDirectorate: 'الإدارة العامة',
+                  referenceNumber: '',
+                }}
+                employee={{
+                  name: `${safeName} ${safeLastName}`.trim(),
+                  gender: emp.Gender === 'أنثى' ? 'female' : 'male',
+                  rank: emp.JobTitle?.RankName || st.CurrentJobTitle || '',
+                  jobTitle: emp.AssignedPosition || '',
+                  province: emp.Province || 'الشلف',
+                }}
+                decision={{
+                  directorateName: `المديرية الجهوية للأملاك الوطنية ناحية ${emp.Province || 'الشلف'}`,
+                }}
+                leave={{
+                  year: `${startYear}`,
+                  days: st.DaysCount || '',
+                  daysInWords: st.DaysCount ? `${st.DaysCount}` : '',
+                  startDate: fmtDate(st.StartDate),
+                  endDate: fmtDate(st.EndDate),
+                  resumeDate: fmtDate(st.ResumptionDate || st.ActualReturnDate),
+                  remaining: st.RemainingBalanceAfter != null ? [
+                    { year: `${startYear}`, days: st.RemainingBalanceAfter, daysInWords: `${st.RemainingBalanceAfter}` }
+                  ] : [],
+                }}
+                signature={{ place: 'الشلف' }}
+                verification={{
+                  code: referenceCode,
+                  url: qrPayload,
+                }}
+              />
+            </div>
           </div>
         );
       })()}

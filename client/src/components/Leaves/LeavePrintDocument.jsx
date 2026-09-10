@@ -51,23 +51,29 @@ export default function LeavePrintDocument({
       <style>{`
         @page {
           size: A4;
-          margin: 15mm;
+          margin: 0;
         }
         @media print {
           body * {
             visibility: hidden !important;
           }
-          .leave-doc-page,
-          .leave-doc-page * {
+          .print-preview-container,
+          .print-preview-container * {
             visibility: visible !important;
           }
-          .leave-doc-page {
+          .print-preview-container {
             position: absolute;
-            left: 0;
             top: 0;
-            width: 210mm;
+            right: 0; /* CRITICAL: Anchor right for RTL */
+            left: auto;
+            width: 100%;
             margin: 0 !important;
-            padding: 15mm !important;
+            padding: 0 !important;
+          }
+          .leave-doc-page {
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 12mm 15mm !important;
             box-shadow: none !important;
             background: white !important;
             -webkit-print-color-adjust: exact;
@@ -92,7 +98,7 @@ export default function LeavePrintDocument({
         @media screen {
           .leave-doc-page {
             margin: 0 auto;
-            padding: 15mm;
+            padding: 12mm 15mm;
             background: #fff;
             box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
             overflow: hidden;
@@ -221,11 +227,19 @@ export default function LeavePrintDocument({
           <div className="doc-subdirectorate-block">
             {verification.url && (
               <div className="doc-qr-wrap">
-                <QRCode value={verification.url} size={72} />
+                <QRCode
+                  value={verification.url}
+                  size={72}
+                  level="M"
+                  fgColor="#000000"
+                  bgColor="#FFFFFF"
+                />
               </div>
             )}
-            {verification.code && !verification.url && (
-              <div className="doc-qr-fallback">{verification.code}</div>
+            {verification.code && (
+              <div className="doc-qr-fallback">
+                <LTR>{verification.code}</LTR>
+              </div>
             )}
             <div>المديرية الفرعية لـ{header.subDirectorate}</div>
           </div>
