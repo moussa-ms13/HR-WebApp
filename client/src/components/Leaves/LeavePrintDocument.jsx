@@ -51,25 +51,9 @@ export default function LeavePrintDocument({
       <style>{`
         @page {
           size: A4;
-          margin: 8mm 15mm 15mm 15mm;
+          margin: 5mm 15mm 15mm 15mm;
         }
         @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          .print-preview-container,
-          .print-preview-container * {
-            visibility: visible !important;
-          }
-          .print-preview-container {
-            position: absolute;
-            top: 0;
-            right: 0; /* CRITICAL: Anchor right for RTL */
-            left: auto;
-            width: 100%;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
           .leave-doc-page {
             width: 100% !important;
             margin: 0 !important;
@@ -78,9 +62,6 @@ export default function LeavePrintDocument({
             background: white !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
-          }
-          .no-print {
-            display: none !important;
           }
         }
         .leave-doc-page {
@@ -130,14 +111,14 @@ export default function LeavePrintDocument({
           flex-direction: column;
           align-items: flex-start;
           gap: 6px;
-          min-width: 90px;
+          min-width: 110px;
         }
         .doc-qr-wrap {
           flex-shrink: 0;
-          min-width: 96px; /* Increased */
-          min-height: 96px; /* Increased */
-          width: 96px;
-          height: 96px;
+          min-width: 110px;
+          min-height: 110px;
+          width: 110px;
+          height: 110px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -193,7 +174,9 @@ export default function LeavePrintDocument({
           text-decoration: underline;
         }
         .doc-signature {
-          margin-top: 26px;
+          margin-top: 30px;
+          text-align: left;
+          padding-left: 50px;
           break-inside: avoid;
           page-break-inside: avoid;
         }
@@ -202,7 +185,6 @@ export default function LeavePrintDocument({
         }
         .doc-signature-title {
           font-weight: bold;
-          text-align: center;
         }
         .doc-legend {
           margin-top: 24px;
@@ -228,10 +210,10 @@ export default function LeavePrintDocument({
               <div className="doc-qr-wrap">
                 <QRCode
                   value={verification.url}
-                  size={96}
-                  level="M"
+                  size={110}
+                  level="L"
                   fgColor="#000000"
-                  bgColor="#FFFFFF"
+                  bgColor="#ffffff"
                 />
               </div>
             )}

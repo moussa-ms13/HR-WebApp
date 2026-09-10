@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -141,14 +141,13 @@ const EmployeeStatesList = () => {
   };
 
   const [printData, setPrintData] = useState(null);
-  const printRef = useRef(null);
 
   const handlePrint = (st) => {
     setMenuOpenId(null);
     setPrintData(st);
     setTimeout(() => {
       window.print();
-    }, 150);
+    }, 300); // Allow React to render the hidden document before printing
   };
 
   const getRowStatus = (endDateStr, isResumed) => {
@@ -210,6 +209,8 @@ const EmployeeStatesList = () => {
   );
 
   return (
+    <>
+    <div className="no-print">
     <div className="flex flex-col h-full font-sans text-slate-800" dir="rtl">
 
       <div className="flex flex-col sm:flex-row justify-between items-center mb-6 bg-white p-3 rounded-xl border border-gray-200">
@@ -576,6 +577,9 @@ const EmployeeStatesList = () => {
         onConfirm={confirmDelete}
         onCancel={() => setConfirmState({ open: false, stateId: null, stateName: '' })}
       />
+    </div>
+    </div>
+
       {printData && (() => {
         const st = printData;
         const emp = st.Employee || {};
@@ -596,7 +600,7 @@ const EmployeeStatesList = () => {
           if (!dateString) return "";
           const d = new Date(dateString);
           if (isNaN(d.getTime())) return "";
-          return d.toLocaleDateString('en-GB'); // DD/MM/YYYY
+          return d.toLocaleDateString('en-GB');
         };
 
         const safeName = emp.Name || '';
@@ -604,107 +608,55 @@ const EmployeeStatesList = () => {
         const latName = (arabicToLatin(safeName) + 'XX').substring(0, 2).padEnd(2, 'X');
         const latLastName = (arabicToLatin(safeLastName) + 'XX').substring(0, 2).padEnd(2, 'X');
 
-        // Extract Dates
         const dobFormatted = formatDateToYYYYMMDD(emp.DateOfBirth);
         const startFormatted = formatDateToYYYYMMDD(st.StartDate);
         const referenceCode = `${latName}-${latLastName}-${dobFormatted}-${startFormatted}`;
 
-        // Display Dates for QR
         const startDisplay = formatDateForDisplay(st.StartDate);
-        const returnDisplay = formatDateForDisplay(st.ActualReturnDate || st.EndDate); // Fallback to EndDate if not resumed
+        const returnDisplay = formatDateForDisplay(st.ActualReturnDate || st.EndDate);
 
-        const qrPayload = `الاسم: ${safeName} ${safeLastName}\nتاريخ الخروج: ${startDisplay}\nتاريخ العودة: ${returnDisplay}\nالرمز: ${referenceCode}`;
+        const qrPayload = "الاسم: " + safeName + " " + safeLastName + "\nتاريخ الخروج: " + startDisplay + "\nتاريخ العودة: " + returnDisplay + "\nالرمز: " + referenceCode;
 
         return (
-          <div>
-            {/* Control Bar — hidden during print */}
-            <div
-              className="no-print"
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                padding: '12px 16px',
-                marginBottom: '16px',
-                background: '#f8f9fa',
-                border: '1px solid #dee2e6',
-                borderRadius: '8px',
-                maxWidth: '210mm',
-                margin: '0 auto 16px',
+          <div className="print-only">
+            <LeavePrintDocument
+              corpsType={isSpecial ? 'special' : 'common'}
+              header={{
+                wilaya: emp.Province || 'الشلف',
+                subDirectorate: 'الإدارة العامة',
+                referenceNumber: '',
               }}
-            >
-              <button
-                onClick={() => setPrintData(null)}
-                style={{
-                  padding: '8px 20px',
-                  background: '#6c757d',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                }}
-              >
-                ⬅ رجوع للقائمة
-              </button>
-              <button
-                onClick={() => window.print()}
-                style={{
-                  padding: '8px 20px',
-                  background: '#0d6efd',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                }}
-              >
-                🖨️ طباعة السند
-              </button>
-            </div>
-
-            <div className="print-preview-container">
-              <LeavePrintDocument
-                corpsType={isSpecial ? 'special' : 'common'}
-                header={{
-                  wilaya: emp.Province || 'الشلف',
-                  subDirectorate: 'الإدارة العامة',
-                  referenceNumber: '',
-                }}
-                employee={{
-                  name: `${safeName} ${safeLastName}`.trim(),
-                  gender: emp.Gender === 'أنثى' ? 'female' : 'male',
-                  rank: emp.JobTitle?.RankName || st.CurrentJobTitle || '',
-                  jobTitle: emp.AssignedPosition || '',
-                  province: emp.Province || 'الشلف',
-                }}
-                decision={{
-                  directorateName: `المديرية الجهوية للأملاك الوطنية ناحية ${emp.Province || 'الشلف'}`,
-                }}
-                leave={{
-                  year: `${startYear}`,
-                  days: st.DaysCount || '',
-                  daysInWords: st.DaysCount ? `${st.DaysCount}` : '',
-                  startDate: fmtDate(st.StartDate),
-                  endDate: fmtDate(st.EndDate),
-                  resumeDate: fmtDate(st.ResumptionDate || st.ActualReturnDate),
-                  remaining: st.RemainingBalanceAfter != null ? [
-                    { year: `${startYear}`, days: st.RemainingBalanceAfter, daysInWords: `${st.RemainingBalanceAfter}` }
-                  ] : [],
-                }}
-                signature={{ place: 'الشلف' }}
-                verification={{
-                  code: referenceCode,
-                  url: qrPayload,
-                }}
-              />
-            </div>
+              employee={{
+                name: `${safeName} ${safeLastName}`.trim(),
+                gender: emp.Gender === 'أنثى' ? 'female' : 'male',
+                rank: emp.JobTitle?.RankName || st.CurrentJobTitle || '',
+                jobTitle: emp.AssignedPosition || '',
+                province: emp.Province || 'الشلف',
+              }}
+              decision={{
+                directorateName: `المديرية الجهوية للأملاك الوطنية ناحية ${emp.Province || 'الشلف'}`,
+              }}
+              leave={{
+                year: `${startYear}`,
+                days: st.DaysCount || '',
+                daysInWords: st.DaysCount ? `${st.DaysCount}` : '',
+                startDate: fmtDate(st.StartDate),
+                endDate: fmtDate(st.EndDate),
+                resumeDate: fmtDate(st.ResumptionDate || st.ActualReturnDate),
+                remaining: st.RemainingBalanceAfter != null ? [
+                  { year: `${startYear}`, days: st.RemainingBalanceAfter, daysInWords: `${st.RemainingBalanceAfter}` }
+                ] : [],
+              }}
+              signature={{ place: 'الشلف' }}
+              verification={{
+                code: referenceCode,
+                url: qrPayload,
+              }}
+            />
           </div>
         );
       })()}
-    </div>
+    </>
   );
 };
 
