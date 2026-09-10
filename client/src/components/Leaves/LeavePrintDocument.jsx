@@ -53,8 +53,33 @@ export default function LeavePrintDocument({
           size: A4;
           margin: 15mm;
         }
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          .leave-doc-page,
+          .leave-doc-page * {
+            visibility: visible !important;
+          }
+          .leave-doc-page {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 210mm;
+            margin: 0 !important;
+            padding: 15mm !important;
+            box-shadow: none !important;
+            background: white !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
         .leave-doc-page {
-          width: 100%;
+          width: 210mm;
+          min-height: 297mm;
           box-sizing: border-box;
           font-family: 'Amiri', 'Traditional Arabic', 'Noto Naskh Arabic', 'Tahoma', sans-serif;
           color: #111;
@@ -66,18 +91,11 @@ export default function LeavePrintDocument({
         }
         @media screen {
           .leave-doc-page {
-            max-width: 210mm;
-            margin: 24px auto;
+            margin: 0 auto;
             padding: 15mm;
             background: #fff;
-            box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
-          }
-        }
-        @media print {
-          .leave-doc-page {
-            box-shadow: none;
-            margin: 0;
-            padding: 0;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+            overflow: hidden;
           }
         }
         .doc-header {

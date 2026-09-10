@@ -569,50 +569,101 @@ const EmployeeStatesList = () => {
         const startYear = st.StartDate ? new Date(st.StartDate).getFullYear() : new Date().getFullYear();
         const isSpecial = emp.CorpsType === 'سلك_خاص' || (emp.JobTitle?.EmploymentCategory?.includes?.('خاص'));
 
+        const arabicToLatin = (text) => {
+          if (!text) return '';
+          const map = {'أ':'A','ا':'A','إ':'E','آ':'A','ب':'B','ت':'T','ث':'T','ج':'J','ح':'H','خ':'K','د':'D','ذ':'D','ر':'R','ز':'Z','س':'S','ش':'S','ص':'S','ض':'D','ط':'T','ظ':'Z','ع':'A','غ':'G','ف':'F','ق':'K','ك':'K','ل':'L','م':'M','ن':'N','ه':'H','و':'O','ي':'Y','ى':'A','ة':'A','ئ':'E','ؤ':'O'};
+          return text.split('').map(c => map[c] || c).join('');
+        };
+        const ln = (arabicToLatin(emp.Name) + 'XX').replace(/[^A-Z]/ig, '').toUpperCase().substring(0, 2);
+        const lln = (arabicToLatin(emp.LastName) + 'XX').replace(/[^A-Z]/ig, '').toUpperCase().substring(0, 2);
+        const refCode = `${ln}-${lln}-${st.EmployeesId || '0000'}`;
+        const qrPayload = `الاسم: ${emp.Name || ''} ${emp.LastName || ''}\nالمدة: ${st.DaysCount || ''} يوم\nالرمز: ${refCode}`;
+
         return (
-          <LeavePrintDocument
-            corpsType={isSpecial ? 'special' : 'common'}
-            header={{
-              wilaya: emp.Province || 'الشلف',
-              subDirectorate: 'الإدارة العامة',
-              referenceNumber: '',
-            }}
-            employee={{
-              name: `${emp.Name || ''} ${emp.LastName || ''}`.trim(),
-              gender: emp.Gender === 'أنثى' ? 'female' : 'male',
-              rank: emp.JobTitle?.RankName || st.CurrentJobTitle || '',
-              jobTitle: emp.AssignedPosition || '',
-              province: emp.Province || 'الشلف',
-            }}
-            decision={{
-              directorateName: `المديرية الجهوية للأملاك الوطنية ناحية ${emp.Province || 'الشلف'}`,
-            }}
-            leave={{
-              year: `${startYear}`,
-              days: st.DaysCount || '',
-              daysInWords: st.DaysCount ? `${st.DaysCount}` : '',
-              startDate: fmtDate(st.StartDate),
-              endDate: fmtDate(st.EndDate),
-              resumeDate: fmtDate(st.ResumptionDate || st.ActualReturnDate),
-              remaining: st.RemainingBalanceAfter != null ? [
-                { year: `${startYear}`, days: st.RemainingBalanceAfter, daysInWords: `${st.RemainingBalanceAfter}` }
-              ] : [],
-            }}
-            signature={{ place: 'الشلف' }}
-            verification={{
-              code: (() => {
-                const arabicToLatin = (text) => {
-                  if (!text) return '';
-                  const map = {'أ':'A','ا':'A','إ':'E','آ':'A','ب':'B','ت':'T','ث':'T','ج':'J','ح':'H','خ':'K','د':'D','ذ':'D','ر':'R','ز':'Z','س':'S','ش':'S','ص':'S','ض':'D','ط':'T','ظ':'Z','ع':'A','غ':'G','ف':'F','ق':'K','ك':'K','ل':'L','م':'M','ن':'N','ه':'H','و':'O','ي':'Y','ى':'A','ة':'A','ئ':'E','ؤ':'O'};
-                  return text.split('').map(c => map[c] || c).join('');
-                };
-                const ln = (arabicToLatin(emp.Name) + 'XX').replace(/[^A-Z]/ig, '').toUpperCase().substring(0, 2);
-                const lln = (arabicToLatin(emp.LastName) + 'XX').replace(/[^A-Z]/ig, '').toUpperCase().substring(0, 2);
-                return `${ln}-${lln}-${st.EmployeesId || '0000'}`;
-              })(),
-              url: '',
-            }}
-          />
+          <div>
+            {/* Control Bar — hidden during print */}
+            <div
+              className="no-print"
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: '12px 16px',
+                marginBottom: '16px',
+                background: '#f8f9fa',
+                border: '1px solid #dee2e6',
+                borderRadius: '8px',
+                maxWidth: '210mm',
+                margin: '0 auto 16px',
+              }}
+            >
+              <button
+                onClick={() => setPrintData(null)}
+                style={{
+                  padding: '8px 20px',
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                }}
+              >
+                ⬅ رجوع للقائمة
+              </button>
+              <button
+                onClick={() => window.print()}
+                style={{
+                  padding: '8px 20px',
+                  background: '#0d6efd',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                }}
+              >
+                🖨️ طباعة السند
+              </button>
+            </div>
+
+            <LeavePrintDocument
+              corpsType={isSpecial ? 'special' : 'common'}
+              header={{
+                wilaya: emp.Province || 'الشلف',
+                subDirectorate: 'الإدارة العامة',
+                referenceNumber: '',
+              }}
+              employee={{
+                name: `${emp.Name || ''} ${emp.LastName || ''}`.trim(),
+                gender: emp.Gender === 'أنثى' ? 'female' : 'male',
+                rank: emp.JobTitle?.RankName || st.CurrentJobTitle || '',
+                jobTitle: emp.AssignedPosition || '',
+                province: emp.Province || 'الشلف',
+              }}
+              decision={{
+                directorateName: `المديرية الجهوية للأملاك الوطنية ناحية ${emp.Province || 'الشلف'}`,
+              }}
+              leave={{
+                year: `${startYear}`,
+                days: st.DaysCount || '',
+                daysInWords: st.DaysCount ? `${st.DaysCount}` : '',
+                startDate: fmtDate(st.StartDate),
+                endDate: fmtDate(st.EndDate),
+                resumeDate: fmtDate(st.ResumptionDate || st.ActualReturnDate),
+                remaining: st.RemainingBalanceAfter != null ? [
+                  { year: `${startYear}`, days: st.RemainingBalanceAfter, daysInWords: `${st.RemainingBalanceAfter}` }
+                ] : [],
+              }}
+              signature={{ place: 'الشلف' }}
+              verification={{
+                url: qrPayload,
+                code: refCode,
+              }}
+            />
+          </div>
         );
       })()}
     </div>
