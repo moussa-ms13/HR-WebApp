@@ -5,6 +5,7 @@ import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils
 import useDebounce from '../../hooks/useDebounce';
 import EmployeeStatesService from '../../services/employeeStatesService';
 import EmployeeService from '../../services/employeeService';
+import { refreshLeaves, refreshSpecialCases } from '../../utils/cacheManager';
 
 // Minimum characters before the employee search API is triggered
 const MIN_SEARCH_CHARS = 2;
@@ -220,6 +221,9 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
       } else {
         await EmployeeStatesService.create(payload);
       }
+      const empId = Number(formData.EmployeesId);
+      await refreshLeaves(empId);
+      await refreshSpecialCases(empId);
       onSuccess();
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'حدث خطأ أثناء الحفظ');

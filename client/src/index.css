@@ -143,9 +143,10 @@ input, select, textarea {
 
 
 /* ═══════════════════════════════════════════════════
-   Print Architecture — Invisible Print Component
-   .no-print: visible on screen, hidden on paper
-   .print-only: hidden on screen, visible on paper
+   Print Architecture — Safety Rules
+   Primary: Certificate prints in an isolated iframe.
+   Fallback: If Ctrl+P is pressed on the main window,
+   hide the application shell to prevent UI bleed.
    ═══════════════════════════════════════════════════ */
 @media screen {
   .print-only { display: none !important; }
@@ -154,4 +155,10 @@ input, select, textarea {
   .no-print { display: none !important; }
   .print-only { display: block !important; }
   @page { size: A4; margin: 5mm 15mm 15mm 15mm; }
+
+  /* Safety: hide ALL app chrome if user Ctrl+P's the main window */
+  body > *:not(iframe) {
+    display: none !important;
+  }
 }
+

@@ -55,3 +55,11 @@ prisma/migrations/
 # Misc
 *.local
 *.tsbuildinfo
+
+# Scratch & diagnostic scripts
+server/test-*.js
+server/check-*.js
+server/seed-*.js
+server/reset-*.js
+server/add-*.js
+

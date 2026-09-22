@@ -5,6 +5,7 @@
 const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
+const LeaveBalanceService = require("./LeaveBalanceService");
 const { ROLES, getAllowedProvinces } = require("../config/constants");
 
 const clearDashboardCacheSafe = () => {
@@ -121,8 +122,25 @@ class EmployeeStatesService {
           AddedDate: true,
           IsResumed: true,
           ActualReturnDate: true,
+          RemainingBalanceAfter: true,
+          Notes: true,
           Employee: {
-            select: { Name: true, LastName: true, Province: true }
+            select: {
+              Name: true,
+              LastName: true,
+              Province: true,
+              Gender: true,
+              DateOfBirth: true,
+              Directorate: true,
+              AssignedPosition: true,
+              CorpsType: true,
+              JobTitle: {
+                select: {
+                  RankName: true,
+                  EmploymentCategory: true,
+                }
+              }
+            }
           }
         },
         skip,
@@ -183,40 +201,27 @@ class EmployeeStatesService {
 
     const reqDays = parseInt(data.RequestedDays || data.DaysCount || 0, 10);
     let remainingBalanceAfter = null;
-    let balanceId = null;
+    let consumedBreakdown = null;
+    let primaryLeaveYear = new Date(data.StartDate).getFullYear();
+    let remainingBreakdown = [];
 
     if (reqDays > 0) {
       if (!prisma.leaveBalance) {
         throw new Error("[EmployeeStatesService] prisma.leaveBalance is undefined. Prisma Client is out of sync. Run npx prisma generate.");
       }
-      const currentYear = new Date(data.StartDate).getFullYear();
 
-      // Atomic get-or-create — safe under concurrency thanks to the unique(EmployeeId, Year) constraint
-      const balance = await prisma.leaveBalance.upsert({
-        where: { EmployeeId_Year: { EmployeeId: Number(data.EmployeesId), Year: currentYear } },
-        create: { EmployeeId: Number(data.EmployeesId), Year: currentYear, TotalDays: 30, ConsumedDays: 0, RemainingDays: 30 },
-        update: {},
-      });
-      balanceId = balance.Id;
+      // ── FIFO cascading deduction (oldest debt first) ──────────
+      const result = await LeaveBalanceService.consumeLeaveAcrossYears(
+        Number(data.EmployeesId),
+        reqDays,
+        data.StartDate
+      );
+      consumedBreakdown = result.consumedBreakdown;
+      remainingBreakdown = result.remainingBreakdown;
+      primaryLeaveYear = result.primaryYear;
 
-      // Single-statement atomic deduction — the balance check happens inside the WHERE, not in JS
-      const deduction = await prisma.leaveBalance.updateMany({
-        where: { Id: balance.Id, RemainingDays: { gte: reqDays } },
-        data: {
-          ConsumedDays: { increment: reqDays },
-          RemainingDays: { decrement: reqDays },
-        },
-      });
-
-      if (deduction.count === 0) {
-        const fresh = await prisma.leaveBalance.findUnique({ where: { Id: balance.Id } });
-        throw ApiError.badRequest(
-          `Requested days (${reqDays}) exceeds remaining balance (${fresh?.RemainingDays ?? 0}) for year ${currentYear}.`
-        );
-      }
-
-      const fresh = await prisma.leaveBalance.findUnique({ where: { Id: balance.Id } });
-      remainingBalanceAfter = fresh.RemainingDays;
+      // Scalar snapshot: total remaining across all years (for backwards compat)
+      remainingBalanceAfter = remainingBreakdown.reduce((sum, r) => sum + r.days, 0);
     }
 
     let state;
@@ -236,18 +241,20 @@ class EmployeeStatesService {
           RequestedDays: reqDays > 0 ? reqDays : null,
           IsResumedEarly: false,
           RemainingBalanceAfter: remainingBalanceAfter,
+          Notes: data.Notes || null,
         },
       });
     } catch (err) {
-      // Compensate: refund the balance since the leave record failed to persist
-      if (reqDays > 0 && balanceId) {
-        await prisma.leaveBalance.updateMany({
-          where: { Id: balanceId },
-          data: { ConsumedDays: { decrement: reqDays }, RemainingDays: { increment: reqDays } },
-        });
+      // Compensate: refund all deducted balances since the leave record failed
+      if (reqDays > 0 && consumedBreakdown) {
+        await LeaveBalanceService.rollbackConsumedBreakdown(consumedBreakdown);
       }
       throw err;
     }
+
+    // Attach the rich breakdown so callers (API response / print) can use it
+    state._remainingBreakdown = remainingBreakdown;
+    state._consumedBreakdown = consumedBreakdown;
 
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,

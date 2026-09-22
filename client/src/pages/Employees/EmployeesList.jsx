@@ -9,6 +9,7 @@ import { Search, MoreVertical, Loader2, Users, ArrowUpDown, ChevronDown, Downloa
 import * as XLSX from 'xlsx';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
+import { refreshEmployees } from '../../utils/cacheManager';
 
 const fetcher = async ([url, page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder]) => {
   const result = await EmployeeService.getAll(page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder);
@@ -40,6 +41,10 @@ const EmployeesList = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
   const [search, setSearch] = useState(searchParams.get('search') || '');
+  // Instant-UI value bound to the input — updates every keystroke with
+  // zero network cost. `search` above is the debounced value that
+  // actually drives the SWR key/fetch.
+  const [inputValue, setInputValue] = useState(searchParams.get('search') || '');
   const [provinceFilter, setProvinceFilter] = useState('');
   const [directorateFilter, setDirectorateFilter] = useState('');
   const [fileStatusFilter, setFileStatusFilter] = useState('');
@@ -70,21 +75,23 @@ const EmployeesList = () => {
   // Dropdown State
   const [openDropdownId, setOpenDropdownId] = useState(null);
 
-  // Debounced search — syncs with URL query params
+  // Debounced search — syncs with URL query params.
+  // `commitSearch` is the single source of truth for actually applying a
+  // search term (updates the debounced `search` state that SWR keys off
+  // of, resets pagination, and syncs the URL). Both the debounce timer
+  // and the instant Enter/icon-click paths funnel through it, so there's
+  // no duplicated logic between the two triggers.
   const debounceRef = useRef(null);
-  const debouncedSearch = useCallback((value) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const trimmed = value.trim();
-      setSearch(trimmed);
-      setPage(1);
-      // Sync search to URL for state retention
-      if (trimmed) {
-        setSearchParams({ search: trimmed }, { replace: true });
-      } else {
-        setSearchParams({}, { replace: true });
-      }
-    }, 500);
+
+  const commitSearch = useCallback((value) => {
+    const trimmed = value.trim();
+    setSearch(trimmed);
+    setPage(1);
+    if (trimmed) {
+      setSearchParams({ search: trimmed }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
   }, [setSearchParams]);
 
   useEffect(() => {
@@ -95,7 +102,26 @@ const EmployeesList = () => {
 
   // --- Handlers ---
   const handleSearchChange = (e) => {
-    debouncedSearch(e.target.value);
+    const value = e.target.value;
+    setInputValue(value); // instant UI update, no fetch here
+
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      commitSearch(value);
+    }, 500);
+  };
+
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      commitSearch(inputValue);
+    }
+  };
+
+  const handleSearchIconClick = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    commitSearch(inputValue);
   };
 
   const handleExport = async () => {
@@ -122,9 +148,10 @@ const EmployeesList = () => {
     setIsModalOpen(true);
   };
 
-  const handleModalSuccess = () => {
+  const handleModalSuccess = async () => {
     setIsModalOpen(false);
-    mutate();
+    setSelectedEmployee(null);
+    await refreshEmployees();
   };
 
   const handleDelete = (id) => {
@@ -132,7 +159,8 @@ const EmployeesList = () => {
       closeConfirm();
       try {
         await EmployeeService.delete(id);
-        mutate();
+        await refreshEmployees();
+        toast.success('تم حذف الموظف بنجاح');
       } catch (err) {
         toast.error('فشل الحذف');
       }
@@ -225,11 +253,19 @@ const EmployeesList = () => {
             <input
               type="text"
               placeholder="ابدأ الكتابة للبحث..."
-              defaultValue={searchParams.get('search') || ''}
+              value={inputValue}
               onChange={handleSearchChange}
+              onKeyDown={handleSearchKeyDown}
               className="w-full pr-10 pl-4 py-2 bg-gray-50 border-none rounded-lg outline-none text-sm text-slate-700 focus:ring-1 focus:ring-gray-200"
             />
-            <Search className="absolute right-3 top-2.5 text-gray-400" size={16} />
+            <button
+              type="button"
+              onClick={handleSearchIconClick}
+              aria-label="بحث"
+              className="absolute right-3 top-2.5 text-gray-400 hover:text-emerald-600 transition-colors"
+            >
+              <Search size={16} />
+            </button>
           </div>
         </div>
 

@@ -55,21 +55,21 @@ model SystemRecords {
 
 model Employees {
   Id                Int                @id(map: "PK_Employees") @default(autoincrement())
-  Name              String             @db.NVarChar(Max)
-  LastName          String             @db.NVarChar(Max)
+  Name              String             @db.NVarChar(100)
+  LastName          String             @db.NVarChar(100)
   DateOfBirth       DateTime
   PlaceOfBirth      String             @db.NVarChar(Max)
   Gender            String             @db.NVarChar(Max)
   MaritalStatus     String             @db.NVarChar(Max)
   ProfileImagePath  String             @db.NVarChar(Max)
-  Province          String             @db.NVarChar(Max)
-  Directorate       String             @db.NVarChar(Max)
-  Department        String             @db.NVarChar(Max)
+  Province          String             @db.NVarChar(150)
+  Directorate       String             @db.NVarChar(150)
+  Department        String             @db.NVarChar(100)
   AddedDate         DateTime
   UpdateDate        DateTime
   UsersId           String             @db.NVarChar(Max)
-  NIN               String             @db.NVarChar(Max)
-  SIS               String             @db.NVarChar(Max)
+  NIN               String             @db.NVarChar(20)
+  SIS               String             @db.NVarChar(30)
   AssignedPosition  String             @db.NVarChar(Max)
   CorpsType         String?            @db.NVarChar(Max) @default("سلك_مشترك")
   ConfirmationDate  DateTime?
@@ -98,6 +98,12 @@ model Employees {
 
   @@index([JobTitleId], map: "IX_Employees_JobTitleId")
   @@index([EmployeeStatus], map: "IX_Employees_EmployeeStatus")
+  @@index([LastName, Name], map: "IX_Employees_LastName_Name")
+  @@index([Province], map: "IX_Employees_Province")
+  @@index([Directorate], map: "IX_Employees_Directorate")
+  @@index([NIN], map: "IX_Employees_NIN")
+  @@index([IsProfileComplete], map: "IX_Employees_IsProfileComplete")
+  @@index([Department], map: "IX_Employees_Department")
   @@map("Employees")
 }
 
@@ -187,6 +193,7 @@ model EmployeeStates {
   ResumptionDate        DateTime?
   IsResumedEarly        Boolean   @default(false)
   RemainingBalanceAfter Int?
+  Notes                 String?   @db.NVarChar(Max)
   Employee              Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_EmployeeStates_Employees_EmployeesId")
 
   @@index([EndDate])
@@ -245,15 +252,18 @@ model PositionHistory {
 
 model JobTitles {
   Id                 Int           @id(map: "PK_JobTitles") @default(autoincrement())
-  EmploymentCategory String        @db.NVarChar(Max)
-  RankName           String        @db.NVarChar(Max)
-  CategoryLevel      String        @db.NVarChar(Max)
+  EmploymentCategory String        @db.NVarChar(200)
+  RankName           String        @db.NVarChar(200)
+  CategoryLevel      String        @db.NVarChar(200)
   IndexNumber        Int
   AddedDate          DateTime
   UsersId            String        @db.NVarChar(Max)
   Employees          Employees[]
   RankHistories      RankHistory[]
 
+  @@index([EmploymentCategory], map: "IX_JobTitles_EmploymentCategory")
+  @@index([RankName], map: "IX_JobTitles_RankName")
+  @@index([CategoryLevel], map: "IX_JobTitles_CategoryLevel")
   @@map("JobTitles")
 }
 

@@ -6,20 +6,32 @@ const EmployeesService = require("../services/EmployeesService");
 
 class EmployeesController {
   static async getAll(req, res) {
-    const { page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder, sort, order } = req.query;
-    const result = await EmployeesService.getAll(
-      req.user,
-      Number(page) || 1,
-      Number(limit) || 25,
-      search || "",
-      province || "",
-      directorate || "",
-      fileStatus || "",
-      category || "",
-      sortBy || sort || "Id",
-      sortOrder || order || "desc"
-    );
-    res.json({ success: true, ...result });
+    try {
+      const { page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder, sort, order } = req.query;
+
+      // Sanitize sort params — empty strings from the frontend should fall back to defaults
+      const safeSortBy = (sortBy || sort || "").trim() || "Id";
+      const rawOrder = (sortOrder || order || "").toString().trim();
+      // Frontend may send "-1" for descending; normalise to Prisma-safe values
+      const safeSortOrder = rawOrder === "1" || rawOrder.toLowerCase() === "asc" ? "asc" : "desc";
+
+      const result = await EmployeesService.getAll(
+        req.user,
+        Number(page) || 1,
+        Number(limit) || 25,
+        search || "",
+        province || "",
+        directorate || "",
+        fileStatus || "",
+        category || "",
+        safeSortBy,
+        safeSortOrder
+      );
+      res.json({ success: true, ...result });
+    } catch (error) {
+      console.error("EmployeesController.getAll Error:", error);
+      res.status(500).json({ success: false, message: error.message, stack: error.stack });
+    }
   }
 
   static async getById(req, res) {

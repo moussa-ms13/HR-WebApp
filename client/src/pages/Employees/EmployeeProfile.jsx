@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
-import { ArrowRight, User, Upload, FileText, Trash2, Download, Loader2, Edit3, Briefcase, Calendar, Clock, CheckCircle2, Search, X, CheckSquare, Plus, Save, XCircle, AlertTriangle, Shield } from 'lucide-react';
+import {
+  refreshEmployees,
+  refreshSpecialCases,
+  refreshEmployeeCareer,
+  refreshEmployeeFiles,
+} from '../../utils/cacheManager';
+import { ArrowRight, User, Upload, FileText, Trash2, Download, Loader2, Edit3, Briefcase, Calendar, Clock, CheckCircle2, Search, X, CheckSquare, Plus, Save, XCircle, AlertTriangle, Shield, ChevronDown, ChevronLeft, MapPin, Eye } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import EmployeeService from '../../services/employeeService';
 import SpecialCasesService from '../../services/specialCasesService';
@@ -9,6 +15,7 @@ import apiClient from '../../services/apiClient';
 import { DateText } from '../../utils/formatDate';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
+import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 
 
 const fetcher = async (url) => {
@@ -16,10 +23,31 @@ const fetcher = async (url) => {
   return res.data;
 };
 
+// --- Tree View Node (for Assignment picker) ---
+const TreeNode = ({ label, children, onSelect, isLeaf, dirTag }) => {
+  const [isOpen, setIsOpen] = useState(true);
+  const handleToggle = (e) => { e.stopPropagation(); if (!isLeaf) setIsOpen(!isOpen); };
+  const handleSelect = (e) => { e.stopPropagation(); onSelect(label, dirTag); };
+  return (
+    <div className="ml-4 rtl:ml-0 rtl:mr-4 select-none">
+      <div className={`flex items-center py-1 transition-colors hover:text-blue-600 hover:bg-blue-50 px-2 rounded ${isLeaf ? 'text-slate-600' : 'font-medium text-slate-800'}`}>
+        {!isLeaf && (
+          <div onClick={handleToggle} className="cursor-pointer p-0.5 hover:bg-blue-100 rounded">
+            {isOpen ? <ChevronDown size={16} className="text-slate-500" /> : <ChevronLeft size={16} className="text-slate-500" />}
+          </div>
+        )}
+        {isLeaf && <div className="w-4 h-4 inline-block mr-1 rtl:mr-0 rtl:ml-1" />}
+        <div onClick={handleSelect} className="cursor-pointer flex-1 mr-1 rtl:mr-0 rtl:ml-1">{label}</div>
+      </div>
+      {isOpen && children && <div className="border-r-2 border-slate-100 pr-2 rtl:pr-4">{children}</div>}
+    </div>
+  );
+};
+
 const EmployeeProfile = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const toast = useToast();
 
   const [activeTab, setActiveTab] = useState('profile');
@@ -41,38 +69,98 @@ const EmployeeProfile = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
   const [isSaving, setIsSaving] = useState(false);
+  const [showTree, setShowTree] = useState(false);
+
+  const allowedProvinces = getAllowedProvinces(user);
+
+  // Helper: strip 1900-01-01 sentinel dates (DB defaults) → empty string for clean inputs
+  const sanitizeDate = (d) => {
+    if (!d) return '';
+    if (typeof d === 'string') {
+      const trimmed = d.trim();
+      if (trimmed.startsWith('1900') || trimmed.startsWith('0000') || trimmed.startsWith('0001')) return '';
+      const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (match) {
+        const year = parseInt(match[1].slice(0, 4), 10);
+        if (year <= 1900) return '';
+        return match[1];
+      }
+    }
+    try {
+      const date = new Date(d);
+      if (isNaN(date.getTime()) || date.getFullYear() <= 1900) return '';
+      return date.toISOString().split('T')[0];
+    } catch {
+      return '';
+    }
+  };
 
   const enterEditMode = () => {
     if (!employee) return;
     setEditData({
       Name: employee.Name || '',
       LastName: employee.LastName || '',
-      Gender: employee.Gender || '',
+      Gender: employee.Gender && employee.Gender !== 'غير محدد' ? employee.Gender : '',
       PhoneNumber: employee.PhoneNumber || '',
       Email: employee.Email || '',
-      DateOfBirth: employee.DateOfBirth ? new Date(employee.DateOfBirth).toISOString().split('T')[0] : '',
-      MaritalStatus: employee.MaritalStatus || '',
+      DateOfBirth: sanitizeDate(employee.DateOfBirth),
+      PlaceOfBirth: employee.PlaceOfBirth || '',
+      MaritalStatus: employee.MaritalStatus && employee.MaritalStatus !== 'غير محدد' ? employee.MaritalStatus : (employee.FamilyStatus && employee.FamilyStatus !== 'غير محدد' ? employee.FamilyStatus : ''),
+      NumberOfChildren: employee.NumberOfChildren || 0,
       Address: employee.Address || '',
-      EmployeeStatus: employee.EmployeeStatus || '',
-      InstallationDate: employee.InstallationDate ? new Date(employee.InstallationDate).toISOString().split('T')[0] : '',
-      Degree: employee.Degree || 0,
       NIN: employee.NIN || '',
       SIS: employee.SIS || '',
+      Province: employee.Province || '',
+      Directorate: employee.Directorate || '',
+      Department: employee.Department || '',
+      JobTitleId: employee.JobTitleId ?? '',
+      AssignedPosition: employee.AssignedPosition || '',
+      EmployeeStatus: employee.EmployeeStatus || '',
+      InstallationDate: sanitizeDate(employee.InstallationDate),
+      Degree: employee.Degree ?? 0,
+      LastDegreeDate: sanitizeDate(employee.LastDegreeDate),
+      ConfirmationDate: sanitizeDate(employee.ConfirmationDate),
+      PositionDate: sanitizeDate(employee.PositionDate),
+      IsProfileComplete: employee.IsProfileComplete || false,
     });
+    setShowTree(false);
     setIsEditing(true);
   };
 
   const cancelEdit = () => {
     setIsEditing(false);
     setEditData({});
+    setShowTree(false);
   };
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await EmployeeService.update(id, editData);
-      await mutateSummary();
-      toast.success('تم حفظ التعديلات بنجاح');
+      const payload = {
+        ...editData,
+        Gender: editData.Gender || '',
+        MaritalStatus: editData.MaritalStatus || '',
+        FamilyStatus: editData.MaritalStatus || '',
+        JobTitleId: Number(editData.JobTitleId) || 0,
+        Degree: Number(editData.Degree) ?? 0,
+        NumberOfChildren: Number(editData.NumberOfChildren) || 0,
+        // Send null for empty date strings so backend keeps existing value
+        DateOfBirth: editData.DateOfBirth || null,
+        InstallationDate: editData.InstallationDate || null,
+        LastDegreeDate: editData.LastDegreeDate || null,
+        ConfirmationDate: editData.ConfirmationDate || null,
+        PositionDate: editData.PositionDate || null,
+      };
+      await EmployeeService.update(id, payload);
+      // Re-fetch fresh summary directly and update SWR cache immediately
+      const freshSummary = await EmployeeService.getSummary(id);
+      await mutateSummary(freshSummary, false);
+      if (typeof mutateCareer === 'function') mutateCareer();
+      if (typeof mutateDegrees === 'function') mutateDegrees();
+      // Invalidate global employee lists and career caches
+      await refreshEmployees(id);
+      await refreshEmployeeCareer(id);
+      toast.success('تم تحديث بيانات الموظف بنجاح');
       setIsEditing(false);
     } catch (err) {
       toast.error(err.response?.data?.message || 'فشل حفظ التعديلات');
@@ -83,20 +171,51 @@ const EmployeeProfile = () => {
 
   const editField = (key, value) => setEditData(prev => ({ ...prev, [key]: value }));
 
+  const handleTreeSelect = (department, directorate) => {
+    setEditData(prev => ({
+      ...prev,
+      Department: department,
+      Directorate: directorate || department,
+    }));
+    setShowTree(false);
+  };
+
+  const dirAmlak = "مديرية أملاك الدولة";
+  const dirMash = "مديرية مسح الأراضي والحفظ العقاري";
+
   // --- Leaves State (Conditional SWR — lazy loaded on tab switch) ---
   const { data: leavesData, isLoading: isLeavesLoading } = useSWR(
     id && activeTab === 'leaves' ? `/employee-states?employeeId=${id}` : null,
     fetcher,
-    { keepPreviousData: true }
+    { keepPreviousData: true, revalidateOnFocus: false, dedupingInterval: 60000 }
   );
   const leaves = leavesData?.data || [];
 
   const currentYear = new Date().getFullYear();
-  const { data: leaveBalanceData } = useSWR(
-    id && activeTab === 'leaves' ? `/leave-balances/employee/${id}/${currentYear}` : null,
-    fetcher
+  const [selectedBalanceYear, setSelectedBalanceYear] = useState(currentYear);
+  const { data: allBalancesData } = useSWR(
+    id && activeTab === 'leaves' ? `/leave-balances/employee/${id}/leave-balances` : null,
+    fetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60000 }
   );
-  const leaveBalance = leaveBalanceData?.data || null;
+  // Robust extraction: handle { data: [...] }, { data: { data: [...] } }, or raw array
+  const rawBalances = (() => {
+    if (!allBalancesData) return [];
+    if (Array.isArray(allBalancesData)) return allBalancesData;
+    if (Array.isArray(allBalancesData.data)) return allBalancesData.data;
+    if (Array.isArray(allBalancesData.data?.data)) return allBalancesData.data.data;
+    if (Array.isArray(allBalancesData.records)) return allBalancesData.records;
+    return [];
+  })();
+  // Normalize keys: handle both PascalCase (Prisma/SQL Server) and camelCase
+  const allBalances = rawBalances.map(b => ({
+    Year:          b.Year          ?? b.year,
+    TotalDays:     b.TotalDays     ?? b.totalDays     ?? 30,
+    ConsumedDays:  b.ConsumedDays  ?? b.consumedDays  ?? 0,
+    RemainingDays: b.RemainingDays ?? b.remainingDays ?? 0,
+  }));
+  const availableYears = [...new Set(allBalances.map(b => b.Year).filter(Boolean))].sort((a, b) => b - a);
+  const selectedBalance = allBalances.find(b => b.Year === selectedBalanceYear) || null;
 
   // --- Special Cases State (lazy loaded on tab switch) ---
   const { data: specialCasesData, isLoading: isSpecialCasesLoading, mutate: mutateSpecialCases } = useSWR(
@@ -135,6 +254,8 @@ const EmployeeProfile = () => {
       } else {
         await SpecialCasesService.create(id, specialCaseForm);
       }
+      await refreshSpecialCases(id);
+      await refreshEmployees(id);
       mutateSpecialCases();
       mutateSummary();
       setShowSpecialCaseModal(false);
@@ -165,6 +286,8 @@ const EmployeeProfile = () => {
       closeConfirm();
       try {
         await SpecialCasesService.delete(id, caseId);
+        await refreshSpecialCases(id);
+        await refreshEmployees(id);
         mutateSpecialCases();
         mutateSummary();
         toast.success('تم حذف الحالة الخاصة بنجاح');
@@ -187,8 +310,8 @@ const EmployeeProfile = () => {
   const [showRankModal, setShowRankModal] = useState(false);
   const [showPositionModal, setShowPositionModal] = useState(false);
 
-  // Lazy-load job titles only when user opens rank modal
-  const { data: jobTitlesData } = useSWR(showRankModal ? '/job-titles' : null, fetcher, { keepPreviousData: true });
+  // Lazy-load job titles when user opens rank modal OR when editing profile
+  const { data: jobTitlesData } = useSWR((showRankModal || isEditing) ? '/job-titles' : null, fetcher, { keepPreviousData: true });
   const jobTitles = jobTitlesData?.data || [];
   const [isSubmittingCareer, setIsSubmittingCareer] = useState(false);
 
@@ -219,6 +342,8 @@ const EmployeeProfile = () => {
     try {
       setIsSubmittingDegree(true);
       await apiClient.post(`/employees/${id}/degrees`, degreeForm);
+      await refreshEmployeeCareer(id);
+      await refreshEmployees(id);
       mutateDegrees();
       mutateSummary();
       setShowDegreeModal(false);
@@ -236,6 +361,8 @@ const EmployeeProfile = () => {
       closeConfirm();
       try {
         await apiClient.delete(`/employees/${id}/degrees/${degreeId}`);
+        await refreshEmployeeCareer(id);
+        await refreshEmployees(id);
         mutateDegrees();
         mutateSummary();
         toast.success('تم حذف الدرجة بنجاح');
@@ -260,6 +387,8 @@ const EmployeeProfile = () => {
       } else {
         await apiClient.post(`/employees/${id}/rank-history`, rankForm);
       }
+      await refreshEmployeeCareer(id);
+      await refreshEmployees(id);
       mutateCareer();
       setShowRankModal(false);
       setEditingRankId(null);
@@ -282,6 +411,8 @@ const EmployeeProfile = () => {
       } else {
         await apiClient.post(`/employees/${id}/position-history`, positionForm);
       }
+      await refreshEmployeeCareer(id);
+      await refreshEmployees(id);
       mutateCareer();
       setShowPositionModal(false);
       setEditingPositionId(null);
@@ -323,6 +454,8 @@ const EmployeeProfile = () => {
       closeConfirm();
       try {
         await apiClient.delete(`/employees/${id}/rank-history/${recordId}`);
+        await refreshEmployeeCareer(id);
+        await refreshEmployees(id);
         mutateCareer();
       } catch (err) {
         console.error("Failed to delete rank", err);
@@ -336,6 +469,8 @@ const EmployeeProfile = () => {
       closeConfirm();
       try {
         await apiClient.delete(`/employees/${id}/position-history/${recordId}`);
+        await refreshEmployeeCareer(id);
+        await refreshEmployees(id);
         mutateCareer();
       } catch (err) {
         console.error("Failed to delete position", err);
@@ -433,6 +568,8 @@ const EmployeeProfile = () => {
       if (fileInput) fileInput.value = '';
 
       // Revalidate the files SWR cache
+      await refreshEmployeeFiles(id);
+      await refreshEmployees(id);
       mutateFiles();
     } catch (err) {
       toast.error(err.response?.data?.message || 'فشل رفع الملفات');
@@ -471,6 +608,8 @@ const EmployeeProfile = () => {
 
       setEditingFile(null);
       setEditFileSelected(null);
+      await refreshEmployeeFiles(id);
+      await refreshEmployees(id);
       mutateFiles();
     } catch (err) {
       toast.error(err.response?.data?.message || 'فشل تعديل الملف');
@@ -484,6 +623,8 @@ const EmployeeProfile = () => {
       closeConfirm();
       try {
         await EmployeeService.deleteFile(id, fileId);
+        await refreshEmployeeFiles(id);
+        await refreshEmployees(id);
         mutateFiles();
       } catch (err) {
         toast.error('فشل في حذف الملف');
@@ -512,6 +653,8 @@ const EmployeeProfile = () => {
     try {
       await EmployeeService.bulkDeleteFiles(id, selectedDocIds);
       setSelectedDocIds([]);
+      await refreshEmployeeFiles(id);
+      await refreshEmployees(id);
       mutateFiles();
     } catch (err) {
       toast.error(err.response?.data?.message || 'فشل في حذف الملفات المحددة');
@@ -533,6 +676,25 @@ const EmployeeProfile = () => {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       toast.error('فشل في تحميل الملف');
+    }
+  };
+
+  // --- Secure in-browser file viewing (Blob URL method) ---
+  const [viewingFileId, setViewingFileId] = useState(null);
+
+  const handleViewFile = async (docId) => {
+    if (viewingFileId) return; // Prevent double-clicks
+    setViewingFileId(docId);
+    try {
+      const response = await EmployeeService.viewFile(docId);
+      const contentType = response.headers['content-type'] || 'application/octet-stream';
+      const blob = new Blob([response.data], { type: contentType });
+      const fileURL = URL.createObjectURL(blob);
+      window.open(fileURL, '_blank');
+    } catch (err) {
+      toast.error('فشل في فتح الملف للعرض');
+    } finally {
+      setViewingFileId(null);
     }
   };
 
@@ -629,38 +791,27 @@ const EmployeeProfile = () => {
         </div>
         <h2 className="text-xl font-bold text-slate-800">{employee.Name} {employee.LastName}</h2>
         <p className="text-sm font-medium text-gray-500 mt-1">{employee.JobTitle?.RankName || 'موظف'} • {employee.Department || 'الإدارة العامة'}</p>
-        {activeSpecialCase && (
-          <div className="mt-2">
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-200 shadow-sm">
-              حالة خاصة: {activeSpecialCase.CaseType}
-            </span>
-          </div>
-        )}
+
       </div>
 
       {/* Special Case Banner */}
-      {activeSpecialCase && (() => {
-        const colors = CASE_TYPE_COLORS[activeSpecialCase.CaseType] || CASE_TYPE_COLORS['انتداب'];
-        return (
-          <div className={`mb-6 rounded-xl overflow-hidden shadow-md border ${colors.border}`}>
-            <div className={`bg-gradient-to-l ${colors.banner} px-6 py-4 flex items-center gap-4`}>
-              <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm shrink-0">
-                <AlertTriangle size={22} className="text-white" />
-              </div>
-              <div className="flex-1">
-                <p className="text-white font-bold text-base">⚠️ الحالة الحالية: {activeSpecialCase.CaseType}</p>
-                <p className="text-white/80 text-sm mt-0.5">
-                  منذ <DateText value={activeSpecialCase.StartDate} />
-                  {activeSpecialCase.Destination && ` — الوجهة: ${activeSpecialCase.Destination}`}
-                </p>
-              </div>
-              <span className="bg-white/20 backdrop-blur-sm text-white text-xs font-bold px-3 py-1.5 rounded-full border border-white/30">
-                حالة نشطة
-              </span>
-            </div>
+      {activeSpecialCase && (
+        <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 px-6 py-4 flex items-center gap-4">
+          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
+            <AlertTriangle size={20} className="text-gray-500" />
           </div>
-        );
-      })()}
+          <div className="flex-1">
+            <p className="text-gray-800 font-semibold text-sm">الحالة الحالية: {activeSpecialCase.CaseType}</p>
+            <p className="text-gray-500 text-sm mt-0.5">
+              منذ <DateText value={activeSpecialCase.StartDate} />
+              {activeSpecialCase.Destination && ` — الوجهة: ${activeSpecialCase.Destination}`}
+            </p>
+          </div>
+          <span className="text-gray-500 text-xs font-medium px-3 py-1.5 rounded-full border border-gray-300 bg-white">
+            حالة نشطة
+          </span>
+        </div>
+      )}
 
       {/* Tab Contents */}
       {activeTab === 'profile' && (
@@ -756,6 +907,14 @@ const EmployeeProfile = () => {
                 )}
               </div>
               <div>
+                <span className="block text-xs font-medium text-gray-400 mb-1">مكان الميلاد</span>
+                {isEditing ? (
+                  <input value={editData.PlaceOfBirth} onChange={e => editField('PlaceOfBirth', e.target.value)} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
+                ) : (
+                  <span className="block font-semibold text-slate-800">{employee.PlaceOfBirth || '—'}</span>
+                )}
+              </div>
+              <div>
                 <span className="block text-xs font-medium text-gray-400 mb-1">العنوان</span>
                 {isEditing ? (
                   <input value={editData.Address} onChange={e => editField('Address', e.target.value)} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
@@ -768,21 +927,45 @@ const EmployeeProfile = () => {
                 {isEditing ? (
                   <select value={editData.MaritalStatus} onChange={e => editField('MaritalStatus', e.target.value)} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 bg-white">
                     <option value="">—</option>
-                    <option value="أعزب">أعزب</option>
-                    <option value="متزوج">متزوج</option>
-                    <option value="مطلق">مطلق</option>
-                    <option value="أرمل">أرمل</option>
+                    {(editData.Gender === 'أنثى'
+                      ? ['عزباء', 'متزوجة', 'مطلقة', 'أرملة']
+                      : ['أعزب', 'متزوج', 'مطلق', 'أرمل']
+                    ).map(opt => <option key={opt} value={opt}>{opt}</option>)}
                   </select>
                 ) : (
                   <span className="block font-semibold text-slate-800">{employee.MaritalStatus || '—'}</span>
                 )}
               </div>
+              {/* Number of Children — shown only if not single */}
+              {isEditing ? (
+                editData.MaritalStatus && editData.MaritalStatus !== 'أعزب' && editData.MaritalStatus !== 'عزباء' && (
+                  <div>
+                    <span className="block text-xs font-medium text-gray-400 mb-1">عدد الأولاد</span>
+                    <input value={editData.NumberOfChildren} onChange={e => editField('NumberOfChildren', parseInt(e.target.value) || 0)} type="number" min="0" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
+                  </div>
+                )
+              ) : (
+                employee.MaritalStatus && employee.MaritalStatus !== 'أعزب' && employee.MaritalStatus !== 'عزباء' && (
+                  <div>
+                    <span className="block text-xs font-medium text-gray-400 mb-1">عدد الأولاد</span>
+                    <span className="block font-semibold text-slate-800">{employee.NumberOfChildren ?? '—'}</span>
+                  </div>
+                )
+              )}
               <div>
                 <span className="block text-xs font-medium text-gray-400 mb-1">رقم التعريف الوطني</span>
                 {isEditing ? (
                   <input value={editData.NIN} onChange={e => editField('NIN', e.target.value)} dir="ltr" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
                 ) : (
                   <span className="block font-semibold text-slate-800" dir="ltr">{employee.NIN || '—'}</span>
+                )}
+              </div>
+              <div>
+                <span className="block text-xs font-medium text-gray-400 mb-1">رقم الضمان الاجتماعي</span>
+                {isEditing ? (
+                  <input value={editData.SIS} onChange={e => editField('SIS', e.target.value)} dir="ltr" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
+                ) : (
+                  <span className="block font-semibold text-slate-800" dir="ltr">{employee.SIS || '—'}</span>
                 )}
               </div>
             </div>
@@ -800,34 +983,148 @@ const EmployeeProfile = () => {
                 <span className="block text-xs font-medium text-gray-400 mb-1">الرقم الوظيفي</span>
                 <span className="block font-semibold text-slate-800">{employee.Id}</span>
               </div>
+
+              {/* Province */}
               <div>
-                <span className="block text-xs font-medium text-gray-400 mb-1">التعيين الوظيفي</span>
-                <span className="block font-semibold text-slate-800">{employee.JobTitle?.RankName || '—'}</span>
+                <span className="block text-xs font-medium text-gray-400 mb-1">الولاية</span>
+                {isEditing ? (
+                  <select value={editData.Province} onChange={e => { editField('Province', e.target.value); editField('Directorate', ''); editField('Department', ''); }} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 bg-white">
+                    <option value="" disabled>اختر الولاية...</option>
+                    {allowedProvinces.map(prov => (
+                      <option key={prov} value={prov}>{prov}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="block font-semibold text-slate-800">{employee.Province || '—'}</span>
+                )}
               </div>
+
+              {/* Directorate / Department — Tree Picker */}
+              <div className="md:col-span-2 relative">
+                <span className="block text-xs font-medium text-gray-400 mb-1">
+                  <MapPin size={14} className="inline ml-1 text-emerald-500" />
+                  مكان التعيين (المديرية / الدائرة)
+                </span>
+                {isEditing ? (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={editData.Department ? (editData.Directorate === editData.Department ? editData.Directorate : `${editData.Directorate} ➜ ${editData.Department}`) : ''}
+                        placeholder="اضغط لاختيار مكان التعيين..."
+                        className="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-white outline-none text-sm cursor-pointer"
+                        onClick={() => { if (editData.Province) setShowTree(!showTree); else toast.warning("يرجى اختيار الولاية أولاً."); }}
+                      />
+                      <button type="button" onClick={() => { if (editData.Province) setShowTree(!showTree); else toast.warning("يرجى اختيار الولاية أولاً."); }} className="px-4 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-sm font-medium transition-colors">
+                        {showTree ? 'إغلاق' : 'اختيار'}
+                      </button>
+                    </div>
+                    {showTree && editData.Province && (
+                      <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-4 z-10 max-h-64 overflow-y-auto">
+                        <TreeNode label="المديرية الجهوية للأملاك الوطنية" onSelect={handleTreeSelect} isLeaf={false}>
+                          {editData.Province === 'الشلف' && (
+                            <TreeNode label="المديرية الجهوية للأملاك الوطنية" onSelect={handleTreeSelect} isLeaf={true} dirTag="المديرية الجهوية للأملاك الوطنية" />
+                          )}
+                          <TreeNode label={dirAmlak} onSelect={handleTreeSelect} isLeaf={false}>
+                            <TreeNode label={`المديرية الولائية (${editData.Province})`} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirAmlak} />
+                            <TreeNode label="مفتشيات أملاك الدولة" onSelect={handleTreeSelect} isLeaf={false}>
+                              {getMofatishiyat(editData.Province).map(m => (
+                                <TreeNode key={m} label={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirAmlak} />
+                              ))}
+                            </TreeNode>
+                          </TreeNode>
+                          <TreeNode label={dirMash} onSelect={handleTreeSelect} isLeaf={false}>
+                            <TreeNode label={`المديرية الولائية (${editData.Province})`} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirMash} />
+                            <TreeNode label="المحافظات العقارية" onSelect={handleTreeSelect} isLeaf={false}>
+                              {getMohafathat(editData.Province).map(m => (
+                                <TreeNode key={m} label={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirMash} />
+                              ))}
+                            </TreeNode>
+                          </TreeNode>
+                        </TreeNode>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <span className="block font-semibold text-slate-800">
+                    {employee.Directorate && employee.Department && employee.Directorate !== employee.Department
+                      ? `${employee.Directorate} ➜ ${employee.Department}`
+                      : employee.Department || employee.Directorate || '—'}
+                  </span>
+                )}
+              </div>
+
+              {/* Rank (JobTitleId) */}
               <div>
-                <span className="block text-xs font-medium text-gray-400 mb-1">تاريخ التوظيف</span>
+                <span className="block text-xs font-medium text-gray-400 mb-1">الرتبة</span>
+                {isEditing ? (
+                  <select value={editData.JobTitleId} onChange={e => editField('JobTitleId', e.target.value)} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 bg-white">
+                    <option value="">بدون رتبة</option>
+                    {jobTitles.map(job => (
+                      <option key={job.Id} value={job.Id}>{job.RankName}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="block font-semibold text-slate-800">{employee.JobTitle?.RankName || '—'}</span>
+                )}
+              </div>
+
+              {/* Assigned Position (High Post) */}
+              <div>
+                <span className="block text-xs font-medium text-gray-400 mb-1">المنصب العالي</span>
+                {isEditing ? (
+                  <input value={editData.AssignedPosition} onChange={e => editField('AssignedPosition', e.target.value)} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
+                ) : (
+                  <span className="block font-semibold text-slate-800">{employee.AssignedPosition || '—'}</span>
+                )}
+              </div>
+
+              {/* Position Date */}
+              <div>
+                <span className="block text-xs font-medium text-gray-400 mb-1">تاريخ المنصب العالي</span>
+                {isEditing ? (
+                  <input value={editData.PositionDate} onChange={e => editField('PositionDate', e.target.value)} type="date" disabled={!editData.AssignedPosition || editData.AssignedPosition === 'لا شيء'} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100" />
+                ) : (
+                  <span className="block font-semibold text-slate-800"><DateText value={employee.PositionDate} /></span>
+                )}
+              </div>
+
+              {/* Installation Date */}
+              <div>
+                <span className="block text-xs font-medium text-gray-400 mb-1">تاريخ التنصيب</span>
                 {isEditing ? (
                   <input value={editData.InstallationDate} onChange={e => editField('InstallationDate', e.target.value)} type="date" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
                 ) : (
                   <span className="block font-semibold text-slate-800"><DateText value={employee.InstallationDate} /></span>
                 )}
               </div>
+
+              {/* Employee Status */}
               <div>
                 <span className="block text-xs font-medium text-gray-400 mb-1">الحالة الوظيفية</span>
                 {isEditing ? (
                   <select value={editData.EmployeeStatus} onChange={e => editField('EmployeeStatus', e.target.value)} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 bg-white">
                     <option value="">—</option>
-                    <option value="نشط">نشط</option>
-                    <option value="مثبت">مثبت</option>
+                    <option value="مرسم">مرسم</option>
                     <option value="متربص">متربص</option>
-                    <option value="معلق">معلق</option>
-                    <option value="مفصول">مفصول</option>
-                    <option value="متقاعد">متقاعد</option>
                   </select>
                 ) : (
                   <span className="block font-semibold text-emerald-600">{employee.EmployeeStatus || 'نشط'}</span>
                 )}
               </div>
+
+              {/* Confirmation Date */}
+              <div>
+                <span className="block text-xs font-medium text-gray-400 mb-1">تاريخ التثبيت</span>
+                {isEditing ? (
+                  <input value={editData.ConfirmationDate} onChange={e => editField('ConfirmationDate', e.target.value)} type="date" disabled={editData.EmployeeStatus === 'متربص'} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100" />
+                ) : (
+                  <span className="block font-semibold text-slate-800"><DateText value={employee.ConfirmationDate} /></span>
+                )}
+              </div>
+
+              {/* Degree */}
               <div>
                 <span className="block text-xs font-medium text-gray-400 mb-1">الدرجة</span>
                 {isEditing ? (
@@ -836,82 +1133,152 @@ const EmployeeProfile = () => {
                   <span className="block font-semibold text-slate-800">{employee.Degree || '—'}</span>
                 )}
               </div>
+
+              {/* Last Degree Date */}
               <div>
-                <span className="block text-xs font-medium text-gray-400 mb-1">رقم الضمان الاجتماعي</span>
+                <span className="block text-xs font-medium text-gray-400 mb-1">تاريخ آخر درجة</span>
                 {isEditing ? (
-                  <input value={editData.SIS} onChange={e => editField('SIS', e.target.value)} dir="ltr" className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300" />
+                  <input value={editData.LastDegreeDate} onChange={e => editField('LastDegreeDate', e.target.value)} type="date" disabled={Number(editData.Degree) === 0} className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100" />
                 ) : (
-                  <span className="block font-semibold text-slate-800" dir="ltr">{employee.SIS || '—'}</span>
+                  <span className="block font-semibold text-slate-800"><DateText value={employee.LastDegreeDate} /></span>
                 )}
               </div>
             </div>
           </div>
+
+          {/* Profile Completion Toggle */}
+          {isEditing ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">تم استكمال جميع وثائق الملف</p>
+                  <p className="text-xs text-gray-500 mt-0.5">علّم هذا الخيار إذا كانت جميع الوثائق المطلوبة مرفقة ومكتملة</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => editField('IsProfileComplete', !editData.IsProfileComplete)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:ring-offset-1 ${editData.IsProfileComplete ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${editData.IsProfileComplete ? '-translate-x-5.5' : '-translate-x-0.5'}`} />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-gray-800">حالة اكتمال الملف</span>
+                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${employee.IsProfileComplete ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                  {employee.IsProfileComplete ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                  {employee.IsProfileComplete ? 'مكتمل' : 'غير مكتمل'}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {activeTab === 'leaves' && (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-visible flex flex-col">
-          <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-            <h3 className="text-lg font-bold text-slate-800">سجل الإجازات والحالات</h3>
-          </div>
-          
-          {/* Leave Balance Dashboard */}
-          {leaveBalance && (
-            <div className="grid grid-cols-3 gap-4 p-6 bg-slate-50 border-b border-gray-200">
-              <div className="bg-white border border-blue-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
-                <span className="text-xs font-semibold text-blue-600 mb-1">الرصيد السنوي ({currentYear})</span>
-                <span className="text-2xl font-bold text-blue-800">{leaveBalance.TotalDays}</span>
-              </div>
-              <div className="bg-white border border-orange-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
-                <span className="text-xs font-semibold text-orange-600 mb-1">المستهلك</span>
-                <span className="text-2xl font-bold text-orange-800">{leaveBalance.ConsumedDays}</span>
-              </div>
-              <div className="bg-white border border-emerald-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
-                <span className="text-xs font-semibold text-emerald-600 mb-1">الرصيد المتبقي</span>
-                <span className="text-2xl font-bold text-emerald-800">{leaveBalance.RemainingDays}</span>
+        <div className="space-y-5">
+          {/* ── Leave Balance Section ── */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="p-5 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-800">رصيد العطلة السنوية</h3>
+              <div className="relative">
+                <select
+                  value={selectedBalanceYear}
+                  onChange={(e) => setSelectedBalanceYear(Number(e.target.value))}
+                  className="appearance-none pl-8 pr-4 py-2 border border-gray-300 rounded-xl text-sm font-bold text-slate-700 bg-gradient-to-b from-white to-gray-50 shadow-sm outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 cursor-pointer hover:border-emerald-300 transition-all min-w-[120px] text-center"
+                >
+                  {(availableYears.length > 0 ? availableYears : [currentYear]).map((year, index) => (
+                    <option key={year || index} value={year}>{year}</option>
+                  ))}
+                </select>
+                <ChevronDown size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
               </div>
             </div>
-          )}
 
-          <div className="overflow-x-auto flex-1 custom-scrollbar">
-            <table className="w-full text-right border-collapse whitespace-nowrap">
-              <thead className="bg-white text-gray-500 text-sm border-b border-gray-200 sticky top-0">
-                <tr>
-                  <th className="py-4 px-6 font-medium">النوع / السبب</th>
-                  <th className="py-4 px-6 font-medium">تاريخ الخروج</th>
-                  <th className="py-4 px-6 font-medium">تاريخ الاستئناف</th>
-                  <th className="py-4 px-6 font-medium">المدة (أيام)</th>
-                  <th className="py-4 px-6 font-medium">الحالة</th>
-                </tr>
-              </thead>
-              <tbody className="text-sm text-slate-700 divide-y divide-gray-100">
-                {isLeavesLoading ? (
+            {selectedBalance ? (
+              <div className="grid grid-cols-3 gap-4 p-6 bg-gradient-to-b from-slate-50 to-white">
+                <div className="bg-white border border-blue-200 rounded-xl p-5 shadow-sm flex flex-col items-center justify-center transition-transform hover:scale-[1.02]">
+                  <span className="text-xs font-semibold text-blue-500 mb-1.5">الحق السنوي</span>
+                  <span className="text-3xl font-extrabold text-blue-700">{selectedBalance.TotalDays}</span>
+                  <span className="text-[10px] text-blue-400 mt-1">يوم</span>
+                </div>
+                <div className="bg-white border border-orange-200 rounded-xl p-5 shadow-sm flex flex-col items-center justify-center transition-transform hover:scale-[1.02]">
+                  <span className="text-xs font-semibold text-orange-500 mb-1.5">المستهلك</span>
+                  <span className="text-3xl font-extrabold text-orange-700">{selectedBalance.ConsumedDays}</span>
+                  <span className="text-[10px] text-orange-400 mt-1">يوم</span>
+                </div>
+                <div className={`bg-white border rounded-xl p-5 shadow-sm flex flex-col items-center justify-center transition-transform hover:scale-[1.02] ${
+                  selectedBalance.RemainingDays > 0
+                    ? 'border-emerald-200'
+                    : 'border-red-200'
+                }`}>
+                  <span className={`text-xs font-semibold mb-1.5 ${
+                    selectedBalance.RemainingDays > 0 ? 'text-emerald-500' : 'text-red-500'
+                  }`}>المتبقي</span>
+                  <span className={`text-3xl font-extrabold ${
+                    selectedBalance.RemainingDays > 0 ? 'text-emerald-700' : 'text-red-700'
+                  }`}>{selectedBalance.RemainingDays}</span>
+                  <span className={`text-[10px] mt-1 ${
+                    selectedBalance.RemainingDays > 0 ? 'text-emerald-400' : 'text-red-400'
+                  }`}>يوم</span>
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 text-center text-gray-400 text-sm">
+                <Calendar size={28} className="mx-auto text-gray-300 mb-2" />
+                لا يوجد رصيد مسجّل لسنة {selectedBalanceYear}
+              </div>
+            )}
+          </div>
+
+          {/* ── Leave History Table ── */}
+          <div className="bg-white rounded-xl border border-gray-200 overflow-visible flex flex-col">
+            <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+              <h3 className="text-lg font-bold text-slate-800">سجل الإجازات والحالات</h3>
+            </div>
+
+            <div className="overflow-x-auto flex-1 custom-scrollbar">
+              <table className="w-full text-right border-collapse whitespace-nowrap">
+                <thead className="bg-white text-gray-500 text-sm border-b border-gray-200 sticky top-0">
                   <tr>
-                    <td colSpan="5" className="py-12 text-center text-gray-400">
-                      <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
-                      جاري تحميل البيانات...
-                    </td>
+                    <th className="py-4 px-6 font-medium">النوع / السبب</th>
+                    <th className="py-4 px-6 font-medium">تاريخ الخروج</th>
+                    <th className="py-4 px-6 font-medium">تاريخ الاستئناف</th>
+                    <th className="py-4 px-6 font-medium">المدة (أيام)</th>
+                    <th className="py-4 px-6 font-medium">الحالة</th>
                   </tr>
-                ) : leaves.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="py-12 text-center text-gray-400">
-                      <Calendar size={32} className="mx-auto text-gray-300 mb-2" />
-                      لا توجد سجلات إجازات لهذا الموظف
-                    </td>
-                  </tr>
-                ) : (
-                  leaves.map((leave) => (
-                    <tr key={leave.Id} className="hover:bg-gray-50 transition-colors">
-                      <td className="py-4 px-6 font-bold text-slate-800">{leave.StateTypeOrReason}</td>
-                      <td className="py-4 px-6 text-gray-600"><DateText value={leave.StartDate} /></td>
-                      <td className="py-4 px-6 text-gray-600"><DateText value={leave.EndDate} /></td>
-                      <td className="py-4 px-6 font-medium text-slate-700">{leave.DaysCount}</td>
-                      <td className="py-4 px-6">{getLeaveStatusPill(leave)}</td>
+                </thead>
+                <tbody className="text-sm text-slate-700 divide-y divide-gray-100">
+                  {isLeavesLoading ? (
+                    <tr>
+                      <td colSpan="5" className="py-12 text-center text-gray-400">
+                        <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
+                        جاري تحميل البيانات...
+                      </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : leaves.length === 0 ? (
+                    <tr>
+                      <td colSpan="5" className="py-12 text-center text-gray-400">
+                        <Calendar size={32} className="mx-auto text-gray-300 mb-2" />
+                        لا توجد سجلات إجازات لهذا الموظف
+                      </td>
+                    </tr>
+                  ) : (
+                    leaves.map((leave) => (
+                      <tr key={leave.Id} className="hover:bg-gray-50 transition-colors">
+                        <td className="py-4 px-6 font-bold text-slate-800">{leave.StateTypeOrReason}</td>
+                        <td className="py-4 px-6 text-gray-600"><DateText value={leave.StartDate} /></td>
+                        <td className="py-4 px-6 text-gray-600"><DateText value={leave.EndDate} /></td>
+                        <td className="py-4 px-6 font-medium text-slate-700">{leave.DaysCount}</td>
+                        <td className="py-4 px-6">{getLeaveStatusPill(leave)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -1556,6 +1923,14 @@ const EmployeeProfile = () => {
                     <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-200">
                       <DateText value={file.DocumentDate} className="text-xs font-mono text-gray-400" />
                       <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => handleViewFile(file.Id)}
+                          disabled={viewingFileId === file.Id}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-50"
+                          title="عرض"
+                        >
+                          {viewingFileId === file.Id ? <Loader2 size={16} className="animate-spin" /> : <Eye size={16} />}
+                        </button>
                         <button
                           onClick={() => handleDownloadFile(file.Id, file.FileName || file.DocumentName)}
                           className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors"

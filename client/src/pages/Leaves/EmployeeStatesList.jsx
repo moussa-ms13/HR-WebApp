@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { createRoot } from 'react-dom/client';
 import useSWR from 'swr';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -11,8 +12,18 @@ import UnifiedEntryModal from './UnifiedEntryModal';
 import LeavePrintDocument from '../../components/Leaves/LeavePrintDocument';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { useToast } from '../../components/ui/Toast';
+import { refreshLeaves, refreshSpecialCases, refreshEmployees } from '../../utils/cacheManager';
 import { Search, MoreVertical, CalendarOff, ArrowUpDown, ChevronDown, Loader2, Trash2, Plus, Printer } from 'lucide-react';
 import { DateText } from '../../utils/formatDate';
+import {
+  normalizeCorpsType,
+  normalizeGender,
+  getGenderProfile,
+  numberToArabicWords,
+  formatDateSafe,
+  generateReferenceCode,
+  buildQrPayload,
+} from '../../utils/leaveCertificateConfig';
 
 const fetcher = async ([url, page, limit, category, search, directorate, province]) => {
   const result = await EmployeeStatesService.getAll(page, limit, category, search, directorate, province);
@@ -26,21 +37,214 @@ const casesFetcher = async ([url, page, limit, search, directorate, province]) =
   return result;
 };
 
+// ─── Build normalized print data from a raw employee-state record ────
+function buildPrintDataFromState(st) {
+  const emp = st.Employee || {};
+  const warnings = [];
 
+  // Normalize corps type
+  const corpsType = normalizeCorpsType(emp);
+  if (corpsType === "unknown") {
+    warnings.push("لم يتم تحديد نوع السلك (مشترك/خاص). تم استخدام الأسلاك المشتركة كقيمة افتراضية.");
+  }
 
-const arabicToLatin = (text) => {
-  if (!text) return 'XX';
-  const map = {
-    'ا':'A','أ':'A','إ':'E','آ':'A','ى':'A','ة':'A','ئ':'E','ؤ':'O',
-    'ب':'B','ت':'T','ث':'TH','ج':'J','ح':'H','خ':'KH','د':'D','ذ':'DZ',
-    'ر':'R','ز':'Z','س':'S','ش':'CH','ص':'S','ض':'D','ط':'T','ظ':'Z',
-    'ع':'A','غ':'GH','ف':'F','ق':'K','ك':'K','ل':'L','م':'M','ن':'N',
-    'ه':'H','و':'W','ي':'Y'
+  // Normalize gender
+  const gender = normalizeGender(emp.Gender);
+  if (!gender) {
+    warnings.push("جنس الموظف غير محدد أو غير صالح. تم استخدام صيغة المذكر كقيمة افتراضية. يرجى تصحيح بيانات الموظف.");
+  }
+  const genderProfile = getGenderProfile(gender || "male");
+
+  // Employee name
+  const fullName = `${emp.Name || ""} ${emp.LastName || ""}`.trim();
+
+  // Rank (from JobTitle relation)
+  const rank = emp.JobTitle?.RankName || st.CurrentJobTitle || "";
+
+  // Leave year — derive from StartDate
+  const startYear = st.StartDate ? new Date(st.StartDate).getFullYear() : new Date().getFullYear();
+  const leaveYear = String(startYear);
+
+  // Days in words
+  const days = st.DaysCount || 0;
+  const daysInWords = numberToArabicWords(days);
+
+  // Dates (timezone-safe)
+  const startDate = formatDateSafe(st.StartDate);
+  const endDate = formatDateSafe(st.EndDate);
+  const resumeDate = formatDateSafe(st.ResumptionDate || st.ActualReturnDate || st.EndDate);
+  const dateOfBirth = formatDateSafe(emp.DateOfBirth);
+
+  // Reference code
+  const refCode = generateReferenceCode(emp.Name, emp.LastName, emp.DateOfBirth, st.StartDate);
+
+  // QR payload (offline informational)
+  const qrPayload = buildQrPayload({
+    referenceCode: refCode,
+    employeeName: fullName,
+    dateOfBirth,
+    startDate,
+    endDate,
+    resumeDate,
+    rank,
+    jobTitle: emp.AssignedPosition || "/",
+    province: emp.Province || "الشلف",
+    leaveYear,
+  });
+
+  // Remaining balance — prefer rich multi-year breakdown (_remainingBreakdown) injected
+  // by the FIFO engine on new records; fall back to the legacy scalar for old records.
+  const remaining = (Array.isArray(st._remainingBreakdown) && st._remainingBreakdown.length > 0)
+    ? st._remainingBreakdown.map((r) => ({
+        year: String(r.year),
+        days: r.days,
+        daysInWords: numberToArabicWords(r.days),
+      }))
+    : st.RemainingBalanceAfter != null
+      ? [{
+          year: leaveYear,
+          days: st.RemainingBalanceAfter,
+          daysInWords: numberToArabicWords(st.RemainingBalanceAfter),
+        }]
+      : [];
+
+  // Signature date = today
+  const today = new Date();
+  const sigDate = `${String(today.getDate()).padStart(2, '0')}/${String(today.getMonth() + 1).padStart(2, '0')}/${today.getFullYear()}`;
+
+  return {
+    corpsType: corpsType === "unknown" ? "common" : corpsType,
+    genderProfile,
+    header: {
+      wilaya: emp.Province || "الشلف",
+      subDirectorate: "الإدارة العامة",
+      referenceNumber: "",
+    },
+    employee: {
+      name: fullName,
+      gender: gender || "male",
+      dateOfBirth,
+      rank,
+      jobTitle: emp.AssignedPosition || "",
+      province: emp.Province || "الشلف",
+    },
+    decision: {
+      directorateName: `المديرية الجهوية للأملاك الوطنية ناحية ${emp.Province || "الشلف"}`,
+    },
+    leave: {
+      year: leaveYear,
+      days,
+      daysInWords,
+      startDate,
+      endDate,
+      resumeDate,
+      remaining,
+      notes: st.Notes,
+    },
+    signature: {
+      place: "الشلف",
+      date: sigDate,
+    },
+    qrPayload,
+    referenceCode: refCode,
+    warnings,
   };
-  let result = '';
-  for (let char of text) { result += map[char] || char; }
-  return result.replace(/[^A-Z]/g, '').toUpperCase();
-};
+}
+
+// ─── Print certificate in isolated iframe ────────────────────
+function printLeaveInIframe(printData) {
+  return new Promise((resolve) => {
+    // Create hidden iframe
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.top = "-10000px";
+    iframe.style.left = "-10000px";
+    iframe.style.width = "210mm";
+    iframe.style.height = "297mm";
+    iframe.style.border = "none";
+    document.body.appendChild(iframe);
+
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+
+    // Write the base HTML structure
+    iframeDoc.open();
+    iframeDoc.write(`<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>سند عطلة سنوية</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { direction: rtl; background: white; }
+    @page { size: A4; margin: 5mm 15mm 15mm 15mm; }
+  </style>
+</head>
+<body>
+  <div id="print-root"></div>
+</body>
+</html>`);
+    iframeDoc.close();
+
+    // Render the React component into the iframe
+    const mountPoint = iframeDoc.getElementById("print-root");
+    const root = createRoot(mountPoint);
+    root.render(
+      React.createElement(LeavePrintDocument, printData)
+    );
+
+    // Wait for fonts and rendering, then print
+    const attemptPrint = () => {
+      // Check if QR SVG is rendered
+      const qrSvg = iframeDoc.querySelector("svg");
+      const pageContent = iframeDoc.querySelector(".leave-doc-page");
+
+      if (!pageContent) {
+        setTimeout(attemptPrint, 100);
+        return;
+      }
+
+      // Wait a bit for fonts to load
+      const printNow = () => {
+        try {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        } catch (e) {
+          console.error("Print failed:", e);
+        }
+
+        // Cleanup after print dialog closes
+        const cleanup = () => {
+          try {
+            root.unmount();
+          } catch (_) {}
+          if (iframe.parentNode) {
+            iframe.parentNode.removeChild(iframe);
+          }
+          resolve();
+        };
+
+        // Listen for afterprint, or fallback timeout
+        try {
+          iframe.contentWindow.addEventListener("afterprint", cleanup, { once: true });
+        } catch (_) {}
+        // Fallback cleanup after 60 seconds
+        setTimeout(cleanup, 60000);
+      };
+
+      // Give fonts 500ms to load
+      if (iframeDoc.fonts && iframeDoc.fonts.ready) {
+        iframeDoc.fonts.ready.then(() => setTimeout(printNow, 200));
+      } else {
+        setTimeout(printNow, 700);
+      }
+    };
+
+    // Start checking after initial render
+    setTimeout(attemptPrint, 300);
+  });
+}
 
 const EmployeeStatesList = () => {
   const { hasPermission } = useAuth();
@@ -113,10 +317,14 @@ const EmployeeStatesList = () => {
       if (activeTab === 'cases') {
         if (!employeeId) throw new Error("رقم الموظف غير متوفر");
         await SpecialCasesService.delete(employeeId, stateId);
+        await refreshSpecialCases(employeeId);
+        await refreshEmployees(employeeId);
         mutateCases();
         toast.success('تم حذف الحالة الخاصة بنجاح');
       } else {
         await EmployeeStatesService.delete(stateId);
+        await refreshLeaves();
+        await refreshEmployees();
         mutate();
         toast.success('تم حذف السجل بنجاح');
       }
@@ -129,33 +337,35 @@ const EmployeeStatesList = () => {
     setIsUnifiedModalOpen(true);
   };
 
-  const handleUnifiedSuccess = () => {
+  const handleUnifiedSuccess = async () => {
+    await refreshLeaves();
+    await refreshSpecialCases();
+    await refreshEmployees();
     mutate();
     mutateCases();
     toast.success('تمت الإضافة بنجاح');
   };
 
-  const handleModalSuccess = () => {
+  const handleModalSuccess = async () => {
     setIsModalOpen(false);
+    await refreshLeaves();
+    await refreshSpecialCases();
     mutate();
   };
 
-  const [printData, setPrintData] = useState(null);
-
-  const handlePrint = (st) => {
+  // ── Isolated Iframe Print Handler ──
+  const handlePrint = useCallback((st) => {
     setMenuOpenId(null);
-    setPrintData(st);
-    setTimeout(() => {
-      window.print();
-    }, 300); // Allow React to render the hidden document before printing
-  };
+    const printData = buildPrintDataFromState(st);
+    printLeaveInIframe(printData);
+  }, []);
 
   const getRowStatus = (endDateStr, isResumed) => {
     if (isResumed) return 'resumed';
-    if (!endDateStr) return 'active';
+    if (!endDateStr) return 'permanent';
 
     const endDate = new Date(endDateStr);
-    if (isNaN(endDate.getTime())) return 'active';
+    if (isNaN(endDate.getTime())) return 'permanent';
 
     const today = new Date();
     endDate.setHours(0, 0, 0, 0);
@@ -174,6 +384,7 @@ const EmployeeStatesList = () => {
       case 'resumed': return 'bg-emerald-100 text-emerald-800 border border-emerald-300';
       case 'overdue': return 'animate-pulse bg-red-100 text-red-800 border border-red-300';
       case 'warning': return 'animate-pulse bg-orange-100 text-orange-800 border border-orange-300';
+      case 'permanent': return 'bg-green-100 text-green-800 border border-green-300';
       case 'active':
       default: return 'bg-green-100 text-green-800 border border-green-300';
     }
@@ -184,6 +395,7 @@ const EmployeeStatesList = () => {
       case 'overdue': return 'bg-red-50 hover:bg-red-100';
       case 'warning': return 'bg-orange-50 hover:bg-orange-100';
       case 'resumed':
+      case 'permanent':
       case 'active':
       default: return 'bg-white hover:bg-gray-50';
     }
@@ -194,7 +406,8 @@ const EmployeeStatesList = () => {
       case 'resumed': return 'تم الاستئناف';
       case 'overdue': return 'لم يستأنف (متأخر)';
       case 'warning': return 'يستأنف قريباً';
-      case 'active': return 'في عطلة';
+      case 'permanent': return 'حالة دائمة';
+      case 'active': return 'ساري المفعول';
       default: return '-';
     }
   };
@@ -209,8 +422,6 @@ const EmployeeStatesList = () => {
   );
 
   return (
-    <>
-    <div className="no-print">
     <div className="flex flex-col h-full font-sans text-slate-800" dir="rtl">
 
       <div className="flex flex-col sm:flex-row justify-between items-center mb-6 bg-white p-3 rounded-xl border border-gray-200">
@@ -278,10 +489,6 @@ const EmployeeStatesList = () => {
           )}
         </div>
       </div>
-
-
-
-
 
       <div className="flex gap-1 bg-white p-1 rounded-xl border border-gray-200 mb-4 w-fit">
         <button
@@ -578,85 +785,6 @@ const EmployeeStatesList = () => {
         onCancel={() => setConfirmState({ open: false, stateId: null, stateName: '' })}
       />
     </div>
-    </div>
-
-      {printData && (() => {
-        const st = printData;
-        const emp = st.Employee || {};
-        const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '';
-        const startYear = st.StartDate ? new Date(st.StartDate).getFullYear() : new Date().getFullYear();
-        const isSpecial = emp.CorpsType === 'سلك_خاص' || (emp.JobTitle?.EmploymentCategory?.includes?.('خاص'));
-
-        const formatDateToYYYYMMDD = (dateString) => {
-          if (!dateString) return "00000000";
-          const d = new Date(dateString);
-          if (isNaN(d.getTime())) return "00000000";
-          return d.getFullYear().toString() +
-                 (d.getMonth() + 1).toString().padStart(2, '0') +
-                 d.getDate().toString().padStart(2, '0');
-        };
-
-        const formatDateForDisplay = (dateString) => {
-          if (!dateString) return "";
-          const d = new Date(dateString);
-          if (isNaN(d.getTime())) return "";
-          return d.toLocaleDateString('en-GB');
-        };
-
-        const safeName = emp.Name || '';
-        const safeLastName = emp.LastName || '';
-        const latName = (arabicToLatin(safeName) + 'XX').substring(0, 2).padEnd(2, 'X');
-        const latLastName = (arabicToLatin(safeLastName) + 'XX').substring(0, 2).padEnd(2, 'X');
-
-        const dobFormatted = formatDateToYYYYMMDD(emp.DateOfBirth);
-        const startFormatted = formatDateToYYYYMMDD(st.StartDate);
-        const referenceCode = `${latName}-${latLastName}-${dobFormatted}-${startFormatted}`;
-
-        const startDisplay = formatDateForDisplay(st.StartDate);
-        const returnDisplay = formatDateForDisplay(st.ActualReturnDate || st.EndDate);
-
-        const qrPayload = "الاسم: " + safeName + " " + safeLastName + "\nتاريخ الخروج: " + startDisplay + "\nتاريخ العودة: " + returnDisplay + "\nالرمز: " + referenceCode;
-
-        return (
-          <div className="print-only">
-            <LeavePrintDocument
-              corpsType={isSpecial ? 'special' : 'common'}
-              header={{
-                wilaya: emp.Province || 'الشلف',
-                subDirectorate: 'الإدارة العامة',
-                referenceNumber: '',
-              }}
-              employee={{
-                name: `${safeName} ${safeLastName}`.trim(),
-                gender: emp.Gender === 'أنثى' ? 'female' : 'male',
-                rank: emp.JobTitle?.RankName || st.CurrentJobTitle || '',
-                jobTitle: emp.AssignedPosition || '',
-                province: emp.Province || 'الشلف',
-              }}
-              decision={{
-                directorateName: `المديرية الجهوية للأملاك الوطنية ناحية ${emp.Province || 'الشلف'}`,
-              }}
-              leave={{
-                year: `${startYear}`,
-                days: st.DaysCount || '',
-                daysInWords: st.DaysCount ? `${st.DaysCount}` : '',
-                startDate: fmtDate(st.StartDate),
-                endDate: fmtDate(st.EndDate),
-                resumeDate: fmtDate(st.ResumptionDate || st.ActualReturnDate),
-                remaining: st.RemainingBalanceAfter != null ? [
-                  { year: `${startYear}`, days: st.RemainingBalanceAfter, daysInWords: `${st.RemainingBalanceAfter}` }
-                ] : [],
-              }}
-              signature={{ place: 'الشلف' }}
-              verification={{
-                code: referenceCode,
-                url: qrPayload,
-              }}
-            />
-          </div>
-        );
-      })()}
-    </>
   );
 };
 

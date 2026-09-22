@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import UsersService from '../../services/usersService';
+import { refreshUsers } from '../../utils/cacheManager';
 
 const ALL_PERMISSIONS = [
   // CRUD
@@ -135,6 +136,7 @@ const UserModal = ({ isOpen, onClose, user, onSuccess }) => {
         await UsersService.create(payload);
       }
       
+      await refreshUsers();
       onSuccess();
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'حدث خطأ أثناء الحفظ');

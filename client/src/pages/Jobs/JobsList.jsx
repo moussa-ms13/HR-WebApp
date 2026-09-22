@@ -6,6 +6,7 @@ import JobModal from './JobModal';
 import { Plus, Search, Edit2, Trash2, Loader2, Briefcase, MoreVertical } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
+import { refreshJobTitles } from '../../utils/cacheManager';
 
 const fetcher = async ([url, page, limit, search]) => {
   const result = await JobTitlesService.getAll(page, limit, search);
@@ -64,15 +65,18 @@ const JobsList = () => {
       closeConfirm();
       try {
         await JobTitlesService.delete(id);
+        await refreshJobTitles();
         mutate();
+        toast.success('تم حذف الرتبة بنجاح');
       } catch (err) {
         toast.error(err.response?.data?.message || 'فشل الحذف');
       }
     });
   };
 
-  const handleModalSuccess = () => {
+  const handleModalSuccess = async () => {
     setIsModalOpen(false);
+    await refreshJobTitles();
     mutate();
   };
 

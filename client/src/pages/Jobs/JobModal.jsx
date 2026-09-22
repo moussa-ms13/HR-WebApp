@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import JobTitlesService from '../../services/jobTitlesService';
+import { refreshJobTitles } from '../../utils/cacheManager';
 import { X, Save, Loader2 } from 'lucide-react';
 
 const JobModal = ({ isOpen, onClose, job, onSuccess }) => {
@@ -56,6 +57,7 @@ const JobModal = ({ isOpen, onClose, job, onSuccess }) => {
       } else {
         await JobTitlesService.create(formData);
       }
+      await refreshJobTitles();
       onSuccess();
     } catch (err) {
       setError(err.response?.data?.message || 'فشل في حفظ البيانات. تأكد من عدم تكرار الرتبة.');

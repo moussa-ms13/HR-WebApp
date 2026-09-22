@@ -23,6 +23,7 @@ process.on("unhandledRejection", (reason) => fatalError("unhandledRejection", re
 
 const routes = require("./routes");
 const errorHandler = require("./middleware/errorHandler");
+const prisma = require("./config/database");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -94,31 +95,55 @@ app.use((err, req, res, next) => {
 // ─── Centralized Error Handler (must be last) ─────────────
 app.use(errorHandler);
 
-// ─── Start Server ─────────────────────────────────────────
-const server = app.listen(PORT, () => {
-  console.log(`\n🚀 HR-WebApp API Server`);
-  console.log(`   Environment : ${process.env.NODE_ENV || "development"}`);
-  console.log(`   Port        : ${PORT}`);
-  console.log(`   Health      : http://localhost:${PORT}/api/health\n`);
-});
+// ─── Start Server (Pre-warm DB before accepting traffic) ───
+let server;
 
-server.on("error", (err) => {
-  if (err.code === "EADDRINUSE") {
-    console.error(`\n❌ FATAL: Port ${PORT} is already in use.`);
-    console.error(`   Run: netstat -ano | findstr ":${PORT}" to find the culprit.`);
-  } else {
-    console.error("❌ Server error:", err);
-  }
-  process.exit(1);
-});
+console.log("⏳ Connecting to database and pre-warming connection pool...");
+
+prisma
+  .$connect()
+  .then(() => {
+    console.log("✅ Database connection established and pool warm.");
+
+    server = app.listen(PORT, () => {
+      console.log(`\n🚀 HR-WebApp API Server`);
+      console.log(`   Environment : ${process.env.NODE_ENV || "development"}`);
+      console.log(`   Port        : ${PORT}`);
+      console.log(`   Health      : http://localhost:${PORT}/api/health\n`);
+    });
+
+    server.on("error", (err) => {
+      if (err.code === "EADDRINUSE") {
+        console.error(`\n❌ FATAL: Port ${PORT} is already in use.`);
+        console.error(`   Run: netstat -ano | findstr ":${PORT}" to find the culprit.`);
+      } else {
+        console.error("❌ Server error:", err);
+      }
+      process.exit(1);
+    });
+  })
+  .catch((err) => {
+    console.error("❌ Failed to connect to DB on startup:", err);
+    process.exit(1);
+  });
 
 // ─── Graceful Shutdown (release port on SIGTERM/SIGINT) ───
 const shutdown = (signal) => {
   console.log(`\n⏹ Received ${signal}. Shutting down gracefully...`);
-  server.close(() => {
-    console.log("   Server closed. Exiting.");
+  if (server) {
+    server.close(async () => {
+      console.log("   Server closed.");
+      try {
+        await prisma.$disconnect();
+        console.log("   Database disconnected. Exiting.");
+      } catch (err) {
+        console.error("   Error during DB disconnect:", err);
+      }
+      process.exit(0);
+    });
+  } else {
     process.exit(0);
-  });
+  }
   // Force exit after 10s if graceful close stalls
   setTimeout(() => process.exit(1), 10000);
 };

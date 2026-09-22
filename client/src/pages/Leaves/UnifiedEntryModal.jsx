@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { mutate } from 'swr';
+import { refreshLeaves, refreshSpecialCases } from '../../utils/cacheManager';
 import { X, Loader2, Calendar, Search, Check, MapPin, FileText } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
@@ -198,6 +198,7 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess, preSelectedEmployee = n
           RequestedDays: Number(leaveForm.DaysCount),
           StartDate: leaveForm.StartDate,
           EndDate: leaveForm.EndDate,
+          Notes: leaveForm.Notes,
           IsResumed: false,
           ActualReturnDate: null,
           CurrentJobTitle: selectedEmployee?.JobTitle?.RankName || ""
@@ -216,36 +217,9 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess, preSelectedEmployee = n
         await SpecialCasesService.create(employeeId, payload);
       }
 
-      // ── SWR Cache Invalidation ──
-      // 1. Invalidate the global employee-states list (any matching key)
-      mutate(
-        key => Array.isArray(key) && key[0] === '/api/employee-states',
-        undefined,
-        { revalidate: true }
-      );
-      // 1b. Invalidate the global special-cases list (any matching key)
-      mutate(
-        key => Array.isArray(key) && key[0] === '/api/special-cases',
-        undefined,
-        { revalidate: true }
-      );
-      // 2. Invalidate the employee profile summary cache
-      mutate(`/employees/${employeeId}/summary`);
-      // 3. Invalidate special-cases list (custom key used in EmployeeProfile)
-      mutate([`special-cases-${employeeId}`]);
-      // 4. Invalidate dashboard stats + widgets (global endpoints)
-      mutate('/dashboard/stats');
-      mutate('/dashboard/overdue-resumes');
-      mutate('/dashboard/resuming-soon');
-      mutate(
-        key => typeof key === 'string' && key.startsWith('/dashboard/user-kpis'),
-        undefined,
-        { revalidate: true }
-      );
-      // 5. Legacy aliases (in case other hooks use /api prefix)
-      mutate('/api/dashboard/stats');
-      mutate('/api/leaves');
-      mutate('/api/special-cases');
+      // Invalidate all related leaves, special cases, employee summaries, and dashboard widgets
+      await refreshLeaves(employeeId);
+      await refreshSpecialCases(employeeId);
 
       onSuccess?.();
       onClose();
@@ -287,7 +261,18 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess, preSelectedEmployee = n
         <div className="flex border-b border-slate-200 px-6 bg-slate-50/50">
           <button
             type="button"
-            onClick={() => setEntryCategory('leave')}
+            onClick={() => {
+              if (entryCategory !== 'leave') {
+                setEntryCategory('leave');
+                if (!preSelectedEmployee) {
+                  setSelectedEmployee(null);
+                  setSearchTerm('');
+                  setEmployees([]);
+                  setIsDropdownOpen(false);
+                }
+                setError('');
+              }
+            }}
             className={`px-6 py-3.5 font-medium text-sm border-b-2 outline-none transition-all ${
               entryCategory === 'leave'
                 ? 'border-emerald-600 text-emerald-700 bg-white/80'
@@ -301,7 +286,18 @@ const UnifiedEntryModal = ({ isOpen, onClose, onSuccess, preSelectedEmployee = n
           </button>
           <button
             type="button"
-            onClick={() => setEntryCategory('special_case')}
+            onClick={() => {
+              if (entryCategory !== 'special_case') {
+                setEntryCategory('special_case');
+                if (!preSelectedEmployee) {
+                  setSelectedEmployee(null);
+                  setSearchTerm('');
+                  setEmployees([]);
+                  setIsDropdownOpen(false);
+                }
+                setError('');
+              }
+            }}
             className={`px-6 py-3.5 font-medium text-sm border-b-2 outline-none transition-all ${
               entryCategory === 'special_case'
                 ? 'border-emerald-600 text-emerald-700 bg-white/80'

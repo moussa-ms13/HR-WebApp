@@ -105,17 +105,21 @@ class EmployeesService {
     }
 
     // ─── Typed Search Parser ──────────────────────────────────
-    // String fields: { contains } (SQL Server — no mode:'insensitive')
-    // Integer fields (Id): ONLY if input is pure digits — prevents Prisma 500
+    // Use { contains } for string fields for robust matching (e.g., Arabic compound names)
+    // Integer fields (Id): ONLY if input is pure digits
     const trimmedSearch = (search || "").trim();
     if (trimmedSearch) {
       const searchTerms = trimmedSearch.split(/\s+/);
       const isNumeric = /^\d+$/.test(trimmedSearch);
       const searchOrConditions = [];
 
+      // Always allow searching the full term in either Name or LastName 
+      // (crucial for compound names like "عبد الله" that might be stored entirely in one field)
+      searchOrConditions.push({ Name: { contains: trimmedSearch } });
+      searchOrConditions.push({ LastName: { contains: trimmedSearch } });
+
+      // If there are multiple words, they might be split across Name and LastName (e.g. "First Last")
       if (searchTerms.length >= 2) {
-        // Only 2 distinct orderings exist for a 2-word name — the old 4-permutation
-        // version duplicated each one (slice(0,-1) === terms[0] for length 2).
         searchOrConditions.push({
           AND: [
             { Name: { contains: searchTerms[0] } },
@@ -124,17 +128,13 @@ class EmployeesService {
         });
         searchOrConditions.push({
           AND: [
-            { Name: { contains: searchTerms.slice(1).join(" ") } },
             { LastName: { contains: searchTerms[0] } },
+            { Name: { contains: searchTerms.slice(1).join(" ") } },
           ],
         });
-      } else {
-        searchOrConditions.push({ Name: { contains: trimmedSearch } });
-        searchOrConditions.push({ LastName: { contains: trimmedSearch } });
       }
 
       searchOrConditions.push({ NIN: { contains: trimmedSearch } });
-      searchOrConditions.push({ JobTitle: { RankName: { contains: trimmedSearch } } });
       if (isNumeric) searchOrConditions.push({ Id: parseInt(trimmedSearch, 10) });
 
       whereClause.AND = [...(whereClause.AND || []), { OR: searchOrConditions }];
@@ -178,28 +178,51 @@ class EmployeesService {
       orderBy = { JobTitle: { RankName: safeOrder } };
     }
 
-    // ─── Execute Queries Sequentially ─────────────────────────
-    // AVOID $transaction with SQL Server for heavy aggregations to prevent EINVALIDSTATE / Deadlocks
-    const completedWhere = fileStatus === "incomplete"
-      ? null
-      : fileStatus === "complete"
-      ? null
-      : { ...whereClause, IsProfileComplete: true };
+    // ─── Execute Queries ──────────────────────────────────────
+    // Only two queries: count + findMany. The third "completedFiles"
+    // count previously duplicated the entire expensive whereClause
+    // with a JOIN to JobTitles. We now compute it cheaply:
+    //   - If fileStatus is "complete" or "incomplete", derive from total.
+    //   - Otherwise, run a LEAN count on IsProfileComplete ONLY (no JOINs).
 
-    // ─── Parallelize instead of three sequential awaits ───────
-    const [total, employees, rawCompletedFiles] = await Promise.all([
-      prisma.employees.count({ where: whereClause }),
-      prisma.employees.findMany({
-        where: whereClause,
-        select: { Id: true, Name: true, LastName: true, Department: true, Province: true, Directorate: true, EmployeeStatus: true, IsProfileComplete: true },
-        skip,
-        take: safeLimit,
-        orderBy,
-      }),
-      completedWhere ? prisma.employees.count({ where: completedWhere }) : Promise.resolve(0),
-    ]);
+    // DB-level pagination and lean select for frontend table
+    const total = await prisma.employees.count({ where: whereClause });
+    const employees = await prisma.employees.findMany({
+      where: whereClause,
+      select: {
+        Id: true,
+        Name: true,
+        LastName: true,
+        Province: true,
+        Directorate: true,
+        Department: true,
+        EmployeeStatus: true,
+        IsProfileComplete: true,
+        JobTitle: {
+          select: {
+            Id: true,
+            RankName: true,
+          },
+        },
+      },
+      skip,
+      take: safeLimit,
+      orderBy,
+    });
 
-    const totalCompletedFiles = fileStatus === "complete" ? total : fileStatus === "incomplete" ? 0 : (rawCompletedFiles ?? 0);
+    // Cheap completedFiles calculation — avoids the third heavy count
+    let totalCompletedFiles = 0;
+    if (fileStatus === "complete") {
+      totalCompletedFiles = total;
+    } else if (fileStatus === "incomplete") {
+      totalCompletedFiles = 0;
+    } else {
+      // Lean count: only the geographic RBAC filter + IsProfileComplete
+      // Strips out the expensive relational category/search filters
+      const leanCompletedWhere = { IsProfileComplete: true };
+      if (whereClause.Province) leanCompletedWhere.Province = whereClause.Province;
+      totalCompletedFiles = await prisma.employees.count({ where: leanCompletedWhere });
+    }
 
     return {
       data: employees,
@@ -216,15 +239,16 @@ class EmployeesService {
     const whereClause = {};
 
     // Geographic RBAC
-    if (requestingUser.role !== ROLES.ADMIN) {
-      const allowedProvinces = getAllowedProvinces(requestingUser.permissions || {});
-      if (allowedProvinces.length === 0) return [];
+    if (requestingUser?.role !== ROLES.ADMIN) {
+      const allowedProvinces = getAllowedProvinces(requestingUser?.permissions || {});
+      if (!allowedProvinces || allowedProvinces.length === 0) return [];
       whereClause.Province = { in: allowedProvinces };
     }
 
     if (province) {
-      if (requestingUser.role === ROLES.ADMIN || (whereClause.Province?.in || []).includes(province)) {
-        whereClause.Province = province;
+      const trimmedProv = String(province).trim();
+      if (requestingUser?.role === ROLES.ADMIN || (whereClause.Province?.in || []).includes(trimmedProv)) {
+        whereClause.Province = trimmedProv;
       }
     }
     if (directorate) {
@@ -239,23 +263,23 @@ class EmployeesService {
       const terms = term.split(/\s+/);
       const orConditions = [];
       if (terms.length >= 2) {
-        // Full-name match (normal order), then reversed order
         orConditions.push({
           AND: [
-            { Name: { contains: terms[0] } },
-            { LastName: { contains: terms.slice(1).join(" ") } },
+            { LastName: { startsWith: terms[0] } },
+            { Name: { startsWith: terms.slice(1).join(" ") } },
           ],
         });
         orConditions.push({
           AND: [
-            { Name: { contains: terms.slice(0, -1).join(" ") } },
-            { LastName: { contains: terms[terms.length - 1] } },
+            { Name: { startsWith: terms[0] } },
+            { LastName: { startsWith: terms.slice(1).join(" ") } },
           ],
         });
+      } else {
+        orConditions.push({ LastName: { startsWith: term } });
+        orConditions.push({ Name: { startsWith: term } });
       }
-      orConditions.push({ Name: { contains: term } });
-      orConditions.push({ LastName: { contains: term } });
-      orConditions.push({ NIN: { contains: term } });
+      orConditions.push({ NIN: { startsWith: term } });
       const numericId = Number(term);
       if (!Number.isNaN(numericId)) {
         orConditions.push({ Id: numericId });
@@ -274,7 +298,7 @@ class EmployeesService {
         Department: true,
       },
       take: 15,
-      orderBy: [{ Name: "asc" }, { LastName: "asc" }],
+      orderBy: [{ LastName: "asc" }, { Name: "asc" }],
     });
   }
 
@@ -300,6 +324,7 @@ class EmployeesService {
         Degree: true,
         EmployeeStatus: true,
         InstallationDate: true,
+        LastDegreeDate: true,
         JobTitleId: true,
         PositionDate: true,
         StatusDate: true,
@@ -362,6 +387,8 @@ class EmployeesService {
         NumberOfChildren: true,
         PhoneNumber: true,
         IsProfileComplete: true,
+        JobTitleId: true,
+        LastDegreeDate: true,
         JobTitle: { select: { RankName: true } },
         RankHistories: { take: 1, orderBy: { InstallDate: "desc" }, select: { Id: true, RankName: true, InstallDate: true } },
         PositionHistories: { where: { EndDate: null }, take: 1, orderBy: { InstallDate: "desc" }, select: { Id: true, PositionName: true, InstallDate: true } },
@@ -408,7 +435,7 @@ class EmployeesService {
         DateOfBirth: data.DateOfBirth ? new Date(data.DateOfBirth) : defaultDate,
         PlaceOfBirth: data.PlaceOfBirth || "",
         Gender: data.Gender || "",
-        MaritalStatus: data.MaritalStatus || "",
+        MaritalStatus: data.MaritalStatus || data.FamilyStatus || "",
         ProfileImagePath: data.ProfileImagePath || "",
         Province: data.Province,
         Directorate: data.Directorate || "",
@@ -424,7 +451,7 @@ class EmployeesService {
         EmployeeStatus: data.EmployeeStatus || "",
         InstallationDate: data.InstallationDate ? new Date(data.InstallationDate) : defaultDate,
         JobTitleId: data.JobTitleId || 0,
-        LastDegreeDate: defaultDate,
+        LastDegreeDate: data.LastDegreeDate ? new Date(data.LastDegreeDate) : defaultDate,
         PositionDate: data.PositionDate ? new Date(data.PositionDate) : null,
         StatusDate: defaultDate,
         Address: data.Address || "",
@@ -471,8 +498,8 @@ class EmployeesService {
         LastName: data.LastName ?? existing.LastName,
         DateOfBirth: data.DateOfBirth ? new Date(data.DateOfBirth) : existing.DateOfBirth,
         PlaceOfBirth: data.PlaceOfBirth ?? existing.PlaceOfBirth,
-        Gender: data.Gender ?? existing.Gender,
-        MaritalStatus: data.MaritalStatus ?? existing.MaritalStatus,
+        Gender: data.Gender !== undefined ? data.Gender : existing.Gender,
+        MaritalStatus: (data.MaritalStatus !== undefined ? data.MaritalStatus : data.FamilyStatus) ?? existing.MaritalStatus,
         Province: data.Province ?? existing.Province,
         Directorate: data.Directorate ?? existing.Directorate,
         Department: data.Department ?? existing.Department,
@@ -485,6 +512,7 @@ class EmployeesService {
         Degree: data.Degree ?? existing.Degree,
         EmployeeStatus: data.EmployeeStatus ?? existing.EmployeeStatus,
         InstallationDate: data.InstallationDate ? new Date(data.InstallationDate) : existing.InstallationDate,
+        LastDegreeDate: data.LastDegreeDate ? new Date(data.LastDegreeDate) : existing.LastDegreeDate,
         JobTitleId: data.JobTitleId ?? existing.JobTitleId,
         PositionDate: data.PositionDate ? new Date(data.PositionDate) : existing.PositionDate,
         Address: data.Address ?? existing.Address,

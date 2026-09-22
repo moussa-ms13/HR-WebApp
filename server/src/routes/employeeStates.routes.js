@@ -6,6 +6,18 @@ const express = require("express");
 const EmployeeStatesService = require("../services/EmployeeStatesService");
 const { authenticate, hasPermission } = require("../middleware/auth");
 const { PERMISSIONS } = require("../config/constants");
+const prisma = require("../config/database");
+
+const ANNUAL_LEAVE_TYPE = "عطلة سنوية";
+
+class InsufficientBalanceError extends Error {
+  constructor(available, requested) {
+    super("Insufficient leave balance");
+    this.name = "InsufficientBalanceError";
+    this.available = available;
+    this.requested = requested;
+  }
+}
 
 const router = express.Router();
 
@@ -49,17 +61,125 @@ router.get("/:id", async (req, res, next) => {
 /**
  * POST /api/employee-states
  */
-router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res, next) => {
-  console.log("=> LEAVE CREATION API HIT. Body:", JSON.stringify(req.body));
-  console.log("=> req.user:", JSON.stringify(req.user));
+router.post("/", async (req, res, next) => {
   try {
-    const state = await EmployeeStatesService.create(req.body, req.user);
-    console.log("=> LEAVE CREATION SUCCESS. State ID:", state?.Id);
-    res.status(201).json({ success: true, data: state });
+    const {
+      EmployeesId,
+      RecordCategory,
+      StateTypeOrReason,
+      DaysCount,
+      RequestedDays,
+      StartDate,
+      EndDate,
+      IsResumed,
+      ActualReturnDate,
+      CurrentJobTitle,
+      Notes,
+    } = req.body;
+
+    const employeesId = parseInt(EmployeesId, 10);
+    // The frontend modals send either DaysCount, or both
+    // DaysCount + RequestedDays — accept whichever is present.
+    const daysCount = parseInt(DaysCount ?? RequestedDays ?? 0, 10);
+
+    if (isNaN(employeesId) || employeesId <= 0) {
+      return res.status(400).json({ success: false, message: "معرّف الموظف غير صالح" });
+    }
+    const parsedStartDate = new Date(StartDate);
+    if (!RecordCategory || !StateTypeOrReason || !StartDate || isNaN(parsedStartDate.getTime())) {
+      return res.status(400).json({ success: false, message: "الحقول المطلوبة ناقصة أو تاريخ البدء غير صالح" });
+    }
+    if (isNaN(daysCount) || daysCount < 0) {
+      return res.status(400).json({ success: false, message: "عدد الأيام غير صالح" });
+    }
+
+    // ADAPT THIS LINE to match how this project's `authenticate`
+    // middleware actually populates req.user.
+    const usersId = req.user?.userName ?? req.user?.userId ?? req.user?.UserId ?? String(req.user?.id ?? req.user?.Id ?? "system");
+
+    const baseData = {
+      EmployeesId: employeesId,
+      RecordCategory,
+      CurrentJobTitle: CurrentJobTitle || "",
+      StateTypeOrReason,
+      DaysCount: daysCount,
+      RequestedDays: daysCount,
+      StartDate: parsedStartDate,
+      EndDate: EndDate && !isNaN(new Date(EndDate).getTime()) ? new Date(EndDate) : parsedStartDate,
+      AddedDate: new Date(),
+      UsersId: usersId,
+      IsResumed: Boolean(IsResumed),
+      ActualReturnDate: ActualReturnDate && !isNaN(new Date(ActualReturnDate).getTime()) ? new Date(ActualReturnDate) : null,
+      IsResumedEarly: false,
+      Notes: Notes || null,
+    };
+
+    const isAnnualLeave =
+      RecordCategory === "تسجيل عطلة" &&
+      StateTypeOrReason === ANNUAL_LEAVE_TYPE &&
+      daysCount > 0;
+
+    // Non-annual entries (sick/maternity/unpaid leave, permanent special
+    // states, etc.) don't touch LeaveBalance at all — plain create.
+    if (!isAnnualLeave) {
+      const created = await prisma.employeeStates.create({ data: baseData });
+      return res.status(201).json({ success: true, data: created });
+    }
+
+    // ── Annual leave: FIFO deduction across LeaveBalance rows ──────────
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const balances = await tx.leaveBalance.findMany({
+          where: { EmployeeId: employeesId, RemainingDays: { gt: 0 } },
+          orderBy: { Year: "asc" }, // oldest first = FIFO
+        });
+
+        const totalAvailable = balances.reduce((sum, b) => sum + b.RemainingDays, 0);
+        if (totalAvailable < daysCount) {
+          throw new InsufficientBalanceError(totalAvailable, daysCount);
+        }
+
+        let remaining = daysCount;
+        for (const balance of balances) {
+          if (remaining <= 0) break;
+          const deduction = Math.min(balance.RemainingDays, remaining);
+
+          // Sequential await — DO NOT parallelize with Promise.all.
+          // SQL Server's mssql/tedious driver cannot multiplex concurrent
+          // requests over a single connection inside an interactive
+          // transaction; doing so previously caused "Requests can only
+          // be made in the LoggedIn state, not the Final state".
+          await tx.leaveBalance.update({
+            where: { Id: balance.Id },
+            data: {
+              ConsumedDays: balance.ConsumedDays + deduction,
+              RemainingDays: balance.RemainingDays - deduction,
+            },
+          });
+
+          remaining -= deduction;
+        }
+
+        return tx.employeeStates.create({
+          data: {
+            ...baseData,
+            RemainingBalanceAfter: totalAvailable - daysCount,
+          },
+        });
+      },
+      { maxWait: 15000, timeout: 60000 }
+    );
+
+    return res.status(201).json({ success: true, data: result });
   } catch (error) {
-    console.error("🔥 INSTANT CRASH:", error?.message, error?.code, error?.meta);
-    console.error("🔥 FULL STACK:", error);
-    next(error);
+    if (error instanceof InsufficientBalanceError) {
+      return res.status(400).json({
+        success: false,
+        message: `الرصيد غير كافٍ لتسجيل هذه العطلة (المتاح: ${error.available} يوم، المطلوب: ${error.requested} يوم)`,
+      });
+    }
+    console.error("EmployeeStates POST Error:", error);
+    return res.status(500).json({ success: false, message: error.message, stack: error.stack });
   }
 });
 

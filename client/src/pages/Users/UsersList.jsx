@@ -6,6 +6,7 @@ import UserModal from './UserModal';
 import { Plus, Search, Edit2, Trash2, Loader2, ShieldCheck, Shield, MoreVertical } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
+import { refreshUsers } from '../../utils/cacheManager';
 
 const fetcher = async () => {
   const res = await UsersService.getAll();
@@ -68,15 +69,18 @@ const UsersList = () => {
       closeConfirm();
       try {
         await UsersService.delete(id);
+        await refreshUsers();
         mutate();
+        toast.success('تم حذف المستخدم بنجاح');
       } catch (err) {
         toast.error(err.response?.data?.message || 'فشل الحذف');
       }
     });
   };
 
-  const handleModalSuccess = () => {
+  const handleModalSuccess = async () => {
     setIsModalOpen(false);
+    await refreshUsers();
     mutate();
   };
 

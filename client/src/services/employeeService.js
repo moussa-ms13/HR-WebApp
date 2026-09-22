@@ -128,6 +128,17 @@ class EmployeeService {
     });
     return response;
   }
+
+  /**
+   * View a file inline via the secure view endpoint.
+   * Returns an axios response with blob data and correct Content-Type.
+   */
+  static async viewFile(docId) {
+    const response = await apiClient.get(`/employee-files/${docId}/view`, {
+      responseType: 'blob',
+    });
+    return response;
+  }
 }
 
 export default EmployeeService;

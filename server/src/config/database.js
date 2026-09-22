@@ -15,7 +15,7 @@ const adapter = new PrismaMssql({
   options: {
     encrypt: false,
     trustServerCertificate: true,
-    requestTimeout: 30000,
+    requestTimeout: 60000,
     connectTimeout: 30000,
   },
 });

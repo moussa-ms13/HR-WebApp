@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { refreshEmployees } from '../../utils/cacheManager';
 import { X, Save, Loader2, Upload, Image as ImageIcon, ChevronDown, ChevronLeft } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
@@ -66,31 +67,57 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
 
   const initialFormData = {
     Name: '', LastName: '', DateOfBirth: '', PlaceOfBirth: '',
-    Gender: 'ذكر', MaritalStatus: 'أعزب',
+    Gender: '', MaritalStatus: '',
     NumberOfChildren: 0, PhoneNumber: '', Address: '', Email: '',
     NIN: '', SIS: '',
     Province: allowedProvinces.length > 0 ? allowedProvinces[0] : '',
     Directorate: '', Department: '', AssignedPosition: '',
     JobTitleId: '', Degree: 0,
     InstallationDate: new Date().toISOString().split('T')[0],
-    LastDegreeDate: new Date().toISOString().split('T')[0],
+    LastDegreeDate: '',
     PositionDate: '',
     EmployeeStatus: 'مثبت',
     ConfirmationDate: new Date().toISOString().split('T')[0],
     isProfileComplete: false
   };
 
+  // Helper: format date to YYYY-MM-DD for HTML date inputs, ignoring invalid dates and 1900 sentinel dates
+  const formatDateForInput = (d) => {
+    if (!d) return '';
+    if (typeof d === 'string') {
+      const trimmed = d.trim();
+      if (trimmed.startsWith('1900') || trimmed.startsWith('0000') || trimmed.startsWith('0001')) return '';
+      const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+      if (match) {
+        const year = parseInt(match[1].slice(0, 4), 10);
+        if (year <= 1900) return '';
+        return match[1];
+      }
+    }
+    try {
+      const date = new Date(d);
+      if (isNaN(date.getTime()) || date.getFullYear() <= 1900) return '';
+      return date.toISOString().split('T')[0];
+    } catch {
+      return '';
+    }
+  };
+
   // Helper: build form state from employee data
   const buildFormDataFromEmployee = (emp) => ({
     ...initialFormData,
     ...emp,
+    Gender: emp.Gender && emp.Gender !== 'غير محدد' ? emp.Gender : '',
+    MaritalStatus: emp.MaritalStatus && emp.MaritalStatus !== 'غير محدد' ? emp.MaritalStatus : (emp.FamilyStatus && emp.FamilyStatus !== 'غير محدد' ? emp.FamilyStatus : ''),
     isProfileComplete: emp.IsProfileComplete || emp.isProfileComplete || false,
     JobTitleId: emp.JobTitleId ?? '',
-    DateOfBirth: emp.DateOfBirth ? new Date(emp.DateOfBirth).toISOString().split('T')[0] : '',
-    InstallationDate: emp.InstallationDate ? new Date(emp.InstallationDate).toISOString().split('T')[0] : '',
-    LastDegreeDate: emp.LastDegreeDate ? new Date(emp.LastDegreeDate).toISOString().split('T')[0] : '',
-    PositionDate: emp.PositionDate ? new Date(emp.PositionDate).toISOString().split('T')[0] : '',
-    ConfirmationDate: emp.ConfirmationDate ? new Date(emp.ConfirmationDate).toISOString().split('T')[0] : '',
+    Degree: emp.Degree ?? 0,
+    NumberOfChildren: emp.NumberOfChildren || 0,
+    DateOfBirth: formatDateForInput(emp.DateOfBirth),
+    InstallationDate: formatDateForInput(emp.InstallationDate),
+    LastDegreeDate: formatDateForInput(emp.LastDegreeDate),
+    PositionDate: formatDateForInput(emp.PositionDate),
+    ConfirmationDate: formatDateForInput(emp.ConfirmationDate),
   });
 
   const [formData, setFormData] = useState(initialFormData);
@@ -162,13 +189,25 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
 
   const handleGenderChange = (e) => {
     const newGender = e.target.value;
-    const newMaritalStatus = newGender === 'أنثى' ? 'عزباء' : 'أعزب';
-    setFormData(prev => ({
-      ...prev,
-      Gender: newGender,
-      MaritalStatus: newMaritalStatus,
-      NumberOfChildren: 0
-    }));
+    setFormData(prev => {
+      let newMaritalStatus = prev.MaritalStatus;
+      if (newGender === 'أنثى') {
+        if (newMaritalStatus === 'أعزب') newMaritalStatus = 'عزباء';
+        else if (newMaritalStatus === 'متزوج') newMaritalStatus = 'متزوجة';
+        else if (newMaritalStatus === 'مطلق') newMaritalStatus = 'مطلقة';
+        else if (newMaritalStatus === 'أرمل') newMaritalStatus = 'أرملة';
+      } else if (newGender === 'ذكر') {
+        if (newMaritalStatus === 'عزباء') newMaritalStatus = 'أعزب';
+        else if (newMaritalStatus === 'متزوجة') newMaritalStatus = 'متزوج';
+        else if (newMaritalStatus === 'مطلقة') newMaritalStatus = 'مطلق';
+        else if (newMaritalStatus === 'أرملة') newMaritalStatus = 'أرمل';
+      }
+      return {
+        ...prev,
+        Gender: newGender,
+        MaritalStatus: newMaritalStatus,
+      };
+    });
   };
 
   const handleChange = (e) => {
@@ -234,9 +273,18 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
 
       const payload = {
         ...formData,
+        Gender: formData.Gender || '',
+        MaritalStatus: formData.MaritalStatus || '',
+        FamilyStatus: formData.MaritalStatus || '',
         JobTitleId: Number(formData.JobTitleId) || 0,
         Degree: Number(formData.Degree) || 0,
-        IsProfileComplete: formData.isProfileComplete || false
+        NumberOfChildren: Number(formData.NumberOfChildren) || 0,
+        IsProfileComplete: formData.isProfileComplete || false,
+        DateOfBirth: formData.DateOfBirth || null,
+        InstallationDate: formData.InstallationDate || null,
+        LastDegreeDate: formData.LastDegreeDate || null,
+        ConfirmationDate: formData.ConfirmationDate || null,
+        PositionDate: formData.PositionDate || null,
       };
 
       let savedEmployeeId = null;
@@ -258,7 +306,12 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
         await EmployeeService.uploadProfileImage(savedEmployeeId, imgData);
       }
 
-      onSuccess();
+      // Invalidate all related employee and dashboard SWR caches
+      await refreshEmployees(savedEmployeeId);
+
+      if (typeof onSuccess === 'function') {
+        await onSuccess(savedEmployeeId);
+      }
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'حدث خطأ أثناء حفظ البيانات');
     } finally {
@@ -269,9 +322,13 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
   if (!isOpen) return null;
 
   const getMaritalOptions = () => {
-    return formData.Gender === 'أنثى'
+    const baseOptions = formData.Gender === 'أنثى'
       ? ['عزباء', 'متزوجة', 'مطلقة', 'أرملة']
       : ['أعزب', 'متزوج', 'مطلق', 'أرمل'];
+    if (formData.MaritalStatus && !baseOptions.includes(formData.MaritalStatus) && formData.MaritalStatus !== 'غير محدد') {
+      return [formData.MaritalStatus, ...baseOptions];
+    }
+    return baseOptions;
   };
 
   const dirAmlak = "مديرية أملاك الدولة";
@@ -373,14 +430,16 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">الجنس</label>
-                        <select name="Gender" value={formData.Gender} onChange={handleGenderChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
+                        <select name="Gender" value={formData.Gender || ''} onChange={handleGenderChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
+                          <option value="">— اختر الجنس —</option>
                           <option value="ذكر">ذكر</option>
                           <option value="أنثى">أنثى</option>
                         </select>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">الحالة العائلية</label>
-                        <select name="MaritalStatus" value={formData.MaritalStatus} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
+                        <select name="MaritalStatus" value={formData.MaritalStatus || ''} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
+                          <option value="">— اختر الحالة العائلية —</option>
                           {getMaritalOptions().map(opt => <option key={opt} value={opt}>{opt}</option>)}
                         </select>
                       </div>
@@ -400,7 +459,7 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
                         <label className="block text-sm font-medium text-slate-700 mb-1">رقم الضمان الاجتماعي (SIS)</label>
                         <input type="text" name="SIS" value={formData.SIS} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
                       </div>
-                      {!(formData.MaritalStatus === 'أعزب' || formData.MaritalStatus === 'عزباء') && (
+                      {formData.MaritalStatus && formData.MaritalStatus !== 'أعزب' && formData.MaritalStatus !== 'عزباء' && (
                         <div>
                           <label className="block text-sm font-medium text-slate-700 mb-1">عدد الأولاد</label>
                           <input type="number" name="NumberOfChildren" value={formData.NumberOfChildren} onChange={handleChange} min="0" className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
