@@ -6,148 +6,119 @@ const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
 const LeaveBalanceService = require("./LeaveBalanceService");
-const { ROLES, getAllowedProvinces } = require("../config/constants");
-
-const clearDashboardCacheSafe = () => {
-  try {
-    require("../controllers/dashboard.controller").clearDashboardCache?.();
-  } catch (_) {
-    // controller may not be loaded — ignore
-  }
-};
+const { ROLES } = require("../config/constants");
+const {
+  sanitizePagination,
+  buildTokenizedSearch,
+  resolveGeographicFilter,
+} = require("../utils/queryBuilder");
+const CacheService = require("./CacheService");
 
 class EmployeeStatesService {
   /**
    * Fetch all employee states with pagination and geographic RBAC.
    */
   static async getAll(requestingUser, page = 1, limit = 25, category = "", employeeId = null, search = "", directorate = "", province = "") {
-    const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
-    const safePage = Math.max(Number(page) || 1, 1);
-    const skip = (safePage - 1) * safeLimit;
+    const { safePage, safeLimit, skip } = sanitizePagination(page, limit, 100);
 
     // Build where clause with geographic filter via Employee relation
-    let employeeFilter = employeeId ? { Id: Number(employeeId) } : {};
-    if (requestingUser.role !== ROLES.ADMIN) {
-      const allowedProvinces = getAllowedProvinces(requestingUser.permissions || {});
-      if (allowedProvinces.length === 0) {
-        return { data: [], meta: { total: 0, page: safePage, limit: safeLimit, totalPages: 0 } };
-      }
-      employeeFilter.Province = { in: allowedProvinces };
+    const { provinceFilter, isForbidden } = resolveGeographicFilter(requestingUser, province);
+    if (isForbidden) {
+      return { data: [], meta: { total: 0, page: safePage, limit: safeLimit, totalPages: 0 } };
     }
 
-    // Explicit user-selected Province Filter
-    if (province) {
-      // Ensure they can only filter by a province they are allowed to see
-      if (requestingUser.role === ROLES.ADMIN || employeeFilter.Province?.in?.includes(province)) {
-        employeeFilter.Province = province;
-      }
-    }
-
-    // Directorate Filter (الجهة)
-    if (directorate) {
-      employeeFilter.Directorate = directorate;
-    }
+    const employeeFilter = {
+      Province: provinceFilter,
+      ...(employeeId ? { Id: Number(employeeId) } : {}),
+      ...(directorate ? { Directorate: directorate } : {}),
+    };
 
     const whereClause = {
       Employee: employeeFilter,
       ...(category ? { RecordCategory: category } : {}),
     };
 
-    // Search: trim & split to handle full-name queries and trailing spaces
-    const trimmedSearch = (search || "").trim();
-    if (trimmedSearch) {
-      const searchTerms = trimmedSearch.split(/\s+/);
-
-      if (searchTerms.length >= 2) {
-        // Multi-word: try first+last name cross-match, OR full string in related fields
-        whereClause.OR = [
-          {
-            Employee: {
-              ...employeeFilter,
-              AND: [
-                { Name: { contains: searchTerms[0] } },
-                { LastName: { contains: searchTerms.slice(1).join(" ") } },
-              ],
-            },
-          },
-          {
-            Employee: {
-              ...employeeFilter,
-              AND: [
-                { Name: { contains: searchTerms.slice(0, -1).join(" ") } },
-                { LastName: { contains: searchTerms[searchTerms.length - 1] } },
-              ],
-            },
-          },
-          { StateTypeOrReason: { contains: trimmedSearch } },
-          {
-            Employee: {
-              ...employeeFilter,
-              JobTitle: { RankName: { contains: trimmedSearch } },
-            },
-          },
-        ];
-        // When using OR with Employee filters, remove the top-level Employee
-        delete whereClause.Employee;
-      } else {
-        // Single word: search Name, LastName, StateTypeOrReason, or JobTitle.RankName
-        whereClause.OR = [
-          { Employee: { ...employeeFilter, Name: { contains: trimmedSearch } } },
-          { Employee: { ...employeeFilter, LastName: { contains: trimmedSearch } } },
-          { StateTypeOrReason: { contains: trimmedSearch } },
-          {
-            Employee: {
-              ...employeeFilter,
-              JobTitle: { RankName: { contains: trimmedSearch } },
-            },
-          },
-        ];
-        delete whereClause.Employee;
-      }
+    // Search: tokenized multi-word search across employee name, state type, notes, etc.
+    const tokenSearch = buildTokenizedSearch(search, (token) => [
+      { Employee: { LastName: { contains: token } } },
+      { Employee: { Name: { contains: token } } },
+      { Employee: { NIN: { contains: token } } },
+      { StateTypeOrReason: { contains: token } },
+      { CurrentJobTitle: { contains: token } },
+      { Notes: { contains: token } },
+      { Employee: { JobTitle: { RankName: { contains: token } } } },
+    ]);
+    if (tokenSearch) {
+      whereClause.AND = [...(whereClause.AND || []), ...tokenSearch.AND];
     }
 
-    const [total, states] = await Promise.all([
-      prisma.employeeStates.count({ where: whereClause }),
-      prisma.employeeStates.findMany({
-        where: whereClause,
-        select: {
-          Id: true,
-          EmployeesId: true,
-          RecordCategory: true,
-          CurrentJobTitle: true,
-          StateTypeOrReason: true,
-          DaysCount: true,
-          StartDate: true,
-          EndDate: true,
-          AddedDate: true,
-          IsResumed: true,
-          ActualReturnDate: true,
-          RemainingBalanceAfter: true,
-          Notes: true,
-          Employee: {
-            select: {
-              Name: true,
-              LastName: true,
-              Province: true,
-              Gender: true,
-              DateOfBirth: true,
-              Directorate: true,
-              AssignedPosition: true,
-              CorpsType: true,
-              JobTitle: {
-                select: {
-                  RankName: true,
-                  EmploymentCategory: true,
-                }
+    const countCacheKey = `state_count_${JSON.stringify({
+      prov: provinceFilter,
+      emp: employeeId || "",
+      dir: directorate || "",
+      cat: category || "",
+      s: search || "",
+    })}`;
+
+    const cachedTotal = CacheService.get(countCacheKey);
+
+    const statesPromise = prisma.employeeStates.findMany({
+      where: whereClause,
+      select: {
+        Id: true,
+        EmployeesId: true,
+        RecordCategory: true,
+        CurrentJobTitle: true,
+        StateTypeOrReason: true,
+        DaysCount: true,
+        StartDate: true,
+        EndDate: true,
+        AddedDate: true,
+        IsResumed: true,
+        ActualReturnDate: true,
+        RemainingBalanceAfter: true,
+        Notes: true,
+        DoctorName: true,
+        CertificateDate: true,
+        SecondDoctorName: true,
+        SecondCertificateDate: true,
+        Employee: {
+          select: {
+            Name: true,
+            LastName: true,
+            Province: true,
+            Gender: true,
+            DateOfBirth: true,
+            Directorate: true,
+            AssignedPosition: true,
+            CorpsType: true,
+            JobTitle: {
+              select: {
+                RankName: true,
+                EmploymentCategory: true,
               }
             }
           }
-        },
-        skip,
-        take: safeLimit,
-        orderBy: { Id: "desc" },
-      }),
-    ]);
+        }
+      },
+      skip,
+      take: safeLimit,
+      orderBy: { Id: "desc" },
+    });
+
+    let total, states;
+    if (cachedTotal !== undefined) {
+      states = await statesPromise;
+      total = cachedTotal;
+    } else {
+      const [totalCount, statesResult] = await Promise.all([
+        prisma.employeeStates.count({ where: whereClause }),
+        statesPromise,
+      ]);
+      total = totalCount;
+      states = statesResult;
+      CacheService.set(countCacheKey, total, 60);
+    }
 
     return {
       data: states,
@@ -205,7 +176,12 @@ class EmployeeStatesService {
     let primaryLeaveYear = new Date(data.StartDate).getFullYear();
     let remainingBreakdown = [];
 
-    if (reqDays > 0) {
+    const isAnnualLeave =
+      (data.RecordCategory === "تسجيل عطلة" || !data.RecordCategory) &&
+      data.StateTypeOrReason === "عطلة سنوية" &&
+      reqDays > 0;
+
+    if (isAnnualLeave) {
       if (!prisma.leaveBalance) {
         throw new Error("[EmployeeStatesService] prisma.leaveBalance is undefined. Prisma Client is out of sync. Run npx prisma generate.");
       }
@@ -242,6 +218,19 @@ class EmployeeStatesService {
           IsResumedEarly: false,
           RemainingBalanceAfter: remainingBalanceAfter,
           Notes: data.Notes || null,
+          DoctorName: (data.DoctorName !== undefined ? data.DoctorName : data.doctorName) ? String(data.DoctorName || data.doctorName).trim() : null,
+          CertificateDate: (() => {
+            const d = data.CertificateDate !== undefined ? data.CertificateDate : data.certificateDate;
+            return d && !isNaN(new Date(d).getTime()) ? new Date(d) : null;
+          })(),
+          SecondDoctorName: (() => {
+            const d = data.SecondDoctorName !== undefined ? data.SecondDoctorName : (data.secondDoctorName !== undefined ? data.secondDoctorName : data.doctorName2);
+            return d ? String(d).trim() : null;
+          })(),
+          SecondCertificateDate: (() => {
+            const d = data.SecondCertificateDate !== undefined ? data.SecondCertificateDate : (data.secondCertificateDate !== undefined ? data.secondCertificateDate : data.certificateDate2);
+            return d && !isNaN(new Date(d).getTime()) ? new Date(d) : null;
+          })(),
         },
       });
     } catch (err) {
@@ -258,13 +247,14 @@ class EmployeeStatesService {
 
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Add Employee State",
-      description: `${data.RecordCategory}: '${data.StateTypeOrReason}' for '${employee.Name} ${employee.LastName}' by '${requestingUser.userName}'.`,
+      title: "إضافة وضعية/إجازة موظف",
+      description: `تمت إضافة ${data.RecordCategory}: '${data.StateTypeOrReason}' للموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
       employeesId: data.EmployeesId,
+      ipAddress: requestingUser.ipAddress,
     });
 
-    clearDashboardCacheSafe();
+    CacheService.invalidateEmployeeEcosystem();
     return state;
   }
 
@@ -285,18 +275,44 @@ class EmployeeStatesService {
         EndDate: data.EndDate ? new Date(data.EndDate) : existing.EndDate,
         IsResumed: data.IsResumed !== undefined ? data.IsResumed : existing.IsResumed,
         ActualReturnDate: data.ActualReturnDate ? new Date(data.ActualReturnDate) : existing.ActualReturnDate,
+        Notes: data.Notes !== undefined ? data.Notes : existing.Notes,
+        DoctorName: (() => {
+          const hasDoc = data.DoctorName !== undefined || data.doctorName !== undefined;
+          if (!hasDoc) return existing.DoctorName;
+          const val = data.DoctorName !== undefined ? data.DoctorName : data.doctorName;
+          return val ? String(val).trim() : null;
+        })(),
+        CertificateDate: (() => {
+          const hasDate = data.CertificateDate !== undefined || data.certificateDate !== undefined;
+          if (!hasDate) return existing.CertificateDate;
+          const val = data.CertificateDate !== undefined ? data.CertificateDate : data.certificateDate;
+          return val && !isNaN(new Date(val).getTime()) ? new Date(val) : null;
+        })(),
+        SecondDoctorName: (() => {
+          const hasSecondDoc = data.SecondDoctorName !== undefined || data.secondDoctorName !== undefined || data.doctorName2 !== undefined;
+          if (!hasSecondDoc) return existing.SecondDoctorName;
+          const val = data.SecondDoctorName !== undefined ? data.SecondDoctorName : (data.secondDoctorName !== undefined ? data.secondDoctorName : data.doctorName2);
+          return val ? String(val).trim() : null;
+        })(),
+        SecondCertificateDate: (() => {
+          const hasSecondDate = data.SecondCertificateDate !== undefined || data.secondCertificateDate !== undefined || data.certificateDate2 !== undefined;
+          if (!hasSecondDate) return existing.SecondCertificateDate;
+          const val = data.SecondCertificateDate !== undefined ? data.SecondCertificateDate : (data.secondCertificateDate !== undefined ? data.secondCertificateDate : data.certificateDate2);
+          return val && !isNaN(new Date(val).getTime()) ? new Date(val) : null;
+        })(),
       },
     });
 
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Edit Employee State",
-      description: `State '${state.StateTypeOrReason}' updated for employee ID ${state.EmployeesId} by '${requestingUser.userName}'.`,
+      title: "تعديل وضعية/إجازة موظف",
+      description: `تم تعديل وضعية '${state.StateTypeOrReason}' للموظف (رقم: ${state.EmployeesId}) بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
       employeesId: state.EmployeesId,
+      ipAddress: requestingUser.ipAddress,
     });
 
-    clearDashboardCacheSafe();
+    CacheService.invalidateEmployeeEcosystem();
 
     return state;
   }
@@ -311,90 +327,155 @@ class EmployeeStatesService {
 
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Delete Employee State",
-      description: `State '${existing.StateTypeOrReason}' deleted for employee '${existing.Employee.Name} ${existing.Employee.LastName}' by '${requestingUser.userName}'.`,
+      title: "حذف وضعية/إجازة موظف",
+      description: `تم حذف وضعية '${existing.StateTypeOrReason}' للموظف '${existing.Employee.LastName} ${existing.Employee.Name}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
+      employeesId: existing.EmployeesId,
+      ipAddress: requestingUser.ipAddress,
     });
 
-    clearDashboardCacheSafe();
+    CacheService.invalidateEmployeeEcosystem();
 
     return { message: "State deleted successfully." };
   }
 
   /**
-   * Resume a leave early — saga pattern with balance refund.
-   * Marks the leave as resumed, sets the actual return date,
-   * and refunds unused days back to the employee's balance.
+   * Resume a leave early — Reverse-FIFO balance refund engine.
+   * Marks the leave as resumed, calculates actual consumed days,
+   * refunds unused days to LeaveBalance (Reverse-FIFO: newest year first),
+   * records the breakdown, and updates EmployeeStates inside a prisma transaction.
+   *
+   * @param {number} id - EmployeeStates ID
+   * @param {Object} data - { actualReturnDate, notes }
+   * @param {Object} requestingUser
+   * @returns {Promise<{ data: Object, breakdown: Array }>}
    */
   static async resumeLeaveEarly(id, data, requestingUser) {
     const existing = await this.getById(id, requestingUser);
 
     if (existing.IsResumed) {
-      throw ApiError.badRequest(`Leave record ${id} is already resumed.`);
+      throw ApiError.badRequest(`سجل العطلة رقم ${id} تم استئنافه مسبقاً.`);
     }
 
-    const actualReturnDate = new Date(data.ActualReturnDate || new Date());
+    const returnDateVal = data.actualReturnDate || data.ActualReturnDate;
+    if (!returnDateVal) {
+      throw ApiError.badRequest("يرجى تحديد تاريخ استئناف العمل الفعلي.");
+    }
+
+    const actualReturn = new Date(returnDateVal);
+    if (isNaN(actualReturn.getTime())) {
+      throw ApiError.badRequest("تاريخ استئناف العمل الفعلي غير صالح.");
+    }
+
     const startDate = new Date(existing.StartDate);
-    const originalDays = existing.RequestedDays || existing.DaysCount || 0;
+    if (isNaN(startDate.getTime())) {
+      throw ApiError.badRequest("تاريخ بداية العطلة المسجل غير صالح.");
+    }
 
-    // Calculate consumed days (at least 1)
-    const msPerDay = 1000 * 60 * 60 * 24;
-    const consumedDays = Math.max(1, Math.ceil((actualReturnDate - startDate) / msPerDay));
-    const refundDays = Math.max(0, originalDays - consumedDays);
+    // Normalized calendar comparison (UTC midnight) to prevent timezone drift
+    const actualUtc = Date.UTC(actualReturn.getFullYear(), actualReturn.getMonth(), actualReturn.getDate());
+    const startUtc = Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
 
-    let state;
-    try {
-      // Step 1: Update the leave record
-      state = await prisma.employeeStates.update({
-        where: { Id: id },
-        data: {
-          IsResumed: true,
-          IsResumedEarly: true,
-          ActualReturnDate: actualReturnDate,
-          DaysCount: consumedDays,
-        },
-      });
+    if (actualUtc < startUtc) {
+      throw ApiError.badRequest("تاريخ استئناف العمل الفعلي لا يمكن أن يكون قبل تاريخ بداية العطلة.");
+    }
 
-      // Step 2: Refund unused days to balance
-      if (refundDays > 0) {
-        const currentYear = startDate.getFullYear();
-        await prisma.leaveBalance.updateMany({
-          where: {
-            EmployeeId: existing.EmployeesId,
-            Year: currentYear,
-          },
-          data: {
-            ConsumedDays: { decrement: refundDays },
-            RemainingDays: { increment: refundDays },
-          },
-        });
-      }
-    } catch (err) {
-      // Compensate: revert the leave record if balance refund failed
-      if (state) {
-        await prisma.employeeStates.update({
+    // Calculate consumed days and refund days
+    const diffDays = Math.round((actualUtc - startUtc) / (1000 * 60 * 60 * 24));
+    const newDaysCount = Math.max(1, diffDays);
+    const originalDays = existing.DaysCount || existing.RequestedDays || 0;
+    const refundDaysNeeded = Math.max(0, originalDays - newDaysCount);
+    const isEarly = refundDaysNeeded > 0;
+
+    const isAnnualLeave = existing.StateTypeOrReason === "عطلة سنوية";
+
+    const transactionResult = await prisma.$transaction(
+      async (tx) => {
+        let breakdown = [];
+        let totalRefunded = 0;
+
+        if (isAnnualLeave && refundDaysNeeded > 0) {
+          // Reverse-FIFO: order by Year DESC (newest year first)
+          const balances = await tx.leaveBalance.findMany({
+            where: { EmployeeId: existing.EmployeesId },
+            orderBy: { Year: "desc" },
+          });
+
+          let remainingToRefund = refundDaysNeeded;
+
+          for (const balance of balances) {
+            if (remainingToRefund <= 0) break;
+
+            // Headroom is how much can be refunded back (equal to consumed days)
+            const headroom = balance.TotalDays - balance.RemainingDays;
+            if (headroom > 0) {
+              const take = Math.min(remainingToRefund, headroom);
+
+              await tx.leaveBalance.update({
+                where: { Id: balance.Id },
+                data: {
+                  ConsumedDays: balance.ConsumedDays - take,
+                  RemainingDays: balance.RemainingDays + take,
+                },
+              });
+
+              breakdown.push({ year: balance.Year, refunded: take });
+              remainingToRefund -= take;
+              totalRefunded += take;
+            }
+          }
+        }
+
+        const inputNotes = (data.notes || data.Notes || "").trim();
+        let updatedNotes = existing.Notes;
+        if (inputNotes) {
+          updatedNotes = existing.Notes ? `${existing.Notes} | ${inputNotes}` : inputNotes;
+        }
+
+        const updatedState = await tx.employeeStates.update({
           where: { Id: id },
           data: {
-            IsResumed: false,
-            IsResumedEarly: false,
-            ActualReturnDate: null,
-            DaysCount: originalDays,
+            IsResumed: true,
+            IsResumedEarly: isEarly,
+            ActualReturnDate: actualReturn,
+            DaysCount: isEarly ? newDaysCount : existing.DaysCount,
+            RequestedDays: existing.RequestedDays || existing.DaysCount,
+            RefundedDays: totalRefunded,
+            RefundedBreakdown: breakdown.length > 0 ? JSON.stringify(breakdown) : null,
+            Notes: updatedNotes,
           },
-        }).catch(() => {}); // best-effort rollback
-      }
-      throw err;
-    }
+          include: {
+            Employee: {
+              select: {
+                Id: true,
+                Name: true,
+                LastName: true,
+                Province: true,
+              },
+            },
+          },
+        });
+
+        return { updatedState, breakdown };
+      },
+      { maxWait: 15000, timeout: 60000 }
+    );
 
     await SystemRecordService.log({
-      userFullName: requestingUser.fullName,
-      title: "Resume Leave Early",
-      description: `Leave '${existing.StateTypeOrReason}' resumed early for employee ID ${existing.EmployeesId}. Refunded ${refundDays} days by '${requestingUser.userName}'.`,
-      usersId: requestingUser.id,
+      userFullName: requestingUser.fullName || requestingUser.userName || "System",
+      title: "استئناف إجازة مبكراً",
+      description: `تم استئناف إجازة '${existing.StateTypeOrReason}' للموظف (رقم: ${existing.EmployeesId}) واسترجاع ${transactionResult.updatedState.RefundedDays || 0} يوم بواسطة '${requestingUser.userName}'.`,
+      usersId: requestingUser.id || 1,
       employeesId: existing.EmployeesId,
+      ipAddress: requestingUser.ipAddress,
     });
 
-    clearDashboardCacheSafe();
-    return state;
+    CacheService.invalidateEmployeeEcosystem();
+
+    return {
+      data: transactionResult.updatedState,
+      breakdown: transactionResult.breakdown,
+    };
   }
 }
 

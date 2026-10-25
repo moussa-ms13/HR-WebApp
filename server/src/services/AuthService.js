@@ -15,7 +15,7 @@ class AuthService {
    * NOTE: Legacy app stored passwords as plain text.
    * We match plain text for backward compatibility.
    */
-  static async login(userName, password) {
+  static async login(userName, password, ipAddress = null) {
     if (!userName || !password) {
       throw ApiError.badRequest("UserName and Password are required.");
     }
@@ -75,13 +75,14 @@ class AuthService {
       expiresIn: process.env.JWT_EXPIRES_IN || "8h",
     });
 
-    // Log the login action
-    await SystemRecordService.log({
+    // Log the login action asynchronously (non-blocking)
+    SystemRecordService.log({
       userFullName: user.FullName,
       title: "Login",
       description: `User '${user.UserName}' logged in successfully.`,
       usersId: user.Id,
-    });
+      ipAddress,
+    }).catch((err) => console.error("[AuditLog Non-Blocking Error]:", err.message));
 
     return {
       token,

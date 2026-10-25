@@ -6,6 +6,8 @@
 // ============================================================
 const prisma = require("../config/database");
 const os = require("os");
+const { getClientDeviceName, resolveDeviceName } = require("../utils/requestContext");
+const { sanitizePagination, buildTokenizedSearch } = require("../utils/queryBuilder");
 
 class SystemRecordService {
   /**
@@ -16,13 +18,31 @@ class SystemRecordService {
    * @param {string} params.description   - Human-readable description
    * @param {number} params.usersId       - ID of the acting user
    * @param {number} [params.employeesId] - ID of the affected employee (optional)
+   * @param {string} [params.ipAddress]   - Real client IP address
+   * @param {string} [params.deviceName]  - Explicit device name
    */
-  static async log({ userFullName, title, description, usersId, employeesId = null }) {
+  static async log({
+    userFullName,
+    title,
+    description,
+    usersId,
+    employeesId = null,
+    ipAddress = null,
+    deviceName = null,
+  }) {
     try {
+      let resolvedDevice = deviceName;
+
+      if (!resolvedDevice) {
+        resolvedDevice = getClientDeviceName(ipAddress);
+      } else {
+        resolvedDevice = resolveDeviceName(resolvedDevice);
+      }
+
       await prisma.systemRecords.create({
         data: {
           UserFullName: userFullName,
-          DeviceName: os.hostname(),
+          DeviceName: resolvedDevice || os.hostname(),
           MachinId: "WEB-APP",
           Title: title,
           Description: description,
@@ -41,24 +61,27 @@ class SystemRecordService {
    * Retrieve system records with optional filtering and pagination.
    */
   static async getAll({ page = 1, limit = 50, usersId = null, search = "" } = {}) {
+    const { safePage, safeLimit, skip } = sanitizePagination(page, limit, 100);
     const where = {};
     if (usersId) where.UsersId = usersId;
     
-    const trimmedSearch = (search || "").trim();
-    if (trimmedSearch) {
-      where.OR = [
-        { Title: { contains: trimmedSearch } },
-        { Description: { contains: trimmedSearch } },
-        { UserFullName: { contains: trimmedSearch } }
-      ];
+    const tokenSearch = buildTokenizedSearch(search, (token) => [
+      { Title: { contains: token } },
+      { Description: { contains: token } },
+      { UserFullName: { contains: token } },
+      { Employee: { LastName: { contains: token } } },
+      { Employee: { Name: { contains: token } } },
+    ]);
+    if (tokenSearch) {
+      where.AND = tokenSearch.AND;
     }
 
     const [records, total] = await Promise.all([
       prisma.systemRecords.findMany({
         where,
         orderBy: { CreatedDate: "desc" },
-        skip: (page - 1) * limit,
-        take: Number(limit),
+        skip,
+        take: safeLimit,
         select: {
           Id: true,
           UserFullName: true,
@@ -67,6 +90,14 @@ class SystemRecordService {
           Description: true,
           CreatedDate: true,
           UsersId: true,
+          EmployeesId: true,
+          Employee: {
+            select: {
+              Id: true,
+              Name: true,
+              LastName: true,
+            },
+          },
         },
       }),
       prisma.systemRecords.count({ where }),

@@ -1,8 +1,10 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import useSWR from 'swr';
 import SystemRecordsService from '../../services/systemRecordsService';
 import { Search, Loader2, FileSpreadsheet, History } from 'lucide-react';
 import { DateText, formatDateTime } from '../../utils/formatDate';
+import { formatEmployeeName } from '../../utils/employeeUtils';
 import * as XLSX from 'xlsx';
 
 const fetcher = async ([url, page, limit, search]) => {
@@ -52,6 +54,7 @@ const SystemRecordsList = () => {
     const exportData = records.map((rec) => ({
       'المعرف': rec?.Id || '-',
       'عنوان الحركة': rec?.Title || '-',
+      'الموظف المعني': formatEmployeeName(rec?.Employee, '-'),
       'الوصف': rec?.Description || '-',
       'المنفذ': rec?.UserFullName || '-',
       'تاريخ الحركة': formatDateTime(rec?.CreatedDate),
@@ -109,6 +112,7 @@ const SystemRecordsList = () => {
                 <th className="py-4 px-6 font-medium">المعرف</th>
                 <th className="py-4 px-6 font-medium">تاريخ الحركة</th>
                 <th className="py-4 px-6 font-medium">عنوان الحركة</th>
+                <th className="py-4 px-6 font-medium">الموظف المعني</th>
                 <th className="py-4 px-6 font-medium">المنفذ</th>
                 <th className="py-4 px-6 font-medium">الوصف</th>
                 <th className="py-4 px-6 font-medium">اسم الجهاز</th>
@@ -117,14 +121,14 @@ const SystemRecordsList = () => {
             <tbody className="text-sm text-slate-700 divide-y divide-gray-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan="6" className="py-12 text-center text-gray-400">
+                  <td colSpan="7" className="py-12 text-center text-gray-400">
                     <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
                     جاري تحميل البيانات...
                   </td>
                 </tr>
               ) : records.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="py-12 text-center text-gray-400">
+                  <td colSpan="7" className="py-12 text-center text-gray-400">
                     <History size={32} className="mx-auto text-gray-300 mb-2" />
                     لا توجد سجلات للعرض
                   </td>
@@ -135,6 +139,15 @@ const SystemRecordsList = () => {
                     <td className="py-4 px-6 text-gray-500">{rec?.Id}</td>
                     <td className="py-4 px-6 text-slate-600"><DateText value={rec?.CreatedDate} showTime /></td>
                     <td className="py-4 px-6 font-bold text-slate-800">{rec?.Title}</td>
+                    <td className="py-4 px-6 font-medium text-slate-700">
+                      {rec?.Employee ? (
+                        <Link to={`/employees/${rec.Employee.Id}`} className="hover:text-emerald-600 font-bold transition-colors">
+                          {formatEmployeeName(rec.Employee)}
+                        </Link>
+                      ) : (
+                        <span className="text-gray-400 font-normal">—</span>
+                      )}
+                    </td>
                     <td className="py-4 px-6 font-medium text-slate-700">{rec?.UserFullName}</td>
                     <td className="py-4 px-6 text-slate-600 max-w-[300px] truncate" title={rec?.Description}>{rec?.Description}</td>
                     <td className="py-4 px-6 text-gray-400 text-xs font-mono">{rec?.DeviceName}</td>

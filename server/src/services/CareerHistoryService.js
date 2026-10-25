@@ -48,7 +48,10 @@ class CareerHistoryService {
       where: { Id: recordId, EmployeesId: employeeId },
     });
     if (!record) throw ApiError.notFound(`Position history record ${recordId} not found.`);
-    return record;
+    return {
+      ...record,
+      Reference: record.Reference ? record.Reference.replace(/\s*<!--\s*ORIGIN:[\s\S]*?-->/g, "").trim() : record.Reference,
+    };
   }
 
   // ──────────────────────────────────────────────
@@ -85,7 +88,12 @@ class CareerHistoryService {
       }),
     ]);
 
-    return { ranks, positions };
+    const cleanedPositions = positions.map((p) => ({
+      ...p,
+      Reference: p.Reference ? p.Reference.replace(/\s*<!--\s*ORIGIN:[\s\S]*?-->/g, "").trim() : p.Reference,
+    }));
+
+    return { ranks, positions: cleanedPositions };
   }
 
   // ──────────────────────────────────────────────
@@ -124,9 +132,10 @@ class CareerHistoryService {
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
       title: "إضافة ترقية في الرتبة",
-      description: `تمت إضافة رتبة '${record.RankName}' للموظف '${employee.Name} ${employee.LastName}' بواسطة '${requestingUser.userName}'.`,
+      description: `تمت إضافة رتبة '${record.RankName}' للموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
       employeesId: employeeId,
+      ipAddress: requestingUser.ipAddress,
     });
 
     return record;
@@ -160,9 +169,10 @@ class CareerHistoryService {
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
       title: "تعديل سجل الترقية",
-      description: `تم تعديل رتبة '${record.RankName}' للموظف '${employee.Name} ${employee.LastName}' بواسطة '${requestingUser.userName}'.`,
+      description: `تم تعديل رتبة '${record.RankName}' للموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
       employeesId: employeeId,
+      ipAddress: requestingUser.ipAddress,
     });
 
     return record;
@@ -177,9 +187,10 @@ class CareerHistoryService {
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
       title: "حذف سجل الترقية",
-      description: `تم حذف رتبة '${existing.RankName}' من سجل الموظف '${employee.Name} ${employee.LastName}' بواسطة '${requestingUser.userName}'.`,
+      description: `تم حذف رتبة '${existing.RankName}' من سجل الموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
       employeesId: employeeId,
+      ipAddress: requestingUser.ipAddress,
     });
 
     return { message: "تم حذف السجل بنجاح." };
@@ -218,9 +229,10 @@ class CareerHistoryService {
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
       title: "إضافة منصب عليا",
-      description: `تمت إضافة منصب '${record.PositionName}' للموظف '${employee.Name} ${employee.LastName}' بواسطة '${requestingUser.userName}'.`,
+      description: `تمت إضافة منصب '${record.PositionName}' للموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
       employeesId: employeeId,
+      ipAddress: requestingUser.ipAddress,
     });
 
     return record;
@@ -252,9 +264,10 @@ class CareerHistoryService {
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
       title: "تعديل سجل المنصب",
-      description: `تم تعديل منصب '${record.PositionName}' للموظف '${employee.Name} ${employee.LastName}' بواسطة '${requestingUser.userName}'.`,
+      description: `تم تعديل منصب '${record.PositionName}' للموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
       employeesId: employeeId,
+      ipAddress: requestingUser.ipAddress,
     });
 
     return record;
@@ -269,9 +282,10 @@ class CareerHistoryService {
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
       title: "حذف سجل المنصب",
-      description: `تم حذف منصب '${existing.PositionName}' من سجل الموظف '${employee.Name} ${employee.LastName}' بواسطة '${requestingUser.userName}'.`,
+      description: `تم حذف منصب '${existing.PositionName}' من سجل الموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
       employeesId: employeeId,
+      ipAddress: requestingUser.ipAddress,
     });
 
     return { message: "تم حذف السجل بنجاح." };

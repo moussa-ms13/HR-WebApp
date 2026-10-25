@@ -6,9 +6,11 @@ const jwt = require("jsonwebtoken");
 const ApiError = require("../utils/ApiError");
 const { ROLES } = require("../config/constants");
 
+const { extractClientIp, asyncLocalStorage } = require("../utils/requestContext");
+
 /**
  * Authenticates the request by verifying the JWT Bearer token.
- * Attaches the decoded user payload to `req.user`.
+ * Attaches the decoded user payload to `req.user` with client IP.
  */
 const authenticate = (req, _res, next) => {
   const authHeader = req.headers.authorization;
@@ -19,8 +21,22 @@ const authenticate = (req, _res, next) => {
 
   const token = authHeader.split(" ")[1];
   const decoded = jwt.verify(token, process.env.JWT_SECRET);
-  req.user = decoded;
-  next();
+  const cleanIp = extractClientIp(req);
+  req.clientIp = cleanIp;
+  req.user = {
+    ...decoded,
+    ipAddress: cleanIp,
+  };
+
+  const store = asyncLocalStorage.getStore();
+  if (store) {
+    store.user = req.user;
+    store.clientIp = cleanIp;
+    return next();
+  }
+
+  // Fallback if requestContextMiddleware was bypassed
+  asyncLocalStorage.run({ clientIp: cleanIp, userAgent: (req.headers && req.headers["user-agent"]) || "", user: req.user }, () => next());
 };
 
 /**

@@ -33,6 +33,11 @@ class EmployeeStatesService {
     const response = await apiClient.delete(`/employee-states/${id}`);
     return response.data;
   }
+
+  static async resume(id, data) {
+    const response = await apiClient.put(`/employee-states/${id}/resume`, data);
+    return response.data;
+  }
 }
 
 export default EmployeeStatesService;

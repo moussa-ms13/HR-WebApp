@@ -64,12 +64,18 @@ class EmployeeFilesService {
     }
 
     // Single audit log for batch operation
+    const empLastName = employee.LastName || "";
+    const empName = employee.Name || "";
+    const empFullName = `${empLastName} ${empName}`.trim();
+    const username = requestingUser.userName || requestingUser.fullName;
+
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Upload Documents",
-      description: `Uploaded ${createdRecords.length} document(s) for employee '${employee.Name} ${employee.LastName}'.`,
+      title: "رفع وثائق للموظف",
+      description: `تم رفع ${createdRecords.length} وثيقة للموظف '${empFullName}' بواسطة '${username}'.`,
       usersId: requestingUser.id,
-      employeesId: employeeId
+      employeesId: employeeId,
+      ipAddress: requestingUser.ipAddress,
     });
 
     return createdRecords;
@@ -176,12 +182,18 @@ class EmployeeFilesService {
       console.error("[EmployeeFilesService] Failed to delete physical file:", err.message);
     }
 
+    const empLastName = file.Employee?.LastName || "";
+    const empName = file.Employee?.Name || "";
+    const empFullName = `${empLastName} ${empName}`.trim();
+    const username = requestingUser.userName || requestingUser.fullName;
+
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Delete Document",
-      description: `Document '${file.DocumentName}' deleted for employee '${file.Employee.Name}'.`,
+      title: "حذف وثيقة موظف",
+      description: `تم حذف وثيقة للموظف '${empFullName}' بواسطة '${username}'.`,
       usersId: requestingUser.id,
-      employeesId: file.EmployeesId
+      employeesId: file.EmployeesId,
+      ipAddress: requestingUser.ipAddress,
     });
 
     return { message: "File deleted successfully" };
@@ -232,12 +244,18 @@ class EmployeeFilesService {
     });
 
     // Audit log
+    const empLastName = employee.LastName || "";
+    const empName = employee.Name || "";
+    const empFullName = `${empLastName} ${empName}`.trim();
+    const username = requestingUser.userName || requestingUser.fullName;
+
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Delete Document",
-      description: `Bulk deleted ${documents.length} document(s) for employee '${employee.Name} ${employee.LastName}'.`,
+      title: "حذف وثيقة موظف",
+      description: `تم حذف ${documents.length} وثيقة للموظف '${empFullName}' بواسطة '${username}'.`,
       usersId: requestingUser.id,
       employeesId: employeeId,
+      ipAddress: requestingUser.ipAddress,
     });
 
     return { message: `${documents.length} file(s) deleted successfully.`, count: documents.length };
@@ -287,12 +305,18 @@ class EmployeeFilesService {
       data: updateData
     });
 
+    const empLastName = existingFile.Employee?.LastName || "";
+    const empName = existingFile.Employee?.Name || "";
+    const empFullName = `${empLastName} ${empName}`.trim();
+    const username = requestingUser.userName || requestingUser.fullName;
+
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Update Document",
-      description: `Document '${updatedFile.DocumentName}' updated for Employee: ${existingFile.Employee.Name}.`,
+      title: "تعديل وثيقة موظف",
+      description: `تم تعديل وثيقة '${updatedFile.DocumentName}' للموظف '${empFullName}' بواسطة '${username}'.`,
       usersId: requestingUser.id,
-      employeesId: existingFile.EmployeesId
+      employeesId: existingFile.EmployeesId,
+      ipAddress: requestingUser.ipAddress,
     });
 
     return updatedFile;

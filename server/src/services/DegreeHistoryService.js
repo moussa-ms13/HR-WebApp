@@ -11,7 +11,13 @@ class DegreeHistoryService {
   static async _assertAccess(employeeId, requestingUser) {
     const employee = await prisma.employees.findUnique({
       where: { Id: employeeId },
-      select: { Id: true, Name: true, LastName: true, Province: true },
+      select: {
+        Id: true,
+        Name: true,
+        LastName: true,
+        Province: true,
+        JobTitle: { select: { Id: true, RankName: true, EmploymentCategory: true } },
+      },
     });
     if (!employee) throw ApiError.notFound(`Employee ${employeeId} not found.`);
 
@@ -45,7 +51,7 @@ class DegreeHistoryService {
   static async getByEmployee(employeeId, requestingUser) {
     await this._assertAccess(employeeId, requestingUser);
 
-    return prisma.degreeHistory.findMany({
+    const records = await prisma.degreeHistory.findMany({
       where: { EmployeesId: employeeId },
       select: {
         Id: true,
@@ -58,23 +64,35 @@ class DegreeHistoryService {
       },
       orderBy: { EffectiveDate: "desc" },
     });
+
+    return records.map((record) => ({
+      ...record,
+      Pace: record.PromotionDuration,
+    }));
   }
 
   static async create(employeeId, data, requestingUser) {
     const employee = await this._assertAccess(employeeId, requestingUser);
 
     if (data.DegreeLevel == null || data.DegreeLevel === "") {
-      throw ApiError.badRequest("الدرجة مطلوبة.");
+      throw ApiError.badRequest("الدرجة أو سنوات الخبرة مطلوبة.");
+    }
+    const degreeLevelNum = Number(data.DegreeLevel);
+    if (isNaN(degreeLevelNum) || degreeLevelNum < 0 || degreeLevelNum > 45) {
+      throw ApiError.badRequest("قيمة الدرجة أو سنوات الخبرة غير صالحة (يجب أن تكون بين 0 و 45).");
     }
     if (!data.EffectiveDate) {
       throw ApiError.badRequest("تاريخ السريان مطلوب.");
     }
 
+    const pace = String(data.PromotionDuration || data.Pace || "").trim();
+    const truncatedPace = pace.slice(0, 50);
+
     const record = await prisma.degreeHistory.create({
       data: {
         EmployeesId: employeeId,
-        DegreeLevel: Number(data.DegreeLevel),
-        PromotionDuration: data.PromotionDuration || "",
+        DegreeLevel: degreeLevelNum,
+        PromotionDuration: truncatedPace,
         EffectiveDate: new Date(data.EffectiveDate),
         ReferenceDoc: data.ReferenceDoc || "",
         Notes: data.Notes || null,
@@ -83,15 +101,37 @@ class DegreeHistoryService {
 
     await this._syncEmployeeDegree(employeeId);
 
-    await SystemRecordService.log({
-      userFullName: requestingUser.fullName,
-      title: "إضافة درجة جديدة",
-      description: `تمت إضافة الدرجة ${record.DegreeLevel} للموظف '${employee.Name} ${employee.LastName}' بواسطة '${requestingUser.userName}'.`,
-      usersId: requestingUser.id,
-      employeesId: employeeId,
-    });
+    const empCategory = employee.JobTitle?.EmploymentCategory || "";
+    const isContractual = empCategory.includes("متعاقد") || pace.includes("%");
 
-    return record;
+    if (isContractual) {
+      const percentage = pace.includes("%")
+        ? (pace.includes("=") ? pace.split("=").pop().trim() : pace)
+        : `${(degreeLevelNum * 1.4).toFixed(1)}%`;
+
+      await SystemRecordService.log({
+        userFullName: requestingUser.fullName,
+        title: "إضافة تعويض خبرة مهنية",
+        description: `تمت إضافة تعويض خبرة مهنية (${degreeLevelNum} سنة - ${percentage}) للموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
+        usersId: requestingUser.id,
+        employeesId: employeeId,
+        ipAddress: requestingUser.ipAddress,
+      });
+    } else {
+      await SystemRecordService.log({
+        userFullName: requestingUser.fullName,
+        title: "إضافة درجة جديدة",
+        description: `تمت إضافة الدرجة ${record.DegreeLevel} للموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
+        usersId: requestingUser.id,
+        employeesId: employeeId,
+        ipAddress: requestingUser.ipAddress,
+      });
+    }
+
+    return {
+      ...record,
+      Pace: record.PromotionDuration,
+    };
   }
 
   static async delete(employeeId, degreeId, requestingUser) {
@@ -105,13 +145,28 @@ class DegreeHistoryService {
     await prisma.degreeHistory.delete({ where: { Id: degreeId } });
     await this._syncEmployeeDegree(employeeId);
 
-    await SystemRecordService.log({
-      userFullName: requestingUser.fullName,
-      title: "حذف سجل درجة",
-      description: `تم حذف الدرجة ${existing.DegreeLevel} من سجل الموظف '${employee.Name} ${employee.LastName}' بواسطة '${requestingUser.userName}'.`,
-      usersId: requestingUser.id,
-      employeesId: employeeId,
-    });
+    const empCategory = employee.JobTitle?.EmploymentCategory || "";
+    const isContractual = empCategory.includes("متعاقد") || (existing.PromotionDuration && existing.PromotionDuration.includes("%"));
+
+    if (isContractual) {
+      await SystemRecordService.log({
+        userFullName: requestingUser.fullName,
+        title: "حذف تعويض خبرة مهنية",
+        description: `تم حذف تعويض خبرة مهنية (${existing.DegreeLevel} سنة) من سجل الموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
+        usersId: requestingUser.id,
+        employeesId: employeeId,
+        ipAddress: requestingUser.ipAddress,
+      });
+    } else {
+      await SystemRecordService.log({
+        userFullName: requestingUser.fullName,
+        title: "حذف سجل درجة",
+        description: `تم حذف الدرجة ${existing.DegreeLevel} من سجل الموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
+        usersId: requestingUser.id,
+        employeesId: employeeId,
+        ipAddress: requestingUser.ipAddress,
+      });
+    }
 
     return { message: "تم حذف السجل بنجاح." };
   }

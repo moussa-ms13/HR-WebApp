@@ -24,7 +24,7 @@ router.use("/:id/special-cases", specialCasesRoutes);
  * GET /api/employees/export
  * Export employees to Excel
  */
-router.get("/export", async (req, res, next) => {
+router.get("/export", hasPermission(PERMISSIONS.EXPORT), async (req, res, next) => {
   try {
     await ExportService.exportEmployeesToExcel(res);
   } catch (error) {

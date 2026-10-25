@@ -54,6 +54,9 @@ export const AuthProvider = ({ children }) => {
   const hasPermission = (permissionKey) => {
     if (!user) return false;
     if (user.role === 'Admin') return true;
+    if (Array.isArray(permissionKey)) {
+      return permissionKey.some((k) => user.permissions?.[k] === true);
+    }
     return user.permissions?.[permissionKey] === true;
   };
 

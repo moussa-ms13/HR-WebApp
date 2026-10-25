@@ -4,6 +4,7 @@ import { X, Save, Loader2, Upload, Image as ImageIcon, ChevronDown, ChevronLeft 
 import { useAuth } from '../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import EmployeeService from '../../services/employeeService';
+import { getAssetUrl } from '../../utils/employeeUtils';
 import apiClient from '../../services/apiClient';
 import { useToast } from '../../components/ui/Toast';
 
@@ -66,17 +67,17 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
   const [profileImagePreview, setProfileImagePreview] = useState(null);
 
   const initialFormData = {
-    Name: '', LastName: '', DateOfBirth: '', PlaceOfBirth: '',
+    Name: '', LastName: '', LastNameFr: '', NameFr: '', DateOfBirth: '', PlaceOfBirth: '',
     Gender: '', MaritalStatus: '',
     NumberOfChildren: 0, PhoneNumber: '', Address: '', Email: '',
     NIN: '', SIS: '',
     Province: allowedProvinces.length > 0 ? allowedProvinces[0] : '',
-    Directorate: '', Department: '', AssignedPosition: '',
+    Directorate: '', AssignedPosition: '',
     JobTitleId: '', Degree: 0,
     InstallationDate: new Date().toISOString().split('T')[0],
     LastDegreeDate: '',
     PositionDate: '',
-    EmployeeStatus: 'مثبت',
+    EmployeeStatus: 'مرسم',
     ConfirmationDate: new Date().toISOString().split('T')[0],
     isProfileComplete: false
   };
@@ -107,6 +108,8 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
   const buildFormDataFromEmployee = (emp) => ({
     ...initialFormData,
     ...emp,
+    LastNameFr: emp.LastNameFr || '',
+    NameFr: emp.NameFr || '',
     Gender: emp.Gender && emp.Gender !== 'غير محدد' ? emp.Gender : '',
     MaritalStatus: emp.MaritalStatus && emp.MaritalStatus !== 'غير محدد' ? emp.MaritalStatus : (emp.FamilyStatus && emp.FamilyStatus !== 'غير محدد' ? emp.FamilyStatus : ''),
     isProfileComplete: emp.IsProfileComplete || emp.isProfileComplete || false,
@@ -139,7 +142,7 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
       if (isEdit && empId) {
         // Fast initial populate from prop
         setFormData(buildFormDataFromEmployee(employee));
-        setProfileImagePreview(employee.ProfileImagePath ? `${import.meta.env.VITE_SERVER_URL || 'http://localhost:5000'}${employee.ProfileImagePath}` : null);
+        setProfileImagePreview(employee.ProfileImagePath ? getAssetUrl(employee.ProfileImagePath) : null);
 
         // Fetch full employee database record
         setIsFetchingDetails(true);
@@ -149,7 +152,7 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
           if (isMounted && fullData) {
             setFormData(buildFormDataFromEmployee(fullData));
             if (fullData.ProfileImagePath) {
-              setProfileImagePreview(`${import.meta.env.VITE_SERVER_URL || 'http://localhost:5000'}${fullData.ProfileImagePath}`);
+              setProfileImagePreview(getAssetUrl(fullData.ProfileImagePath));
             }
           }
         } catch (err) {
@@ -221,7 +224,6 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
       }
       if (name === 'Province') {
         updated.Directorate = '';
-        updated.Department = '';
       }
       if (name === 'EmployeeStatus' && value === 'متربص') {
         updated.ConfirmationDate = '';
@@ -232,6 +234,14 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
 
       return updated;
     });
+  };
+
+  const handleLastNameFrChange = (e) => {
+    setFormData(prev => ({ ...prev, LastNameFr: e.target.value.toUpperCase() }));
+  };
+
+  const handleNameFrChange = (e) => {
+    setFormData(prev => ({ ...prev, NameFr: e.target.value }));
   };
 
   const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -249,11 +259,10 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
     }
   };
 
-  const handleTreeSelect = (department, directorate) => {
+  const handleTreeSelect = (selectedPlace) => {
     setFormData(prev => ({
       ...prev,
-      Department: department,
-      Directorate: directorate || department // If root node selected
+      Directorate: selectedPlace
     }));
     setShowTree(false);
   };
@@ -267,7 +276,7 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
       if (!formData.Name || !formData.LastName || !formData.Province) {
         throw new Error('يرجى ملء الحقول الإجبارية (الاسم، اللقب، الولاية)');
       }
-      if (!formData.Department) {
+      if (!formData.Directorate) {
         throw new Error('يرجى اختيار مكان التعيين من القائمة الشجرية');
       }
 
@@ -421,12 +430,38 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
                   <div className="flex-1">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">اللقب <span className="text-red-500">*</span></label>
+                        <input type="text" name="LastName" value={formData.LastName} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                      </div>
+                      <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">الاسم <span className="text-red-500">*</span></label>
                         <input type="text" name="Name" value={formData.Name} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
                       </div>
+
+                      {/* French Names */}
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">اللقب <span className="text-red-500">*</span></label>
-                        <input type="text" name="LastName" value={formData.LastName} onChange={handleChange} required className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                        <label className="block text-sm font-medium text-slate-700 mb-1">اللقب بالفرنسية (Nom)</label>
+                        <input
+                          type="text"
+                          name="LastNameFr"
+                          dir="ltr"
+                          value={formData.LastNameFr || ''}
+                          onChange={handleLastNameFrChange}
+                          placeholder="NOM EN FRANÇAIS"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm uppercase font-semibold text-slate-800 tracking-wide"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">الاسم بالفرنسية (Prénom)</label>
+                        <input
+                          type="text"
+                          name="NameFr"
+                          dir="ltr"
+                          value={formData.NameFr || ''}
+                          onChange={handleNameFrChange}
+                          placeholder="Prénom en français"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 outline-none text-sm font-semibold text-slate-800 tracking-wide"
+                        />
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">الجنس</label>
@@ -503,7 +538,7 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
                         <input
                           type="text"
                           readOnly
-                          value={formData.Department ? (formData.Directorate === formData.Department ? formData.Directorate : `${formData.Directorate} ➜ ${formData.Department}`) : ''}
+                          value={formData.Directorate || ''}
                           placeholder="اضغط لاختيار مكان التعيين..."
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white outline-none text-sm cursor-pointer"
                           onClick={() => { if (formData.Province) setShowTree(!showTree); else toast.warning("يرجى اختيار الولاية أولاً."); }}

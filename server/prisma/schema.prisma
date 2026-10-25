@@ -9,9 +9,9 @@ datasource db {
 model Users {
   Id              Int      @id(map: "PK_Users") @default(autoincrement())
   FullName        String   @db.NVarChar(Max)
-  UserName        String   @db.NVarChar(Max)
+  UserName        String   @unique(map: "UQ_Users_UserName") @db.NVarChar(100)
   Password        String   @db.NVarChar(Max)
-  Role            String   @db.NVarChar(Max)
+  Role            String   @db.NVarChar(50)
   IsSecondaryUser Boolean
   UserId          String   @db.NVarChar(Max)
   Phone           String?  @db.NVarChar(Max)
@@ -21,6 +21,7 @@ model Users {
   EditedDate      DateTime
   Roles           Roles[]
 
+  @@index([Role], map: "IX_Users_Role")
   @@map("Users")
 }
 
@@ -47,8 +48,8 @@ model SystemRecords {
   EmployeesId  Int?
   Employee     Employees? @relation(fields: [EmployeesId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_SystemRecords_Employees_EmployeesId")
 
-  @@index([UsersId])
-  @@index([CreatedDate])
+  @@index([UsersId], map: "IX_SystemRecords_UsersId")
+  @@index([CreatedDate], map: "IX_SystemRecords_CreatedDate")
   @@index([EmployeesId], map: "IX_SystemRecords_EmployeesId")
   @@map("SystemRecords")
 }
@@ -57,6 +58,8 @@ model Employees {
   Id                Int                @id(map: "PK_Employees") @default(autoincrement())
   Name              String             @db.NVarChar(100)
   LastName          String             @db.NVarChar(100)
+  LastNameFr        String?            @db.NVarChar(150)
+  NameFr            String?            @db.NVarChar(150)
   DateOfBirth       DateTime
   PlaceOfBirth      String             @db.NVarChar(Max)
   Gender            String             @db.NVarChar(Max)
@@ -64,7 +67,6 @@ model Employees {
   ProfileImagePath  String             @db.NVarChar(Max)
   Province          String             @db.NVarChar(150)
   Directorate       String             @db.NVarChar(150)
-  Department        String             @db.NVarChar(100)
   AddedDate         DateTime
   UpdateDate        DateTime
   UsersId           String             @db.NVarChar(Max)
@@ -103,7 +105,10 @@ model Employees {
   @@index([Directorate], map: "IX_Employees_Directorate")
   @@index([NIN], map: "IX_Employees_NIN")
   @@index([IsProfileComplete], map: "IX_Employees_IsProfileComplete")
-  @@index([Department], map: "IX_Employees_Department")
+  @@index([InstallationDate], map: "IX_Employees_InstallationDate")
+  @@index([Province, LastName, Name], map: "IX_Employees_Province_LastName_Name")
+  @@index([LastNameFr, NameFr], map: "IX_Employees_LastNameFr_NameFr")
+  @@index([Province, Directorate], map: "IX_Employees_Province_Directorate")
   @@map("Employees")
 }
 
@@ -114,10 +119,12 @@ model LeaveBalance {
   TotalDays     Int       @default(30)
   ConsumedDays  Int       @default(0)
   RemainingDays Int       @default(30)
+  Notes         String?   @db.NVarChar(500)
   Employee      Employees @relation(fields: [EmployeeId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_LeaveBalance_Employees_EmployeeId")
 
   @@unique([EmployeeId, Year], map: "UQ_LeaveBalance_EmployeeId_Year")
   @@index([EmployeeId], map: "IX_LeaveBalance_EmployeeId")
+  @@index([Year], map: "IX_LeaveBalance_Year")
   @@map("LeaveBalance")
 }
 
@@ -179,9 +186,9 @@ model EmployeesRecords {
 model EmployeeStates {
   Id                    Int       @id(map: "PK_EmployeeStates") @default(autoincrement())
   EmployeesId           Int
-  RecordCategory        String    @db.NVarChar(Max)
+  RecordCategory        String    @db.NVarChar(50)
   CurrentJobTitle       String    @db.NVarChar(Max)
-  StateTypeOrReason     String    @db.NVarChar(Max)
+  StateTypeOrReason     String    @db.NVarChar(100)
   DaysCount             Int
   StartDate             DateTime
   EndDate               DateTime
@@ -194,18 +201,27 @@ model EmployeeStates {
   IsResumedEarly        Boolean   @default(false)
   RemainingBalanceAfter Int?
   Notes                 String?   @db.NVarChar(Max)
+  DoctorName            String?   @db.NVarChar(200)
+  CertificateDate       DateTime?
+  SecondDoctorName      String?   @db.NVarChar(200)
+  SecondCertificateDate DateTime?
+  RefundedDays          Int?      @default(0)
+  RefundedBreakdown     String?   @db.NVarChar(Max)
   Employee              Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_EmployeeStates_Employees_EmployeesId")
 
-  @@index([EndDate])
-  @@index([IsResumed])
   @@index([EmployeesId], map: "IX_EmployeeStates_EmployeesId")
+  @@index([StartDate], map: "IX_EmployeeStates_StartDate")
+  @@index([EndDate], map: "IX_EmployeeStates_EndDate")
+  @@index([IsResumed], map: "IX_EmployeeStates_IsResumed")
+  @@index([StateTypeOrReason], map: "IX_EmployeeStates_StateTypeOrReason")
+  @@index([EmployeesId, EndDate, IsResumed], map: "IX_EmployeeStates_EmployeesId_EndDate_IsResumed")
   @@map("EmployeeStates")
 }
 
 model SpecialCases {
   Id           Int       @id(map: "PK_SpecialCases") @default(autoincrement())
   EmployeesId  Int
-  CaseType     String    @db.NVarChar(Max)
+  CaseType     String    @db.NVarChar(100)
   StartDate    DateTime
   EndDate      DateTime?
   Destination  String?   @db.NVarChar(Max)
@@ -216,6 +232,9 @@ model SpecialCases {
 
   @@index([EmployeesId], map: "IX_SpecialCases_EmployeesId")
   @@index([IsActive], map: "IX_SpecialCases_IsActive")
+  @@index([EmployeesId, IsActive], map: "IX_SpecialCases_EmployeesId_IsActive")
+  @@index([CaseType], map: "IX_SpecialCases_CaseType")
+  @@index([EndDate], map: "IX_SpecialCases_EndDate")
   @@map("SpecialCases")
 }
 
@@ -230,9 +249,9 @@ model RankHistory {
   Employee    Employees  @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_RankHistory_Employees_EmployeesId")
   Rank        JobTitles? @relation(fields: [RankId], references: [Id], onDelete: NoAction, onUpdate: NoAction, map: "FK_RankHistory_JobTitles_RankId")
 
-  @@index([EmployeesId])
-  @@index([RankId])
-  @@index([InstallDate])
+  @@index([EmployeesId], map: "IX_RankHistory_EmployeesId")
+  @@index([RankId], map: "IX_RankHistory_RankId")
+  @@index([InstallDate], map: "IX_RankHistory_InstallDate")
   @@map("RankHistory")
 }
 
@@ -245,8 +264,8 @@ model PositionHistory {
   Reference    String    @db.NVarChar(Max)
   Employee     Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, map: "FK_PositionHistory_Employees_EmployeesId")
 
-  @@index([EmployeesId])
-  @@index([InstallDate])
+  @@index([EmployeesId], map: "IX_PositionHistory_EmployeesId")
+  @@index([InstallDate], map: "IX_PositionHistory_InstallDate")
   @@map("PositionHistory")
 }
 

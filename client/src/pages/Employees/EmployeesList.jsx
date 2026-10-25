@@ -6,25 +6,62 @@ import EmployeeService from '../../services/employeeService';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import EmployeeModal from './EmployeeModal';
 import { Search, MoreVertical, Loader2, Users, ArrowUpDown, ChevronDown, Download } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { refreshEmployees } from '../../utils/cacheManager';
+import { formatEmployeeName } from '../../utils/employeeUtils';
 
-const fetcher = async ([url, page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder]) => {
-  const result = await EmployeeService.getAll(page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder);
+const fetcher = async (
+  [_url, page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder]
+) => {
+  const result = await EmployeeService.getAll(
+    page,
+    limit,
+    search,
+    province,
+    directorate,
+    fileStatus,
+    category,
+    sortBy,
+    sortOrder
+  );
   if (!result.success) throw new Error("Failed to fetch");
   return result;
 };
 
-const HeaderCell = ({ label }) => (
-  <th className="py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100">
-    <div className="flex items-center gap-1.5 cursor-pointer hover:text-slate-800 transition-colors">
+const HeaderCell = ({ label, align }) => (
+  <th className={`py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 ${align === 'center' ? 'text-center' : ''}`}>
+    <div className={`flex items-center gap-1.5 cursor-pointer hover:text-slate-800 transition-colors ${align === 'center' ? 'justify-center' : ''}`}>
       {label}
       <ArrowUpDown size={12} className="text-gray-300" />
     </div>
   </th>
 );
+
+const renderStatusBadge = (status) => {
+  if (status === 'مرسم' || status === 'مثبت' || status === 'نشط') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+        مرسم
+      </span>
+    );
+  }
+  if (status === 'متربص') {
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200/70">
+        <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
+        متربص
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-50 text-slate-700 border border-slate-200/70">
+      <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+      {status || 'مرسم'}
+    </span>
+  );
+};
 
 const EmployeesList = () => {
   const { hasPermission } = useAuth();
@@ -154,8 +191,10 @@ const EmployeesList = () => {
     await refreshEmployees();
   };
 
-  const handleDelete = (id) => {
-    showConfirm('حذف الموظف', 'هل أنت متأكد من حذف هذا الموظف؟', async () => {
+  const handleDelete = (empOrId) => {
+    const id = typeof empOrId === 'object' ? empOrId.Id : empOrId;
+    const name = typeof empOrId === 'object' ? formatEmployeeName(empOrId) : `رقم ${id}`;
+    showConfirm('حذف الموظف', `هل أنت متأكد من حذف الموظف "${name}"؟`, async () => {
       closeConfirm();
       try {
         await EmployeeService.delete(id);
@@ -309,7 +348,8 @@ const EmployeesList = () => {
             <thead className="sticky top-0 z-10">
               <tr>
                 <HeaderCell label="الرقم الوظيفي" />
-                <HeaderCell label="الاسم" />
+                <HeaderCell label="اللقب والاسم" />
+                <HeaderCell label="اللقب والاسم (FR)" align="center" />
                 <HeaderCell label="الولاية" />
                 <HeaderCell label="الحالة" />
                 <HeaderCell label="الملف" />
@@ -319,14 +359,14 @@ const EmployeesList = () => {
             <tbody className={`text-sm divide-y divide-gray-100 transition-opacity duration-200 ${isRefreshing ? 'opacity-50' : 'opacity-100'}`}>
               {isInitialLoading ? (
                 <tr>
-                  <td colSpan="6" className="py-12 text-center text-gray-400">
+                  <td colSpan="7" className="py-12 text-center text-gray-400">
                     <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
                     جاري تحميل البيانات...
                   </td>
                 </tr>
               ) : employees.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="py-12 text-center text-gray-400">
+                  <td colSpan="7" className="py-12 text-center text-gray-400">
                     <Users size={32} className="mx-auto text-gray-300 mb-2" />
                     لا يوجد موظفين لعرضهم
                   </td>
@@ -339,18 +379,22 @@ const EmployeesList = () => {
                     {/* Name */}
                     <td className="py-3 px-4">
                       <Link to={`/employees/${emp.Id}`} className="font-bold text-slate-800 hover:text-emerald-600 transition-colors">
-                        {emp.Name} {emp.LastName}
+                        {formatEmployeeName(emp)}
                       </Link>
+                    </td>
+
+                    {/* French Name */}
+                    <td className="px-4 py-3 text-center whitespace-nowrap">
+                      <span dir="ltr" className="inline-block font-semibold text-slate-700 text-center">
+                        {emp.LastNameFr ? `${emp.LastNameFr} ${emp.NameFr || ''}`.trim() : '—'}
+                      </span>
                     </td>
 
                     <td className="py-3 px-4 text-slate-700">{emp.Province}</td>
                     
                     {/* Status */}
                     <td className="py-3 px-4">
-                      <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${emp.EmployeeStatus === 'مثبت' ? 'bg-emerald-500' : 'bg-gray-400'}`}></span>
-                        <span className="font-medium text-slate-700">{emp.EmployeeStatus || 'نشط'}</span>
-                      </div>
+                      {renderStatusBadge(emp.EmployeeStatus)}
                     </td>
 
                     {/* Profile Completion */}
@@ -400,7 +444,7 @@ const EmployeesList = () => {
                               )}
                               {hasPermission('checkBoxDelete') && (
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); handleDelete(emp.Id); setOpenDropdownId(null); }}
+                                  onClick={(e) => { e.stopPropagation(); handleDelete(emp); setOpenDropdownId(null); }}
                                   className="w-full text-right px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                                 >
                                   حذف

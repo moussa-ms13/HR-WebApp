@@ -1,0 +1,447 @@
+import React, { useState } from 'react';
+import useSWR from 'swr';
+import { useSearchParams, Link } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
+import useDebounce from '../../hooks/useDebounce';
+import SpecialCasesService from '../../services/specialCasesService';
+import SpecialCaseModal from './components/SpecialCaseModal';
+import ReintegrateModal from './components/ReintegrateModal';
+import LeavesFilterBar from '../Leaves/components/LeavesFilterBar';
+import ConfirmModal from '../../components/ui/ConfirmModal';
+import { useToast } from '../../components/ui/Toast';
+import { refreshSpecialCases, refreshEmployees } from '../../utils/cacheManager';
+import { DateText, normalizeEmbeddedDates } from '../../utils/dateUtils';
+import { formatEmployeeName } from '../../utils/employeeUtils';
+import {
+  LIFECYCLE_TABS,
+  ALL_SPECIAL_CASE_TYPES,
+  getSpecialCaseStatus,
+} from '../../utils/specialCasesConstants';
+import {
+  ArrowRightLeft,
+  ArrowUpDown,
+  MoreVertical,
+  Loader2,
+  Trash2,
+  Edit2,
+  UserCheck,
+} from 'lucide-react';
+
+const casesFetcher = async ([_url, page, limit, search, directorate, province, statusFilter, caseType]) => {
+  const result = await SpecialCasesService.getAll(
+    page,
+    limit,
+    search,
+    province,
+    directorate,
+    statusFilter,
+    caseType
+  );
+  if (!result.success) throw new Error('فشل جلب الحالات الخاصة');
+  return result;
+};
+
+export default function SpecialCasesList() {
+  const { user, hasPermission } = useAuth();
+  const [searchParams] = useSearchParams();
+  const toast = useToast();
+
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
+  const [statusFilter, setStatusFilter] = useState('active');
+  const [caseTypeFilter, setCaseTypeFilter] = useState('');
+  const [provinceFilter, setProvinceFilter] = useState('');
+  const [directorateFilter, setDirectorateFilter] = useState('');
+  const [searchInput, setSearchInput] = useState(() => searchParams.get('search')?.trim() || '');
+
+  const allowedProvinces = getAllowedProvinces(user);
+  const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
+  const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
+
+  const debouncedSearch = useDebounce(searchInput, 500);
+  const search = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : '';
+
+  const { data, isLoading, mutate } = useSWR(
+    ['/api/special-cases', page, limit, search, directorateFilter, provinceFilter, statusFilter, caseTypeFilter],
+    casesFetcher,
+    { revalidateOnFocus: false, keepPreviousData: true }
+  );
+
+  const specialCases = Array.isArray(data) ? data : (data?.data || data?.records || []);
+  const meta = data?.meta || { total: 0, totalPages: 0, page: 1, counts: {} };
+  const showLoading = isLoading && !data;
+
+  // Modal States
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedCase, setSelectedCase] = useState(null);
+  const [menuOpenId, setMenuOpenId] = useState(null);
+
+  // Reintegrate Modal State
+  const [reintegrateCase, setReintegrateCase] = useState(null);
+  const [isReintegrateOpen, setIsReintegrateOpen] = useState(false);
+
+  // Delete Confirm State
+  const [confirmState, setConfirmState] = useState({
+    open: false,
+    caseId: null,
+    caseName: '',
+    employeeId: null,
+  });
+
+  const handleSearchChange = (e) => {
+    setSearchInput(e.target.value);
+    setPage(1);
+  };
+
+  const handleAdd = () => {
+    setSelectedCase(null);
+    setIsModalOpen(true);
+  };
+
+  const handleEdit = (c) => {
+    setMenuOpenId(null);
+    setSelectedCase(c);
+    setIsModalOpen(true);
+  };
+
+  const handleReintegrateClick = (c) => {
+    setMenuOpenId(null);
+    setReintegrateCase(c);
+    setIsReintegrateOpen(true);
+  };
+
+  const handleDeleteClick = (c) => {
+    setMenuOpenId(null);
+    setConfirmState({
+      open: true,
+      caseId: c.Id,
+      caseName: `${c.CaseType} للموظف ${formatEmployeeName(c.Employee, '')}`,
+      employeeId: c.EmployeesId || c.EmployeeId,
+    });
+  };
+
+  const confirmDelete = async () => {
+    const { caseId, employeeId } = confirmState;
+    setConfirmState({ open: false, caseId: null, caseName: '', employeeId: null });
+
+    try {
+      if (!employeeId) throw new Error('معرّف الموظف غير متوفر');
+      await SpecialCasesService.delete(employeeId, caseId);
+      await refreshSpecialCases(employeeId);
+      await refreshEmployees(employeeId);
+      mutate();
+      toast.success('تم حذف الحالة الخاصة بنجاح');
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message || 'حدث خطأ أثناء الحذف');
+    }
+  };
+
+  const handleModalSuccess = async () => {
+    mutate();
+  };
+
+  const getRowBgStyles = (statusKey) => {
+    switch (statusKey) {
+      case 'archived': return 'bg-gray-50/60 hover:bg-gray-100/60 text-slate-500';
+      case 'permanent_exit': return 'bg-white hover:bg-blue-50/30';
+      case 'temporary_active':
+      default: return 'bg-white hover:bg-emerald-50/20';
+    }
+  };
+
+  const HeaderCell = ({ label, className = "" }) => (
+    <th className={`py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 ${className}`}>
+      <div className="flex items-center gap-1.5 cursor-pointer hover:text-slate-800 transition-colors">
+        {label}
+        <ArrowUpDown size={12} className="text-gray-300" />
+      </div>
+    </th>
+  );
+
+  return (
+    <div className="flex flex-col h-full font-sans text-slate-800" dir="rtl">
+      {/* Segmented Lifecycle Tabs Bar */}
+      <div className="flex items-center gap-1.5 overflow-x-auto bg-white p-1.5 mb-4 rounded-xl border border-gray-200 custom-scrollbar shadow-sm">
+        {LIFECYCLE_TABS.map((tab) => {
+          const isSelected = statusFilter === tab.id;
+          const count = meta.counts?.[tab.id];
+          return (
+            <button
+              key={tab.id}
+              onClick={() => {
+                setStatusFilter(tab.id);
+                setPage(1);
+              }}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
+                isSelected
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+              }`}
+            >
+              <span>{tab.label}</span>
+              {count !== undefined && (
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                    isSelected
+                      ? 'bg-white/20 text-white'
+                      : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Filter Controls Bar */}
+      <LeavesFilterBar
+        provinceFilter={provinceFilter}
+        setProvinceFilter={setProvinceFilter}
+        directorateFilter={directorateFilter}
+        setDirectorateFilter={setDirectorateFilter}
+        caseTypeFilter={caseTypeFilter}
+        setCaseTypeFilter={setCaseTypeFilter}
+        caseTypeOptions={ALL_SPECIAL_CASE_TYPES}
+        allowedProvinces={allowedProvinces}
+        availableMofatishiyat={availableMofatishiyat}
+        availableMohafathat={availableMohafathat}
+        searchInput={searchInput}
+        handleSearchChange={handleSearchChange}
+        setPage={setPage}
+        canAdd={hasPermission('checkBoxAdd')}
+        onAdd={handleAdd}
+        addButtonLabel="تسجيل حالة خاصة"
+        searchPlaceholder="البحث باسم الموظف أو نوع الحالة..."
+      />
+
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col">
+        <div className="overflow-x-auto flex-1 custom-scrollbar">
+          <table className="w-full text-right border-collapse">
+            <thead className="sticky top-0 z-10">
+              <tr>
+                <HeaderCell label="الموظف" />
+                <HeaderCell label="نوع الحالة" />
+                <HeaderCell label="الوجهة / المقر الجديد" />
+                <HeaderCell label="رقم وتاريخ المقرر" />
+                <HeaderCell label="تاريخ السريان" />
+                <th className="py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center">
+                  <div className="flex items-center justify-center gap-1.5 cursor-pointer hover:text-slate-800 transition-colors">
+                    الحالة الإدارية
+                    <ArrowUpDown size={12} className="text-gray-300" />
+                  </div>
+                </th>
+                <th className="py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center">
+                  الإجراءات
+                </th>
+              </tr>
+            </thead>
+            <tbody className="text-sm divide-y divide-gray-100">
+              {showLoading ? (
+                <tr>
+                  <td colSpan="7" className="py-12 text-center text-gray-400">
+                    <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
+                    جاري تحميل البيانات...
+                  </td>
+                </tr>
+              ) : specialCases.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="py-12 text-center text-gray-400">
+                    <ArrowRightLeft size={32} className="mx-auto text-gray-300 mb-2" />
+                    لا توجد حالات خاصة تطابق الفلاتر المحددة
+                  </td>
+                </tr>
+              ) : (
+                specialCases.map((c) => {
+                  const statusInfo = getSpecialCaseStatus(c);
+                  const empId = c.EmployeesId || c.EmployeeId;
+                  return (
+                    <tr key={c.Id} className={`${getRowBgStyles(statusInfo.key)} transition-colors group`}>
+                      <td className="py-3 px-4 font-bold text-slate-800">
+                        <Link
+                          to={`/employees/${empId}`}
+                          className="hover:text-emerald-700 transition-colors"
+                        >
+                          {formatEmployeeName(c.Employee, 'غير محدد')}
+                        </Link>
+                        {c.Employee?.Province && (
+                          <div className="text-xs text-gray-400 font-normal mt-0.5">
+                            ولاية {c.Employee.Province}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-4 text-gray-700 font-medium max-w-[150px] truncate" title={c?.CaseType}>
+                        {c?.CaseType || '-'}
+                      </td>
+
+                      <td className="py-3 px-4 text-gray-500 font-medium max-w-[170px] truncate" title={c?.Destination || ''}>
+                        {c?.Destination || '-'}
+                      </td>
+
+                      <td className="py-3 px-4 text-gray-500 font-medium max-w-[200px] truncate" title={c?.ReferenceDoc || ''}>
+                        {normalizeEmbeddedDates(c?.ReferenceDoc) || '-'}
+                      </td>
+
+                      <td className="py-3 px-4 font-mono text-gray-600">
+                        <DateText value={c?.StartDate} />
+                        {statusInfo.key === 'permanent_exit' ? (
+                          <span className="text-xs text-blue-600 block font-sans font-medium">
+                            قرار نهائي
+                          </span>
+                        ) : c?.EndDate ? (
+                          <span className="text-xs text-gray-400 block font-sans">
+                            إلى <DateText value={c?.EndDate} />
+                          </span>
+                        ) : (
+                          <span className="text-xs text-emerald-600 block font-sans font-medium">
+                            مستمرة
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="py-3 px-4 text-center">
+                        <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-bold ${statusInfo.badgeStyle}`}>
+                          {statusInfo.badgeLabel}
+                        </span>
+                      </td>
+
+                      <td className="py-3 px-4 text-center">
+                        <div className="relative inline-block text-right">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuOpenId(menuOpenId === c.Id ? null : c.Id);
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-emerald-600 border border-transparent hover:border-gray-200 rounded-lg transition-all cursor-pointer"
+                          >
+                            <MoreVertical size={18} />
+                          </button>
+
+                          {menuOpenId === c.Id && (
+                            <div className="absolute left-0 mt-2 w-48 rounded-xl shadow-lg bg-white ring-1 ring-black/5 z-50 py-1 font-sans">
+                              {/* Reintegrate / End Case Action for Active Temporary Cases */}
+                              {statusInfo.isReintegratable && hasPermission('checkBoxEdit') && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleReintegrateClick(c);
+                                  }}
+                                  className="w-full text-right px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 cursor-pointer transition-colors"
+                                >
+                                  <UserCheck size={15} className="text-emerald-600" />
+                                  إنهاء الحالة (إعادة إدماج)
+                                </button>
+                              )}
+
+                              {hasPermission('checkBoxEdit') && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEdit(c);
+                                  }}
+                                  className="w-full text-right px-4 py-2 text-xs text-gray-700 hover:bg-gray-50 flex items-center gap-2 cursor-pointer transition-colors"
+                                >
+                                  <Edit2 size={14} className="text-gray-400" />
+                                  تعديل الحالة الخاصة
+                                </button>
+                              )}
+
+                              {hasPermission('checkBoxDelete') && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteClick(c);
+                                  }}
+                                  className="w-full text-right px-4 py-2 text-xs text-red-600 hover:bg-red-50 flex items-center gap-2 cursor-pointer transition-colors border-t border-gray-100"
+                                >
+                                  <Trash2 size={14} className="text-red-500" />
+                                  حذف
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="bg-white px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
+              disabled={page === meta.totalPages || meta.totalPages === 0}
+              className="px-4 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              التالي
+            </button>
+            <button className="px-4 py-1.5 bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm">
+              {meta.page}
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-4 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
+            >
+              السابق
+            </button>
+          </div>
+
+          <div className="text-sm font-medium text-gray-500">
+            إظهار {specialCases.length} من أصل {meta.total} مدخل
+          </div>
+
+          <div className="flex items-center gap-2 text-sm font-medium text-gray-600">
+            أظهر
+            <select
+              value={limit}
+              onChange={(e) => {
+                setLimit(Number(e.target.value));
+                setPage(1);
+              }}
+              className="border border-gray-200 rounded-lg px-2 py-1 outline-none bg-white text-slate-800 cursor-pointer"
+            >
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+            مدخلات
+          </div>
+        </div>
+      </div>
+
+      <SpecialCaseModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        record={selectedCase}
+        onSuccess={handleModalSuccess}
+      />
+
+      <ReintegrateModal
+        isOpen={isReintegrateOpen}
+        onClose={() => {
+          setIsReintegrateOpen(false);
+          setReintegrateCase(null);
+        }}
+        record={reintegrateCase}
+        onSuccess={handleModalSuccess}
+      />
+
+      <ConfirmModal
+        open={confirmState.open}
+        title="حذف الحالة الخاصة"
+        message={`هل أنت متأكد من حذف "${confirmState.caseName}"؟`}
+        confirmText="حذف"
+        onConfirm={confirmDelete}
+        onCancel={() => setConfirmState({ open: false, caseId: null, caseName: '', employeeId: null })}
+      />
+    </div>
+  );
+}

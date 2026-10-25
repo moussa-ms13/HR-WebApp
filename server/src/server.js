@@ -25,8 +25,21 @@ const routes = require("./routes");
 const errorHandler = require("./middleware/errorHandler");
 const prisma = require("./config/database");
 
+// Warm up database connection pool
+prisma.$connect()
+  .then(() => prisma.$queryRawUnsafe("SELECT 1"))
+  .then(() => console.log("[Database] Connection pool warmed up successfully."))
+  .catch((err) => console.error("[Database] Warmup warning:", err.message));
+
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Enable trust proxy for accurate client IP resolution behind proxies/load balancers
+app.set("trust proxy", true);
+
+// ─── Request Context & Client Device Resolution ───────────
+const { requestContextMiddleware } = require("./utils/requestContext");
+app.use(requestContextMiddleware);
 
 // ─── Global Middleware ────────────────────────────────────
 app.use(helmet({
@@ -42,6 +55,7 @@ app.use(
       'http://localhost:5174',
     ].filter(Boolean),
     credentials: true,
+    maxAge: 86400,
   })
 );
 app.use(compression());
@@ -95,37 +109,59 @@ app.use((err, req, res, next) => {
 // ─── Centralized Error Handler (must be last) ─────────────
 app.use(errorHandler);
 
-// ─── Start Server (Pre-warm DB before accepting traffic) ───
+// ─── Start Server (Resilient DB initialization with retry) ───
 let server;
 
-console.log("⏳ Connecting to database and pre-warming connection pool...");
+const MAX_DB_RETRIES = 10;
+const DB_RETRY_DELAY_MS = 3000;
 
-prisma
-  .$connect()
-  .then(() => {
-    console.log("✅ Database connection established and pool warm.");
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-    server = app.listen(PORT, () => {
-      console.log(`\n🚀 HR-WebApp API Server`);
-      console.log(`   Environment : ${process.env.NODE_ENV || "development"}`);
-      console.log(`   Port        : ${PORT}`);
-      console.log(`   Health      : http://localhost:${PORT}/api/health\n`);
-    });
-
-    server.on("error", (err) => {
-      if (err.code === "EADDRINUSE") {
-        console.error(`\n❌ FATAL: Port ${PORT} is already in use.`);
-        console.error(`   Run: netstat -ano | findstr ":${PORT}" to find the culprit.`);
-      } else {
-        console.error("❌ Server error:", err);
+const connectWithRetry = async (maxAttempts = MAX_DB_RETRIES, delayMs = DB_RETRY_DELAY_MS) => {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`[DB] Connecting to database (attempt ${attempt}/${maxAttempts})...`);
+      await prisma.$connect();
+      console.log("✅ [DB] Database connection established and pool warm.");
+      return;
+    } catch (err) {
+      console.error(`❌ [DB] Connection attempt ${attempt}/${maxAttempts} failed:`, err.message || err);
+      if (attempt < maxAttempts) {
+        console.log(`⏳ [DB] Retrying in ${delayMs / 1000} seconds...`);
+        await sleep(delayMs);
       }
-      process.exit(1);
-    });
-  })
-  .catch((err) => {
-    console.error("❌ Failed to connect to DB on startup:", err);
+    }
+  }
+
+  console.error(`❌ [DB] FATAL: Failed to connect to database after ${maxAttempts} attempts. Terminating process.`);
+  process.exit(1);
+};
+
+const startServer = async () => {
+  await connectWithRetry();
+
+  server = app.listen(PORT, () => {
+    console.log(`\n🚀 HR-WebApp API Server`);
+    console.log(`   Environment : ${process.env.NODE_ENV || "development"}`);
+    console.log(`   Port        : ${PORT}`);
+    console.log(`   Health      : http://localhost:${PORT}/api/health\n`);
+  });
+
+  server.on("error", (err) => {
+    if (err.code === "EADDRINUSE") {
+      console.error(`\n❌ FATAL: Port ${PORT} is already in use.`);
+      console.error(`   Run: netstat -ano | findstr ":${PORT}" to find the culprit.`);
+    } else {
+      console.error("❌ Server error:", err);
+    }
     process.exit(1);
   });
+};
+
+startServer().catch((err) => {
+  console.error("❌ Fatal error during server startup:", err);
+  process.exit(1);
+});
 
 // ─── Graceful Shutdown (release port on SIGTERM/SIGINT) ───
 const shutdown = (signal) => {

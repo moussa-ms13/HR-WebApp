@@ -119,6 +119,8 @@ export const refreshLeaves = (employeeId = null) => {
     '/api/employee-states',
     '/leaves',
     '/api/leaves',
+    '/leave-balances',
+    '/api/leave-balances',
     '/dashboard/stats',
     '/dashboard/overdue-resumes',
     '/dashboard/resuming-soon',
@@ -128,7 +130,8 @@ export const refreshLeaves = (employeeId = null) => {
   if (employeeId) {
     patterns.push(
       `/employees/${employeeId}/summary`,
-      `/employee-states/employee/${employeeId}`
+      `/employee-states/employee/${employeeId}`,
+      `/leave-balances/employee/${employeeId}`
     );
   }
 

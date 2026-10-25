@@ -21,10 +21,12 @@ router.use("/system-records", systemRecordsRoutes);
 router.use("/employees", employeesRoutes);
 router.use("/job-titles", jobTitlesRoutes);
 router.use("/employee-states", employeeStatesRoutes);
+router.use("/leaves", employeeStatesRoutes);
 router.use("/special-cases", specialCasesGlobalRoutes);
 router.use("/dashboard", dashboardRoutes);
 router.use("/employee-files", employeeFilesDownloadRoutes);
 router.use("/settings", settingsRoutes);
 router.use("/leave-balances", require("./leaveBalances.routes"));
+router.use("/exports", require("./export.routes"));
 
 module.exports = router;

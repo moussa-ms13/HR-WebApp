@@ -46,6 +46,7 @@ const PERMISSIONS = Object.freeze({
   REPORT: "checkBoxReport",
   SETTINGS: "checkBoxSettings",
   LEAVES: "checkBoxLeaves",
+  SPECIAL_CASES: "checkBoxSpecialCases",
   SYSTEM_RECORDS: "checkBoxSystemRecords",
 
   // Province access

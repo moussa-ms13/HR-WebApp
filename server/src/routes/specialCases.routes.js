@@ -44,6 +44,20 @@ router.put("/:caseId", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
 });
 
 /**
+ * PUT /api/employees/:id/special-cases/:caseId/end
+ * End case and reintegrate employee
+ */
+router.put("/:caseId/end", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
+  const record = await SpecialCasesService.endCase(
+    Number(req.params.id),
+    Number(req.params.caseId),
+    req.body,
+    req.user
+  );
+  res.json({ success: true, data: record });
+});
+
+/**
  * DELETE /api/employees/:id/special-cases/:caseId
  * Delete a special case
  */

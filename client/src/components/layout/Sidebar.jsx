@@ -5,10 +5,13 @@ import {
   Briefcase,
   Users,
   CalendarOff,
+  ArrowRightLeft,
   History,
   Settings,
   LogOut,
-  X
+  X,
+  UserCog,
+  FileSpreadsheet
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -32,10 +35,22 @@ const NAV_ITEMS = [
     permission: 'checkBoxEmployees',
   },
   {
-    title: 'إدارة العطل والحالات الخاصة',
+    title: 'إدارة العطل',
     path: '/leaves',
     icon: <CalendarOff size={20} />,
     permission: 'checkBoxLeaves',
+  },
+  {
+    title: 'الحالات الخاصة',
+    path: '/special-cases',
+    icon: <ArrowRightLeft size={20} />,
+    permission: 'checkBoxSpecialCases',
+  },
+  {
+    title: 'التقارير والتصدير',
+    path: '/reports',
+    icon: <FileSpreadsheet size={20} />,
+    permission: ['checkBoxReport', 'checkBoxExport'],
   },
   {
     title: 'إدارة المستخدمين والصلاحيات',

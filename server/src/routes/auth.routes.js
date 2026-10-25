@@ -3,6 +3,7 @@
 // ============================================================
 const express = require("express");
 const AuthService = require("../services/AuthService");
+const { extractClientIp } = require("../utils/requestContext");
 
 const router = express.Router();
 
@@ -13,7 +14,8 @@ const router = express.Router();
  */
 router.post("/login", async (req, res) => {
   const { userName, password } = req.body;
-  const result = await AuthService.login(userName, password);
+  const ipAddress = extractClientIp(req);
+  const result = await AuthService.login(userName, password, ipAddress);
   res.json({ success: true, data: result });
 });
 

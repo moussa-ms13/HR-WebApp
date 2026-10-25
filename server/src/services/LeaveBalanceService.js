@@ -180,6 +180,112 @@ class LeaveBalanceService {
       )
     );
   }
+
+  // ─────────────────────────────────────────────────────────────
+  // ADMIN: Manual Balance Upsert (Create or Update)
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * upsertBalance
+   *
+   * Creates or updates a leave balance record for a specific employee/year.
+   * Used by admin endpoints for manual leave debt management.
+   *
+   * @param {number} employeeId
+   * @param {{ year: number, totalDays: number, remainingDays: number, notes?: string }} data
+   * @returns {LeaveBalance} The created or updated record
+   */
+  static async upsertBalance(employeeId, { year, totalDays, remainingDays, notes }) {
+    // ── Input validation ──────────────────────────────────────
+    const empId = parseInt(employeeId, 10);
+    const yr = parseInt(year, 10);
+    const total = parseInt(totalDays, 10);
+    const remaining = parseInt(remainingDays, 10);
+
+    if (!Number.isInteger(empId) || empId <= 0) {
+      throw new Error("معرّف الموظف غير صالح.");
+    }
+    if (!Number.isInteger(yr) || yr < 1990 || yr > 2100) {
+      throw new Error(`السنة غير صالحة: ${year}. يجب أن تكون بين 1990 و 2100.`);
+    }
+    if (!Number.isInteger(total) || total <= 0) {
+      throw new Error(`إجمالي الأيام غير صالح: ${totalDays}. يجب أن يكون أكبر من صفر.`);
+    }
+    if (!Number.isInteger(remaining) || remaining < 0 || remaining > total) {
+      throw new Error(
+        `الأيام المتبقية غير صالحة: ${remainingDays}. يجب أن تكون بين 0 و ${total}.`
+      );
+    }
+
+    // ── Verify employee exists ────────────────────────────────
+    const employee = await prisma.employees.findUnique({ where: { Id: empId } });
+    if (!employee) {
+      throw new Error(`الموظف ذو المعرّف ${empId} غير موجود.`);
+    }
+
+    // ── Compute consumed from total - remaining ───────────────
+    const consumed = total - remaining;
+
+    // ── Upsert ────────────────────────────────────────────────
+    return prisma.leaveBalance.upsert({
+      where: { EmployeeId_Year: { EmployeeId: empId, Year: yr } },
+      create: {
+        EmployeeId: empId,
+        Year: yr,
+        TotalDays: total,
+        ConsumedDays: consumed,
+        RemainingDays: remaining,
+        Notes: notes || null,
+      },
+      update: {
+        TotalDays: total,
+        ConsumedDays: consumed,
+        RemainingDays: remaining,
+        Notes: notes || null,
+      },
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // ADMIN: Delete a Balance Record
+  // ─────────────────────────────────────────────────────────────
+
+  /**
+   * deleteBalance
+   *
+   * Removes a specific year's leave balance record for an employee.
+   * Used by admin endpoints to clean up erroneous or outdated records.
+   *
+   * @param {number} employeeId
+   * @param {number} year
+   * @returns {{ success: boolean, message: string }}
+   */
+  static async deleteBalance(employeeId, year) {
+    const empId = parseInt(employeeId, 10);
+    const yr = parseInt(year, 10);
+
+    if (!Number.isInteger(empId) || empId <= 0) {
+      throw new Error("معرّف الموظف غير صالح.");
+    }
+    if (!Number.isInteger(yr) || yr < 1990 || yr > 2100) {
+      throw new Error(`السنة غير صالحة: ${year}.`);
+    }
+
+    // Check if record exists before deleting
+    const existing = await prisma.leaveBalance.findUnique({
+      where: { EmployeeId_Year: { EmployeeId: empId, Year: yr } },
+    });
+
+    if (!existing) {
+      throw new Error(`لا يوجد رصيد عطلة للسنة ${yr} لهذا الموظف.`);
+    }
+
+    await prisma.leaveBalance.delete({
+      where: { EmployeeId_Year: { EmployeeId: empId, Year: yr } },
+    });
+
+    return { success: true, message: `تم حذف رصيد السنة ${yr} بنجاح.` };
+  }
 }
 
 module.exports = LeaveBalanceService;

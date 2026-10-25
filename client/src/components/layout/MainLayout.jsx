@@ -2,7 +2,8 @@ import React from 'react';
 import { Outlet, Navigate, NavLink } from 'react-router-dom';
 import { 
   Power,
-  LayoutDashboard, Briefcase, Users, CalendarOff, History, Settings, UserCog, User as UserIcon
+  LayoutDashboard, Briefcase, Users, CalendarOff, ArrowRightLeft, History, Settings, UserCog, User as UserIcon,
+  FileSpreadsheet
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -10,7 +11,9 @@ const NAV_ITEMS = [
   { title: 'الرئيسية', path: '/', icon: <LayoutDashboard size={18} />, permission: 'checkBoxHome' },
   { title: 'إدارة الوظائف', path: '/jobs', icon: <Briefcase size={18} />, permission: 'checkBoxJobs' },
   { title: 'إدارة الموظفين', path: '/employees', icon: <Users size={18} />, permission: 'checkBoxEmployees' },
-  { title: 'الإجازات', path: '/leaves', icon: <CalendarOff size={18} />, permission: 'checkBoxLeaves' },
+  { title: 'العطل', path: '/leaves', icon: <CalendarOff size={18} />, permission: 'checkBoxLeaves' },
+  { title: 'الحالات الخاصة', path: '/special-cases', icon: <ArrowRightLeft size={18} />, permission: 'checkBoxSpecialCases' },
+  { title: 'التقارير والتصدير', path: '/reports', icon: <FileSpreadsheet size={18} />, permission: ['checkBoxReport', 'checkBoxExport'] },
   { title: 'المستخدمين', path: '/users', icon: <UserCog size={18} />, permission: 'checkBoxUsers' },
   { title: 'سجل النظام', path: '/system-records', icon: <History size={18} />, permission: 'checkBoxSystemRecords' },
   { title: 'الإعدادات', path: '/settings', icon: <Settings size={18} />, permission: 'checkBoxSettings' }

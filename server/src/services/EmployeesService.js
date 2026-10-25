@@ -1,11 +1,42 @@
 // ============================================================
-// EmployeesService — Centralized Data Access for Employees
-// Handles pagination, search, and Geographic RBAC filtering.
+// EmployeesService — Centralized Data Access for Employees (DRY)
+// Fast pagination, search, Geographic RBAC, and strict projections
 // ============================================================
 const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
+const CacheService = require("./CacheService");
 const { ROLES, getAllowedProvinces } = require("../config/constants");
+const {
+  sanitizePagination,
+  buildTokenizedSearch,
+  resolveGeographicFilter,
+} = require("../utils/queryBuilder");
+const {
+  EMPLOYEE_LIST_SELECT,
+  EMPLOYEE_SEARCH_SELECT,
+  EMPLOYEE_DETAIL_SELECT,
+  EMPLOYEE_SUMMARY_SELECT,
+  SORT_MAPPING,
+  normalizeFrenchNames,
+  computeProfileCompleteness,
+  validateEmployeeCreation,
+} = require("./employees/employeeHelpers");
+
+const getJobTitlesMap = async () => {
+  let map = CacheService.get("all_job_titles_map");
+  if (!map) {
+    const titles = await prisma.jobTitles.findMany({
+      select: { Id: true, RankName: true },
+    });
+    map = {};
+    for (const t of titles) {
+      map[t.Id] = t.RankName;
+    }
+    CacheService.set("all_job_titles_map", map, 3600);
+  }
+  return map;
+};
 
 class EmployeesService {
   /**
@@ -21,8 +52,11 @@ class EmployeesService {
     fileStatus = "",
     category = "",
     sortBy = "Id",
-    sortOrder = "desc"
+    sortOrder = "desc",
+    status = ""
   ) {
+    let statusFilter = (typeof status === "string" ? status : "").trim();
+    const filters = (typeof page === "object" && page !== null) ? page : {};
     if (typeof page === "object" && page !== null) {
       const opts = page;
       page = opts.page;
@@ -34,51 +68,30 @@ class EmployeesService {
       category = opts.category;
       sortBy = opts.sortBy || opts.sort;
       sortOrder = opts.sortOrder || opts.order;
+      statusFilter = (opts.status || opts.employeeStatus || opts.EmployeeStatus || status || "").trim();
     }
 
-    const safeLimit = Math.min(Math.max(Number(limit) || 25, 1), 100);
-    const safePage = Math.max(Number(page) || 1, 1);
-    const skip = (safePage - 1) * safeLimit;
+    const hasSearch = Boolean(
+      (typeof search === "string" && search.trim().length > 0) ||
+      (filters && filters.search && String(filters.search).trim().length > 0)
+    );
 
-    // Base Geographic Filter
-    let whereClause = {};
-    const allowedProvinces = getAllowedProvinces(requestingUser?.permissions || {});
+    const { safePage, safeLimit, skip } = sanitizePagination(page, limit, 100);
 
-    if (requestingUser?.role !== ROLES.ADMIN) {
-      if (!allowedProvinces || allowedProvinces.length === 0) {
-        return {
-          data: [],
-          meta: { total: 0, page: safePage, limit: safeLimit, totalPages: 0, totalCompletedFiles: 0 }
-        };
-      }
-      if (province && String(province).trim()) {
-        const trimmedProv = String(province).trim();
-        if (allowedProvinces.includes(trimmedProv)) {
-          whereClause.Province = trimmedProv;
-        } else {
-          whereClause.Province = { in: [] };
-        }
-      } else {
-        whereClause.Province = { in: allowedProvinces };
-      }
-    } else {
-      if (province && String(province).trim()) {
-        whereClause.Province = String(province).trim();
-      }
+    // Base Geographic Filter via queryBuilder
+    const { provinceFilter, isForbidden } = resolveGeographicFilter(requestingUser, province);
+    if (isForbidden) {
+      return {
+        data: [],
+        meta: { total: 0, page: safePage, limit: safeLimit, totalPages: 0, totalCompletedFiles: 0 },
+      };
     }
 
-    // Directorate / Department Filter (الجهة / المصلحة)
+    let whereClause = { Province: provinceFilter };
+
+    // Directorate Filter (الجهة / المصلحة)
     if (directorate && String(directorate).trim()) {
-      const trimmedDir = String(directorate).trim();
-      whereClause.AND = [
-        ...(whereClause.AND || []),
-        {
-          OR: [
-            { Directorate: trimmedDir },
-            { Department: trimmedDir },
-          ],
-        },
-      ];
+      whereClause.Directorate = String(directorate).trim();
     }
 
     // Category Filter (فئة / رتبة / حالة)
@@ -104,70 +117,57 @@ class EmployeesService {
       whereClause.IsProfileComplete = false;
     }
 
+    // Employee Status Filter (الوضعية القانونية الأساسية: مرسم / متربص)
+    if (statusFilter) {
+      const normalizedStatus = (statusFilter === "مثبت" || statusFilter === "نشط") ? "مرسم" : statusFilter;
+      whereClause.EmployeeStatus = normalizedStatus;
+    } else if (category && ["مرسم", "متربص"].includes(String(category).trim())) {
+      whereClause.EmployeeStatus = String(category).trim();
+    }
+
+    // Exclude employees having an active exit special case only when browsing without a search term
+    let excludedEmployeeIds = null;
+    if (!hasSearch) {
+      const activeExitCases = await prisma.specialCases.findMany({
+        where: {
+          IsActive: true,
+          CaseType: { in: ["نقل", "تحويل", "استقالة", "تقاعد"] },
+        },
+        select: { EmployeesId: true },
+      });
+      excludedEmployeeIds = activeExitCases.map((c) => c.EmployeesId).filter(Boolean);
+      if (excludedEmployeeIds.length > 0) {
+        whereClause.Id = { notIn: excludedEmployeeIds };
+      }
+    }
+
     // ─── Typed Search Parser ──────────────────────────────────
-    // Use { contains } for string fields for robust matching (e.g., Arabic compound names)
-    // Integer fields (Id): ONLY if input is pure digits
     const trimmedSearch = (search || "").trim();
     if (trimmedSearch) {
-      const searchTerms = trimmedSearch.split(/\s+/);
       const isNumeric = /^\d+$/.test(trimmedSearch);
       const searchOrConditions = [];
 
-      // Always allow searching the full term in either Name or LastName 
-      // (crucial for compound names like "عبد الله" that might be stored entirely in one field)
-      searchOrConditions.push({ Name: { contains: trimmedSearch } });
-      searchOrConditions.push({ LastName: { contains: trimmedSearch } });
-
-      // If there are multiple words, they might be split across Name and LastName (e.g. "First Last")
-      if (searchTerms.length >= 2) {
-        searchOrConditions.push({
-          AND: [
-            { Name: { contains: searchTerms[0] } },
-            { LastName: { contains: searchTerms.slice(1).join(" ") } },
-          ],
-        });
-        searchOrConditions.push({
-          AND: [
-            { LastName: { contains: searchTerms[0] } },
-            { Name: { contains: searchTerms.slice(1).join(" ") } },
-          ],
-        });
+      const tokenSearch = buildTokenizedSearch(trimmedSearch, (token) => [
+        { Name: { contains: token } },
+        { LastName: { contains: token } },
+        { NameFr: { contains: token } },
+        { LastNameFr: { contains: token } },
+        { JobTitle: { RankName: { contains: token } } },
+        { AssignedPosition: { contains: token } },
+      ]);
+      if (tokenSearch) {
+        searchOrConditions.push(tokenSearch);
       }
 
       searchOrConditions.push({ NIN: { contains: trimmedSearch } });
-      if (isNumeric) searchOrConditions.push({ Id: parseInt(trimmedSearch, 10) });
+      if (isNumeric) {
+        searchOrConditions.push({ Id: parseInt(trimmedSearch, 10) });
+      }
 
       whereClause.AND = [...(whereClause.AND || []), { OR: searchOrConditions }];
     }
 
-    // Strict Schema-based Sort Mapping (Prevents PrismaClientValidationError on bad sort fields)
-    const SORT_MAPPING = {
-      id: "Id",
-      Id: "Id",
-      name: "Name",
-      Name: "Name",
-      lastName: "LastName",
-      LastName: "LastName",
-      province: "Province",
-      Province: "Province",
-      directorate: "Directorate",
-      Directorate: "Directorate",
-      department: "Department",
-      Department: "Department",
-      status: "EmployeeStatus",
-      Status: "EmployeeStatus",
-      employeeStatus: "EmployeeStatus",
-      EmployeeStatus: "EmployeeStatus",
-      isProfileComplete: "IsProfileComplete",
-      IsProfileComplete: "IsProfileComplete",
-      installationDate: "InstallationDate",
-      InstallationDate: "InstallationDate",
-      degree: "Degree",
-      Degree: "Degree",
-      nin: "NIN",
-      NIN: "NIN",
-    };
-
+    // Strict Schema-based Sort Mapping
     const safeOrder = String(sortOrder || "").toLowerCase() === "asc" ? "asc" : "desc";
     let orderBy = { Id: "desc" };
 
@@ -178,62 +178,77 @@ class EmployeesService {
       orderBy = { JobTitle: { RankName: safeOrder } };
     }
 
-    // ─── Execute Queries ──────────────────────────────────────
-    // Only two queries: count + findMany. The third "completedFiles"
-    // count previously duplicated the entire expensive whereClause
-    // with a JOIN to JobTitles. We now compute it cheaply:
-    //   - If fileStatus is "complete" or "incomplete", derive from total.
-    //   - Otherwise, run a LEAN count on IsProfileComplete ONLY (no JOINs).
+    // ─── Execute Queries with Count Caching ───────────────────
+    const countCacheKey = `emp_count_${JSON.stringify({
+      prov: whereClause.Province,
+      dir: directorate || "",
+      cat: category || "",
+      fs: fileStatus || "",
+      st: statusFilter || "",
+      s: trimmedSearch || "",
+    })}`;
 
-    // DB-level pagination and lean select for frontend table
-    const total = await prisma.employees.count({ where: whereClause });
-    const employees = await prisma.employees.findMany({
+    const cachedCounts = CacheService.get(countCacheKey);
+
+    const employeesPromise = prisma.employees.findMany({
       where: whereClause,
-      select: {
-        Id: true,
-        Name: true,
-        LastName: true,
-        Province: true,
-        Directorate: true,
-        Department: true,
-        EmployeeStatus: true,
-        IsProfileComplete: true,
-        JobTitle: {
-          select: {
-            Id: true,
-            RankName: true,
-          },
-        },
-      },
+      select: EMPLOYEE_LIST_SELECT,
       skip,
       take: safeLimit,
       orderBy,
     });
 
-    // Cheap completedFiles calculation — avoids the third heavy count
-    let totalCompletedFiles = 0;
-    if (fileStatus === "complete") {
-      totalCompletedFiles = total;
-    } else if (fileStatus === "incomplete") {
-      totalCompletedFiles = 0;
+    let total, totalCompletedFiles, employees;
+
+    if (cachedCounts) {
+      employees = await employeesPromise;
+      total = cachedCounts.total;
+      totalCompletedFiles = cachedCounts.totalCompletedFiles;
     } else {
-      // Lean count: only the geographic RBAC filter + IsProfileComplete
-      // Strips out the expensive relational category/search filters
-      const leanCompletedWhere = { IsProfileComplete: true };
-      if (whereClause.Province) leanCompletedWhere.Province = whereClause.Province;
-      totalCompletedFiles = await prisma.employees.count({ where: leanCompletedWhere });
+      let countCompletedPromise;
+      if (fileStatus === "complete") {
+        countCompletedPromise = Promise.resolve(null);
+      } else if (fileStatus === "incomplete") {
+        countCompletedPromise = Promise.resolve(0);
+      } else {
+        const leanCompletedWhere = { IsProfileComplete: true };
+        if (whereClause.Province) leanCompletedWhere.Province = whereClause.Province;
+        if (whereClause.EmployeeStatus) leanCompletedWhere.EmployeeStatus = whereClause.EmployeeStatus;
+        if (excludedEmployeeIds && excludedEmployeeIds.length > 0) {
+          leanCompletedWhere.Id = { notIn: excludedEmployeeIds };
+        }
+        countCompletedPromise = prisma.employees.count({ where: leanCompletedWhere });
+      }
+
+      const [empsResult, totalResult, completedResult] = await Promise.all([
+        employeesPromise,
+        prisma.employees.count({ where: whereClause }),
+        countCompletedPromise,
+      ]);
+
+      employees = empsResult;
+      total = totalResult;
+      totalCompletedFiles = completedResult === null ? total : (completedResult ?? 0);
+
+      CacheService.set(countCacheKey, { total, totalCompletedFiles }, 60);
     }
 
+    const jobMap = await getJobTitlesMap();
+    const formattedEmployees = employees.map((emp) => ({
+      ...emp,
+      JobTitle: emp.JobTitleId ? { Id: emp.JobTitleId, RankName: jobMap[emp.JobTitleId] || "" } : null,
+      SpecialCases: [],
+    }));
+
     return {
-      data: employees,
+      data: formattedEmployees,
       meta: { total, page: safePage, limit: safeLimit, totalPages: Math.ceil(total / safeLimit), totalCompletedFiles },
     };
   }
 
   /**
    * Lightweight autocomplete lookup for search dropdowns.
-   * Strict DTO (Id, Name, LastName, Province, Directorate, Department) —
-   * no relations/files/career history, hard take: 15.
+   * Strict DTO — no relations/files/career history, hard take: 15.
    */
   static async search(requestingUser, query = "", province = "", directorate = "") {
     const whereClause = {};
@@ -252,92 +267,53 @@ class EmployeesService {
       }
     }
     if (directorate) {
-      whereClause.AND = [
-        ...(whereClause.AND || []),
-        { OR: [{ Directorate: directorate }, { Department: directorate }] },
-      ];
+      whereClause.Directorate = directorate;
     }
 
     const term = (query || "").trim();
     if (term) {
-      const terms = term.split(/\s+/);
+      const terms = term.split(/\s+/).filter(Boolean);
       const orConditions = [];
-      if (terms.length >= 2) {
+
+      if (terms.length > 0) {
         orConditions.push({
-          AND: [
-            { LastName: { startsWith: terms[0] } },
-            { Name: { startsWith: terms.slice(1).join(" ") } },
-          ],
+          AND: terms.map((t) => ({
+            OR: [
+              { Name: { contains: t } },
+              { LastName: { contains: t } },
+              { NameFr: { contains: t } },
+              { LastNameFr: { contains: t } },
+              { JobTitle: { RankName: { contains: t } } },
+              { AssignedPosition: { contains: t } },
+            ],
+          })),
         });
-        orConditions.push({
-          AND: [
-            { Name: { startsWith: terms[0] } },
-            { LastName: { startsWith: terms.slice(1).join(" ") } },
-          ],
-        });
-      } else {
-        orConditions.push({ LastName: { startsWith: term } });
-        orConditions.push({ Name: { startsWith: term } });
       }
+
       orConditions.push({ NIN: { startsWith: term } });
       const numericId = Number(term);
-      if (!Number.isNaN(numericId)) {
+      if (!Number.isNaN(numericId) && /^\d+$/.test(term)) {
         orConditions.push({ Id: numericId });
       }
+
       whereClause.AND = [...(whereClause.AND || []), { OR: orConditions }];
     }
 
     return prisma.employees.findMany({
       where: whereClause,
-      select: {
-        Id: true,
-        Name: true,
-        LastName: true,
-        Province: true,
-        Directorate: true,
-        Department: true,
-      },
+      select: EMPLOYEE_SEARCH_SELECT,
       take: 15,
       orderBy: [{ LastName: "asc" }, { Name: "asc" }],
     });
   }
 
+  /**
+   * Detailed employee profile with indexed relations
+   */
   static async getById(id, requestingUser) {
     const employee = await prisma.employees.findUnique({
       where: { Id: id },
-      select: {
-        Id: true,
-        Name: true,
-        LastName: true,
-        DateOfBirth: true,
-        PlaceOfBirth: true,
-        Gender: true,
-        MaritalStatus: true,
-        ProfileImagePath: true,
-        Province: true,
-        Directorate: true,
-        Department: true,
-        NIN: true,
-        SIS: true,
-        AssignedPosition: true,
-        ConfirmationDate: true,
-        Degree: true,
-        EmployeeStatus: true,
-        InstallationDate: true,
-        LastDegreeDate: true,
-        JobTitleId: true,
-        PositionDate: true,
-        StatusDate: true,
-        Address: true,
-        Email: true,
-        NumberOfChildren: true,
-        PhoneNumber: true,
-        IsProfileComplete: true,
-        JobTitle: { select: { Id: true, RankName: true } },
-        RankHistories: { take: 1, orderBy: { InstallDate: "desc" }, select: { Id: true, RankName: true, InstallDate: true } },
-        PositionHistories: { where: { EndDate: null }, take: 1, orderBy: { InstallDate: "desc" }, select: { Id: true, PositionName: true, InstallDate: true } },
-        SpecialCases: { where: { IsActive: true }, take: 1, orderBy: { Id: "desc" }, select: { Id: true, CaseType: true, StartDate: true, EndDate: true, Destination: true, ReferenceDoc: true, IsActive: true } },
-      }
+      select: EMPLOYEE_DETAIL_SELECT,
     });
 
     if (!employee) {
@@ -350,50 +326,22 @@ class EmployeesService {
       if (!allowedProvinces.includes(employee.Province)) {
         throw ApiError.forbidden("You do not have geographic access to this employee's province.");
       }
+    }
+
+    if (employee?.JobTitle) {
+      employee.JobTitle.Category = employee.JobTitle.EmploymentCategory;
     }
 
     return employee;
   }
 
   /**
-   * Fetch a lightweight profile summary for the employee header.
-   * Restricts payload strictly to core info + current active rank, position, and case.
+   * Lightweight profile summary for the employee header.
    */
   static async getSummary(id, requestingUser) {
     const employee = await prisma.employees.findUnique({
       where: { Id: id },
-      select: {
-        Id: true,
-        Name: true,
-        LastName: true,
-        DateOfBirth: true,
-        PlaceOfBirth: true,
-        Gender: true,
-        MaritalStatus: true,
-        ProfileImagePath: true,
-        Province: true,
-        Directorate: true,
-        Department: true,
-        NIN: true,
-        SIS: true,
-        AssignedPosition: true,
-        ConfirmationDate: true,
-        Degree: true,
-        EmployeeStatus: true,
-        InstallationDate: true,
-        PositionDate: true,
-        Address: true,
-        Email: true,
-        NumberOfChildren: true,
-        PhoneNumber: true,
-        IsProfileComplete: true,
-        JobTitleId: true,
-        LastDegreeDate: true,
-        JobTitle: { select: { RankName: true } },
-        RankHistories: { take: 1, orderBy: { InstallDate: "desc" }, select: { Id: true, RankName: true, InstallDate: true } },
-        PositionHistories: { where: { EndDate: null }, take: 1, orderBy: { InstallDate: "desc" }, select: { Id: true, PositionName: true, InstallDate: true } },
-        SpecialCases: { where: { IsActive: true }, take: 1, orderBy: { Id: "desc" }, select: { Id: true, CaseType: true, StartDate: true, EndDate: true, Destination: true, ReferenceDoc: true, IsActive: true } },
-      },
+      select: EMPLOYEE_SUMMARY_SELECT,
     });
 
     if (!employee) {
@@ -406,6 +354,10 @@ class EmployeesService {
       if (!allowedProvinces.includes(employee.Province)) {
         throw ApiError.forbidden("You do not have geographic access to this employee's province.");
       }
+    }
+
+    if (employee?.JobTitle) {
+      employee.JobTitle.Category = employee.JobTitle.EmploymentCategory;
     }
 
     return employee;
@@ -415,6 +367,8 @@ class EmployeesService {
   // CREATE — Add a new employee
   // ──────────────────────────────────────────────
   static async create(data, requestingUser) {
+    validateEmployeeCreation(data);
+
     // Geographic RBAC Check for Creation
     if (requestingUser.role !== ROLES.ADMIN) {
       const allowedProvinces = getAllowedProvinces(requestingUser.permissions || {});
@@ -424,14 +378,16 @@ class EmployeesService {
     }
 
     const now = new Date();
-    
-    // Auto-generate some required default dates to match existing schema
     const defaultDate = new Date("1900-01-01T00:00:00.000Z");
+    const { finalLastNameFr, finalNameFr } = normalizeFrenchNames(data);
+    const isProfileComplete = computeProfileCompleteness(data);
 
     const employee = await prisma.employees.create({
       data: {
-        Name: data.Name,
-        LastName: data.LastName,
+        Name: String(data.Name || "").trim(),
+        LastName: String(data.LastName || "").trim(),
+        LastNameFr: finalLastNameFr,
+        NameFr: finalNameFr,
         DateOfBirth: data.DateOfBirth ? new Date(data.DateOfBirth) : defaultDate,
         PlaceOfBirth: data.PlaceOfBirth || "",
         Gender: data.Gender || "",
@@ -439,7 +395,6 @@ class EmployeesService {
         ProfileImagePath: data.ProfileImagePath || "",
         Province: data.Province,
         Directorate: data.Directorate || "",
-        Department: data.Department || "",
         AddedDate: now,
         UpdateDate: now,
         UsersId: requestingUser.userName,
@@ -447,29 +402,31 @@ class EmployeesService {
         SIS: data.SIS || "",
         AssignedPosition: data.AssignedPosition || "",
         ConfirmationDate: data.ConfirmationDate ? new Date(data.ConfirmationDate) : null,
-        Degree: data.Degree || 0,
-        EmployeeStatus: data.EmployeeStatus || "",
+        Degree: Number(data.Degree) || 0,
+        EmployeeStatus: data.EmployeeStatus || "مرسم",
         InstallationDate: data.InstallationDate ? new Date(data.InstallationDate) : defaultDate,
-        JobTitleId: data.JobTitleId || 0,
+        JobTitleId: Number(data.JobTitleId) || 0,
         LastDegreeDate: data.LastDegreeDate ? new Date(data.LastDegreeDate) : defaultDate,
         PositionDate: data.PositionDate ? new Date(data.PositionDate) : null,
         StatusDate: defaultDate,
         Address: data.Address || "",
         Email: data.Email || "",
-        NumberOfChildren: data.NumberOfChildren || 0,
+        NumberOfChildren: Number(data.NumberOfChildren) || 0,
         PhoneNumber: data.PhoneNumber || "",
-        IsProfileComplete: data.IsProfileComplete || false,
-      }
+        IsProfileComplete: isProfileComplete,
+      },
     });
 
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Add Employee",
-      description: `Employee '${employee.Name} ${employee.LastName}' created by '${requestingUser.userName}'.`,
+      title: "إضافة موظف جديد",
+      description: `تمت إضافة الموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
-      employeesId: employee.Id
+      employeesId: employee.Id,
+      ipAddress: requestingUser.ipAddress,
     });
 
+    CacheService.invalidateEmployeeEcosystem();
     return employee;
   }
 
@@ -482,7 +439,7 @@ class EmployeesService {
 
     // Geographic RBAC Check: Ensure user has access to current province AND new province
     if (requestingUser.role !== ROLES.ADMIN) {
-      const allowedProvinces = getAllowedProvinces(requestingUser.permissions || {});
+      const { allowedProvinces } = resolveGeographicFilter(requestingUser);
       if (!allowedProvinces.includes(existing.Province)) {
         throw ApiError.forbidden("You do not have access to edit this employee.");
       }
@@ -491,46 +448,52 @@ class EmployeesService {
       }
     }
 
+    const { finalLastNameFr, finalNameFr } = normalizeFrenchNames(data, existing);
+    const isProfileComplete = computeProfileCompleteness(data, existing);
+
     const employee = await prisma.employees.update({
       where: { Id: id },
       data: {
-        Name: data.Name ?? existing.Name,
-        LastName: data.LastName ?? existing.LastName,
+        Name: data.Name !== undefined ? String(data.Name).trim() : existing.Name,
+        LastName: data.LastName !== undefined ? String(data.LastName).trim() : existing.LastName,
+        LastNameFr: finalLastNameFr,
+        NameFr: finalNameFr,
         DateOfBirth: data.DateOfBirth ? new Date(data.DateOfBirth) : existing.DateOfBirth,
         PlaceOfBirth: data.PlaceOfBirth ?? existing.PlaceOfBirth,
         Gender: data.Gender !== undefined ? data.Gender : existing.Gender,
         MaritalStatus: (data.MaritalStatus !== undefined ? data.MaritalStatus : data.FamilyStatus) ?? existing.MaritalStatus,
         Province: data.Province ?? existing.Province,
         Directorate: data.Directorate ?? existing.Directorate,
-        Department: data.Department ?? existing.Department,
         UpdateDate: new Date(),
-        UsersId: requestingUser.userName, // Log last updater
+        UsersId: requestingUser.userName,
         NIN: data.NIN ?? existing.NIN,
         SIS: data.SIS ?? existing.SIS,
         AssignedPosition: data.AssignedPosition ?? existing.AssignedPosition,
         ConfirmationDate: data.ConfirmationDate ? new Date(data.ConfirmationDate) : existing.ConfirmationDate,
-        Degree: data.Degree ?? existing.Degree,
+        Degree: data.Degree !== undefined ? Number(data.Degree) : existing.Degree,
         EmployeeStatus: data.EmployeeStatus ?? existing.EmployeeStatus,
         InstallationDate: data.InstallationDate ? new Date(data.InstallationDate) : existing.InstallationDate,
         LastDegreeDate: data.LastDegreeDate ? new Date(data.LastDegreeDate) : existing.LastDegreeDate,
-        JobTitleId: data.JobTitleId ?? existing.JobTitleId,
+        JobTitleId: data.JobTitleId !== undefined ? Number(data.JobTitleId) : existing.JobTitleId,
         PositionDate: data.PositionDate ? new Date(data.PositionDate) : existing.PositionDate,
         Address: data.Address ?? existing.Address,
         Email: data.Email ?? existing.Email,
-        NumberOfChildren: data.NumberOfChildren ?? existing.NumberOfChildren,
+        NumberOfChildren: data.NumberOfChildren !== undefined ? Number(data.NumberOfChildren) : existing.NumberOfChildren,
         PhoneNumber: data.PhoneNumber ?? existing.PhoneNumber,
-        IsProfileComplete: data.IsProfileComplete !== undefined ? data.IsProfileComplete : existing.IsProfileComplete,
-      }
+        IsProfileComplete: isProfileComplete,
+      },
     });
 
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Edit Employee",
-      description: `Employee '${employee.Name} ${employee.LastName}' updated by '${requestingUser.userName}'.`,
+      title: "تعديل بيانات موظف",
+      description: `تم تعديل بيانات الموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
-      employeesId: employee.Id
+      employeesId: employee.Id,
+      ipAddress: requestingUser.ipAddress,
     });
 
+    CacheService.invalidateEmployeeEcosystem();
     return employee;
   }
 
@@ -542,30 +505,34 @@ class EmployeesService {
     if (!existing) throw ApiError.notFound(`Employee ${id} not found.`);
 
     if (requestingUser.role !== ROLES.ADMIN) {
-      const allowedProvinces = getAllowedProvinces(requestingUser.permissions || {});
+      const { allowedProvinces } = resolveGeographicFilter(requestingUser);
       if (!allowedProvinces.includes(existing.Province)) {
         throw ApiError.forbidden("You do not have geographic access to delete this employee.");
       }
     }
 
-    // Manual cascade: delete all child records in a single transaction
-    // SystemRecords has onDelete: NoAction — must be cleaned up manually
     await prisma.$transaction([
       prisma.systemRecords.deleteMany({ where: { EmployeesId: id } }),
       prisma.employeeFiles.deleteMany({ where: { EmployeesId: id } }),
       prisma.employeesRecords.deleteMany({ where: { EmployeesId: id } }),
       prisma.employeeStates.deleteMany({ where: { EmployeesId: id } }),
+      prisma.leaveBalance.deleteMany({ where: { EmployeeId: id } }),
+      prisma.specialCases.deleteMany({ where: { EmployeesId: id } }),
+      prisma.rankHistory.deleteMany({ where: { EmployeesId: id } }),
+      prisma.positionHistory.deleteMany({ where: { EmployeesId: id } }),
+      prisma.degreeHistory.deleteMany({ where: { EmployeesId: id } }),
       prisma.employees.delete({ where: { Id: id } }),
     ]);
 
-    // Log after deletion (no EmployeesId since the employee is gone)
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Delete Employee",
-      description: `Employee '${existing.Name} ${existing.LastName}' (ID: ${id}) deleted by '${requestingUser.userName}'.`,
-      usersId: requestingUser.id
+      title: "حذف موظف",
+      description: `تم حذف الموظف '${existing.LastName} ${existing.Name}' (رقم: ${id}) بواسطة '${requestingUser.userName}'.`,
+      usersId: requestingUser.id,
+      ipAddress: requestingUser.ipAddress,
     });
 
+    CacheService.invalidateEmployeeEcosystem();
     return { message: "Employee deleted successfully." };
   }
 
@@ -583,17 +550,19 @@ class EmployeesService {
 
     await prisma.employees.update({
       where: { Id: employeeId },
-      data: { ProfileImagePath: relativePath }
+      data: { ProfileImagePath: relativePath },
     });
 
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Update Profile Image",
-      description: `Profile image updated for employee '${employee.Name} ${employee.LastName}'.`,
+      title: "تحديث الصورة الشخصية",
+      description: `تم تحديث الصورة الشخصية للموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
-      employeesId: employeeId
+      employeesId: employeeId,
+      ipAddress: requestingUser.ipAddress,
     });
 
+    CacheService.invalidateEmployeeEcosystem();
     return { ProfileImagePath: relativePath };
   }
 }

@@ -1,6 +1,8 @@
 const express = require("express");
 const { authenticate, hasPermission } = require("../middleware/auth");
+const { PERMISSIONS } = require("../config/constants");
 const prisma = require("../config/database");
+const LeaveBalanceService = require("../services/LeaveBalanceService");
 
 const router = express.Router();
 router.use(authenticate);
@@ -69,4 +71,48 @@ router.get("/employee/:id/:year(\\d+)", async (req, res, next) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/leave-balances/employee/:id
+// Upsert (create or update) a leave balance record for a specific employee.
+// Body: { year, totalDays, remainingDays, notes? }
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/employee/:id", hasPermission(PERMISSIONS.ADD), async (req, res) => {
+  try {
+    const employeeId = parseInt(req.params.id, 10);
+    const { year, totalDays, remainingDays, notes } = req.body;
+
+    const record = await LeaveBalanceService.upsertBalance(employeeId, {
+      year,
+      totalDays: totalDays ?? 30,
+      remainingDays: remainingDays ?? 0,
+      notes,
+    });
+
+    res.json({ success: true, data: record, message: `تم حفظ رصيد السنة ${year} بنجاح.` });
+  } catch (error) {
+    console.error("Leave Balance Upsert Error:", error);
+    const status = error.message.includes("غير") ? 400 : 500;
+    return res.status(status).json({ success: false, message: error.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /api/leave-balances/employee/:id/:year
+// Remove a specific year's balance record for an employee.
+// ─────────────────────────────────────────────────────────────────────────────
+router.delete("/employee/:id/:year", hasPermission(PERMISSIONS.DELETE), async (req, res) => {
+  try {
+    const employeeId = parseInt(req.params.id, 10);
+    const year = parseInt(req.params.year, 10);
+
+    const result = await LeaveBalanceService.deleteBalance(employeeId, year);
+    res.json(result);
+  } catch (error) {
+    console.error("Leave Balance Delete Error:", error);
+    const status = error.message.includes("غير") || error.message.includes("لا يوجد") ? 400 : 500;
+    return res.status(status).json({ success: false, message: error.message });
+  }
+});
+
 module.exports = router;
+

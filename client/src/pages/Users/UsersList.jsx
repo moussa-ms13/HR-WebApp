@@ -49,10 +49,13 @@ const UsersList = () => {
   }, []);
 
   const safeUsers = Array.isArray(users) ? users : (users?.data || []);
-  const filteredUsers = safeUsers.filter(u => 
-    u.FullName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.UserName?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const searchTokens = searchQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const filteredUsers = safeUsers.filter(u => {
+    if (searchTokens.length === 0) return true;
+    const fullName = (u.FullName || '').toLowerCase();
+    const userName = (u.UserName || '').toLowerCase();
+    return searchTokens.every(token => fullName.includes(token) || userName.includes(token));
+  });
 
   const handleAdd = () => {
     setSelectedUser(null);

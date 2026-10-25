@@ -3,10 +3,7 @@
 // Optimized for i3/8GB RAM with 5-minute TTL caching
 // ============================================================
 const prisma = require("../config/database");
-const NodeCache = require("node-cache");
-
-// Cache with 5-minute TTL, check expired keys every 60 seconds
-const dashboardCache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
+const CacheService = require("../services/CacheService");
 
 /**
  * GET /api/dashboard/stats
@@ -16,7 +13,7 @@ const dashboardCache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
 exports.getDashboardStats = async (req, res, next) => {
   try {
     const cacheKey = "dashboard_stats";
-    const cached = dashboardCache.get(cacheKey);
+    const cached = CacheService.get(cacheKey);
     if (cached) {
       return res.json({ success: true, data: cached });
     }
@@ -72,7 +69,7 @@ exports.getDashboardStats = async (req, res, next) => {
       },
     };
 
-    dashboardCache.set(cacheKey, result);
+    CacheService.set(cacheKey, result, 300);
     res.json({ success: true, data: result });
   } catch (error) {
     next(error);
@@ -87,13 +84,21 @@ exports.getDashboardStats = async (req, res, next) => {
 exports.getEmployeesByProvince = async (req, res, next) => {
   try {
     const cacheKey = "dashboard_by_province";
-    const cached = dashboardCache.get(cacheKey);
+    const cached = CacheService.get(cacheKey);
     if (cached) {
       return res.json({ success: true, data: cached });
     }
 
     const groups = await prisma.employees.groupBy({
       by: ["Province"],
+      where: {
+        SpecialCases: {
+          none: {
+            IsActive: true,
+            CaseType: { in: ["نقل", "تحويل", "استقالة", "تقاعد"] },
+          },
+        },
+      },
       _count: { Id: true },
       orderBy: { _count: { Id: "desc" } },
     });
@@ -103,7 +108,7 @@ exports.getEmployeesByProvince = async (req, res, next) => {
       count: g._count.Id,
     }));
 
-    dashboardCache.set(cacheKey, data);
+    CacheService.set(cacheKey, data, 300);
     res.json({ success: true, data });
   } catch (error) {
     next(error);
@@ -119,7 +124,7 @@ exports.getEmployeesByProvince = async (req, res, next) => {
 exports.getResumingSoon = async (req, res, next) => {
   try {
     const cacheKey = "dashboard_resuming_soon";
-    const cached = dashboardCache.get(cacheKey);
+    const cached = CacheService.get(cacheKey);
     if (cached) {
       return res.json({ success: true, data: cached });
     }
@@ -178,7 +183,7 @@ exports.getResumingSoon = async (req, res, next) => {
       })
       .slice(0, 5);
 
-    dashboardCache.set(cacheKey, combined);
+    CacheService.set(cacheKey, combined, 300);
     res.json({ success: true, data: combined });
   } catch (error) {
     next(error);
@@ -193,7 +198,7 @@ exports.getResumingSoon = async (req, res, next) => {
 exports.getOverdueResumes = async (req, res, next) => {
   try {
     const cacheKey = "dashboard_overdue_resumes";
-    const cached = dashboardCache.get(cacheKey);
+    const cached = CacheService.get(cacheKey);
     if (cached) {
       return res.json({ success: true, data: cached });
     }
@@ -255,7 +260,7 @@ exports.getOverdueResumes = async (req, res, next) => {
       .sort((a, b) => new Date(a.EndDate) - new Date(b.EndDate))
       .slice(0, 10);
 
-    dashboardCache.set(cacheKey, data);
+    CacheService.set(cacheKey, data, 300);
     res.json({ success: true, data });
   } catch (error) {
     next(error);
@@ -264,24 +269,88 @@ exports.getOverdueResumes = async (req, res, next) => {
 
 // ── Strict whitelist of HR operational action titles ──
 // Only these actions count as "real work" for KPI scoring.
-// Login, Logout, views, and navigation are explicitly excluded.
+// Login, Logout, and diagnostic actions are explicitly excluded.
 const HR_ACTION_TITLES = [
+  // ── Document Uploads & Management ──
+  "Upload Documents",
+  "Upload Document",
+  "Update Document",
+  "Delete Document",
+  "Bulk Delete Documents",
+  "رفع وثائق للموظف",
+  "تعديل وثيقة موظف",
+  "حذف وثيقة موظف",
+  "حذف عدة وثائق لموظف",
+
+  // ── Employees CRUD & Profile ──
   "Add Employee",
   "Edit Employee",
   "Delete Employee",
   "Update Profile Image",
-  "Upload Documents",
-  "Update Document",
-  "Delete Document",
+  "إضافة موظف جديد",
+  "اضافة موظف",
+  "تعديل بيانات موظف",
+  "تعديل موظف",
+  "حذف موظف",
+  "تحديث الصورة الشخصية",
+
+  // ── Career: Ranks, Positions & Promotions ──
+  "إضافة ترقية في الرتبة",
+  "تعديل سجل الرتبة",
+  "تعديل سجل الترقية",
+  "حذف سجل الرتبة",
+  "حذف سجل الترقية",
+  "إضافة منصب عليا",
+  "اضافة منصب",
+  "تعديل سجل المنصب",
+  "حذف سجل المنصب",
+  "حذف منصب",
+
+  // ── Degrees & Experience Allowance ──
+  "إضافة درجة جديدة",
+  "حذف درجة",
+  "حذف سجل درجة",
+  "إضافة تعويض خبرة مهنية",
+  "حذف تعويض خبرة مهنية",
+
+  // ── Leaves & Employee States ──
   "Add Employee State",
   "Edit Employee State",
   "Delete Employee State",
+  "Resume Leave Early",
+  "إضافة وضعية/إجازة موظف",
+  "تعديل وضعية/إجازة موظف",
+  "حذف وضعية/إجازة موظف",
+  "استئناف إجازة مبكراً",
+  "استئناف عمل",
+  "حذف سجل",
+
+  // ── Special Cases ──
+  "Add Special Case",
+  "Edit Special Case",
+  "Delete Special Case",
+  "إضافة حالة خاصة",
+  "تسجيل حالة",
+  "تعديل حالة خاصة",
+  "تعديل حالة",
+  "حذف حالة خاصة",
+
+  // ── Job Titles / Grades ──
+  "إضافة رتبة جديدة",
+  "إضافة رتبة وظيفية",
+  "تعديل رتبة",
+  "تعديل رتبة وظيفية",
+  "حذف رتبة",
+  "حذف رتبة وظيفية",
+
+  // ── Users Management ──
   "Add User",
   "Edit User",
   "Delete User",
-  "إضافة رتبة جديدة",
-  "تعديل رتبة",
-  "حذف رتبة",
+  "إضافة مستخدم جديد",
+  "اضافة مستخدم",
+  "تعديل مستخدم",
+  "حذف مستخدم",
 ];
 
 /**
@@ -294,23 +363,28 @@ exports.getUserKpis = async (req, res, next) => {
   try {
     // Parse date from query param, default to today
     const dateParam = req.query.date;
-    const targetDate = dateParam ? new Date(dateParam) : new Date();
-    if (isNaN(targetDate.getTime())) {
-      return res.status(400).json({ success: false, message: "Invalid date format. Use YYYY-MM-DD." });
+    let startOfDay, endOfDay, dateKey;
+
+    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      const [year, month, day] = dateParam.split("-").map(Number);
+      startOfDay = new Date(year, month - 1, day, 0, 0, 0, 0);
+      endOfDay = new Date(year, month - 1, day, 23, 59, 59, 999);
+      dateKey = dateParam;
+    } else {
+      const now = new Date();
+      startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, "0");
+      const dd = String(now.getDate()).padStart(2, "0");
+      dateKey = `${yyyy}-${mm}-${dd}`;
     }
 
-    const dateKey = targetDate.toISOString().slice(0, 10); // YYYY-MM-DD
     const cacheKey = `dashboard_user_kpis_${dateKey}`;
-    const cached = dashboardCache.get(cacheKey);
+    const cached = CacheService.get(cacheKey);
     if (cached) {
       return res.json({ success: true, data: cached });
     }
-
-    // Day boundaries
-    const startOfDay = new Date(targetDate);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(targetDate);
-    endOfDay.setHours(23, 59, 59, 999);
 
     // Group system records by UserFullName, filtered strictly
     const groups = await prisma.systemRecords.groupBy({
@@ -330,7 +404,7 @@ exports.getUserKpis = async (req, res, next) => {
     }));
 
     // Cache for 3 minutes (matches the frontend polling interval)
-    dashboardCache.set(cacheKey, data, 180);
+    CacheService.set(cacheKey, data, 180);
     res.json({ success: true, data });
   } catch (error) {
     next(error);
@@ -341,5 +415,9 @@ exports.getUserKpis = async (req, res, next) => {
  * Invalidate all dashboard caches — call after any leave/case write.
  */
 exports.clearDashboardCache = () => {
-  dashboardCache.flushAll();
+  CacheService.del("dashboard_stats");
+  CacheService.del("dashboard_by_province");
+  CacheService.del("dashboard_resuming_soon");
+  CacheService.del("dashboard_overdue_resumes");
+  CacheService.delByPrefix("dashboard_user_kpis_");
 };

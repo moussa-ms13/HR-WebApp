@@ -7,7 +7,7 @@ const EmployeesService = require("../services/EmployeesService");
 class EmployeesController {
   static async getAll(req, res) {
     try {
-      const { page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder, sort, order } = req.query;
+      const { page, limit, search, province, directorate, fileStatus, category, status, employeeStatus, sortBy, sortOrder, sort, order } = req.query;
 
       // Sanitize sort params — empty strings from the frontend should fall back to defaults
       const safeSortBy = (sortBy || sort || "").trim() || "Id";
@@ -25,7 +25,8 @@ class EmployeesController {
         fileStatus || "",
         category || "",
         safeSortBy,
-        safeSortOrder
+        safeSortOrder,
+        status || employeeStatus || ""
       );
       res.json({ success: true, ...result });
     } catch (error) {

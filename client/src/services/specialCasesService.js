@@ -1,9 +1,17 @@
 import apiClient from './apiClient';
 
 class SpecialCasesService {
-  static async getAll(page = 1, limit = 25, search = '', province = '', directorate = '') {
+  static async getAll(
+    page = 1,
+    limit = 25,
+    search = '',
+    province = '',
+    directorate = '',
+    statusFilter = 'active',
+    caseType = ''
+  ) {
     const response = await apiClient.get('/special-cases', {
-      params: { page, limit, search, province, directorate }
+      params: { page, limit, search, province, directorate, statusFilter, caseType }
     });
     return response.data;
   }
@@ -20,6 +28,14 @@ class SpecialCasesService {
 
   static async update(employeeId, caseId, data) {
     const response = await apiClient.put(`/employees/${employeeId}/special-cases/${caseId}`, data);
+    return response.data;
+  }
+
+  static async endCase(employeeId, caseId, data = {}) {
+    const url = employeeId
+      ? `/employees/${employeeId}/special-cases/${caseId}/end`
+      : `/special-cases/${caseId}/end`;
+    const response = await apiClient.put(url, data);
     return response.data;
   }
 

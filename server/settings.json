@@ -1,7 +1,7 @@
 {
-  "institutionName": "",
+  "institutionName": "المديرية الجهوية للأملاك الوطنية بالشلف",
   "defaultPagination": "50",
-  "appTitle": "",
+  "appTitle": "المديرية الفرعية للإدارة العامة ",
   "serverIp": "localhost",
   "apiPort": "5000",
   "baseApiUrl": "http://10.128.21.97:5000/api",

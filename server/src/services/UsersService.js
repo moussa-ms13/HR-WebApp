@@ -24,10 +24,15 @@ class UsersService {
 
     const trimmedSearch = (search || "").trim();
     if (trimmedSearch) {
-      where.OR = [
-        { FullName: { contains: trimmedSearch } },
-        { UserName: { contains: trimmedSearch } },
-      ];
+      const tokens = trimmedSearch.split(/\s+/).filter(Boolean);
+      if (tokens.length > 0) {
+        where.AND = tokens.map((token) => ({
+          OR: [
+            { FullName: { contains: token } },
+            { UserName: { contains: token } },
+          ],
+        }));
+      }
     }
 
     const [total, users] = await Promise.all([
@@ -131,9 +136,10 @@ class UsersService {
     // Audit log
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Add User",
-      description: `User '${user.UserName}' created by '${requestingUser.userName}'.`,
+      title: "إضافة مستخدم جديد",
+      description: `تمت إضافة المستخدم '${user.UserName}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
+      ipAddress: requestingUser.ipAddress,
     });
 
     const { Password, ...safe } = user;
@@ -201,9 +207,10 @@ class UsersService {
     // Audit log
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Edit User",
-      description: `User '${user.UserName}' updated by '${requestingUser.userName}'.`,
+      title: "تعديل مستخدم",
+      description: `تم تعديل بيانات المستخدم '${user.UserName}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
+      ipAddress: requestingUser.ipAddress,
     });
 
     const { Password, ...safe } = user;
@@ -236,9 +243,10 @@ class UsersService {
     // Audit log (no usersId since the user is gone)
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
-      title: "Delete User",
-      description: `User '${existing.UserName}' deleted by '${requestingUser.userName}'.`,
+      title: "حذف مستخدم",
+      description: `تم حذف المستخدم '${existing.UserName}' بواسطة '${requestingUser.userName}'.`,
       usersId: requestingUser.id,
+      ipAddress: requestingUser.ipAddress,
     });
 
     return { message: `User '${existing.UserName}' has been deleted.` };

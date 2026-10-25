@@ -61,7 +61,7 @@ router.get("/:id", async (req, res, next) => {
 /**
  * POST /api/employee-states
  */
-router.post("/", async (req, res, next) => {
+router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res, next) => {
   try {
     const {
       EmployeesId,
@@ -75,6 +75,10 @@ router.post("/", async (req, res, next) => {
       ActualReturnDate,
       CurrentJobTitle,
       Notes,
+      DoctorName,
+      CertificateDate,
+      SecondDoctorName,
+      SecondCertificateDate,
     } = req.body;
 
     const employeesId = parseInt(EmployeesId, 10);
@@ -112,6 +116,19 @@ router.post("/", async (req, res, next) => {
       ActualReturnDate: ActualReturnDate && !isNaN(new Date(ActualReturnDate).getTime()) ? new Date(ActualReturnDate) : null,
       IsResumedEarly: false,
       Notes: Notes || null,
+      DoctorName: (DoctorName !== undefined ? DoctorName : req.body.doctorName) ? String(DoctorName || req.body.doctorName).trim() : null,
+      CertificateDate: (() => {
+        const d = CertificateDate !== undefined ? CertificateDate : req.body.certificateDate;
+        return d && !isNaN(new Date(d).getTime()) ? new Date(d) : null;
+      })(),
+      SecondDoctorName: (() => {
+        const d = SecondDoctorName !== undefined ? SecondDoctorName : (req.body.secondDoctorName !== undefined ? req.body.secondDoctorName : req.body.doctorName2);
+        return d ? String(d).trim() : null;
+      })(),
+      SecondCertificateDate: (() => {
+        const d = SecondCertificateDate !== undefined ? SecondCertificateDate : (req.body.secondCertificateDate !== undefined ? req.body.secondCertificateDate : req.body.certificateDate2);
+        return d && !isNaN(new Date(d).getTime()) ? new Date(d) : null;
+      })(),
     };
 
     const isAnnualLeave =
@@ -200,8 +217,12 @@ router.put("/:id", hasPermission(PERMISSIONS.EDIT), async (req, res, next) => {
  */
 router.put("/:id/resume", hasPermission(PERMISSIONS.EDIT), async (req, res, next) => {
   try {
-    const state = await EmployeeStatesService.resumeLeaveEarly(Number(req.params.id), req.body, req.user);
-    res.json({ success: true, data: state });
+    const result = await EmployeeStatesService.resumeLeaveEarly(Number(req.params.id), req.body, req.user);
+    res.json({
+      success: true,
+      data: result.data || result,
+      breakdown: result.breakdown || [],
+    });
   } catch (error) {
     next(error);
   }

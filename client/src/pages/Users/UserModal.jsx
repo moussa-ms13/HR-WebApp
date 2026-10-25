@@ -21,6 +21,7 @@ const ALL_PERMISSIONS = [
   { key: 'checkBoxReport', label: 'التقارير' },
   { key: 'checkBoxSettings', label: 'الإعدادات' },
   { key: 'checkBoxLeaves', label: 'العطل' },
+  { key: 'checkBoxSpecialCases', label: 'الحالات الخاصة' },
   { key: 'checkBoxSystemRecords', label: 'سجل النظام' },
 
   // Provinces

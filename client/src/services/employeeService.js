@@ -8,9 +8,30 @@ class EmployeeService {
    * @param {string} search 
    * @param {string} province 
    */
-  static async getAll(page = 1, limit = 25, search = '', province = '', directorate = '', fileStatus = '', category = '', sortBy = '', sortOrder = '') {
+  static async getAll(
+    page = 1,
+    limit = 25,
+    search = '',
+    province = '',
+    directorate = '',
+    fileStatus = '',
+    category = '',
+    sortBy = '',
+    sortOrder = '',
+    options = {}
+  ) {
+    let params = { page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder };
+    let signal = options?.signal;
+
+    if (typeof page === 'object' && page !== null) {
+      params = { ...page };
+      signal = page.signal || options?.signal;
+      delete params.signal;
+    }
+
     const response = await apiClient.get('/employees', {
-      params: { page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder }
+      params,
+      signal,
     });
     return response.data; // Expected: { success, data: [], meta: { total, page, limit, totalPages, totalCompletedFiles } }
   }

@@ -1,12 +1,21 @@
 const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
+const cacheService = require("./CacheService");
 
 class JobTitlesService {
   /**
    * Fetch all Job Titles with optional pagination/search
    */
   static async getAll(page = 1, limit = 100, search = "") {
+    const isDefaultAll = Number(page) === 1 && Number(limit) === 100 && !search;
+    const cacheKey = isDefaultAll ? "job_titles_all" : `job_titles_${page}_${limit}_${search}`;
+
+    const cached = cacheService.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     const skip = (page - 1) * limit;
     
     const where = search 
@@ -32,7 +41,7 @@ class JobTitlesService {
       })
     ]);
 
-    return {
+    const result = {
       data: jobTitles,
       meta: {
         total,
@@ -41,6 +50,9 @@ class JobTitlesService {
         totalPages: Math.ceil(total / limit)
       }
     };
+
+    cacheService.set(cacheKey, result);
+    return result;
   }
 
   /**
@@ -80,9 +92,11 @@ class JobTitlesService {
       userFullName: requestingUser.fullName,
       title: "إضافة رتبة جديدة",
       description: `تمت إضافة الرتبة '${job.RankName}' بواسطة '${requestingUser.userName}'`,
-      usersId: requestingUser.id
+      usersId: requestingUser.id,
+      ipAddress: requestingUser.ipAddress,
     });
 
+    cacheService.invalidateEmployeeEcosystem();
     return job;
   }
 
@@ -117,9 +131,11 @@ class JobTitlesService {
       userFullName: requestingUser.fullName,
       title: "تعديل رتبة",
       description: `تم تعديل الرتبة '${updatedJob.RankName}' بواسطة '${requestingUser.userName}'`,
-      usersId: requestingUser.id
+      usersId: requestingUser.id,
+      ipAddress: requestingUser.ipAddress,
     });
 
+    cacheService.invalidateEmployeeEcosystem();
     return updatedJob;
   }
 
@@ -145,9 +161,11 @@ class JobTitlesService {
       userFullName: requestingUser.fullName,
       title: "حذف رتبة",
       description: `تم حذف الرتبة '${job.RankName}' بواسطة '${requestingUser.userName}'`,
-      usersId: requestingUser.id
+      usersId: requestingUser.id,
+      ipAddress: requestingUser.ipAddress,
     });
 
+    cacheService.invalidateEmployeeEcosystem();
     return { message: "تم الحذف بنجاح" };
   }
 }
