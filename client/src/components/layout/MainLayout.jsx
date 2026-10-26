@@ -38,42 +38,12 @@ const MainLayout = () => {
   return (
     <div className="flex flex-col h-screen bg-slate-50 font-sans text-slate-800 overflow-hidden" dir="rtl">
       
-      {/* Top Header - Two Tiers */}
-      <header className="bg-white border-b border-gray-200 z-10 shrink-0 shadow-sm">
-        
-        {/* Tier 1: Brand & User Actions */}
-        <div className="flex items-center justify-between px-6 py-4">
+      {/* Unified Navigation & User Header */}
+      <header className="bg-white border-b border-gray-200 z-10 shrink-0 shadow-xs">
+        <div className="flex items-center justify-between px-6 h-14">
           
-          {/* FAR RIGHT: Brand (RTL places first child on the right) */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-inner" style={{ backgroundColor: '#105b38' }}>
-              <span className="font-bold text-lg" style={{ color: '#c7a43e' }}>HR</span>
-            </div>
-            <h1 className="text-xl font-bold text-slate-800">
-              نظام الموارد البشرية
-            </h1>
-          </div>
-
-          {/* FAR LEFT: Action Icons & User Avatar */}
-          <div className="flex items-center gap-5 text-gray-500">
-            <div className="flex items-center gap-3">
-              <div className="flex flex-col text-left" dir="ltr">
-                <span className="text-sm font-bold text-slate-800">{user?.fullName || 'المستخدم'}</span>
-                <span className="text-xs text-gray-400">{user?.role || 'Admin'}</span>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-slate-100 border border-gray-200 flex items-center justify-center text-gray-500 overflow-hidden">
-                <UserIcon size={20} />
-              </div>
-              <button onClick={logout} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors mr-2" title="تسجيل الخروج">
-                <Power size={20} />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Tier 2: Horizontal Navigation */}
-        <div className="px-6 pb-0 border-t border-gray-100">
-          <nav className="flex items-center gap-2 overflow-x-auto custom-scrollbar">
+          {/* RIGHT SIDE: Horizontal Navigation Tabs */}
+          <nav className="flex items-center gap-1 sm:gap-2 overflow-x-auto custom-scrollbar h-full flex-1 min-w-0">
             {NAV_ITEMS.map((item) => {
               if (!hasPermission(item.permission)) return null;
               
@@ -82,9 +52,9 @@ const MainLayout = () => {
                   key={item.path}
                   to={item.path}
                   className={({ isActive }) =>
-                    `flex items-center gap-2 px-4 py-3 text-sm font-medium transition-all relative whitespace-nowrap ${
+                    `flex items-center gap-2 px-3 sm:px-3.5 h-full text-sm font-medium transition-all relative whitespace-nowrap shrink-0 ${
                       isActive 
-                        ? 'text-emerald-700' 
+                        ? 'text-emerald-700 font-bold' 
                         : 'text-gray-500 hover:text-emerald-600 hover:bg-emerald-50/50'
                     }`
                   }
@@ -102,6 +72,29 @@ const MainLayout = () => {
               );
             })}
           </nav>
+
+          {/* LEFT SIDE: User Profile & Logout Controls */}
+          <div className="flex items-center gap-3 shrink-0 mr-4 pr-4 border-r border-gray-100 text-gray-500">
+            <div className="flex items-center gap-2.5">
+              <div className="hidden sm:flex flex-col text-left" dir="ltr">
+                <span className="text-sm font-bold text-slate-800 leading-tight">{user?.fullName || 'المستخدم'}</span>
+                <span className="text-xs text-gray-400">{user?.role || 'Admin'}</span>
+              </div>
+              <div className="w-9 h-9 rounded-full bg-slate-100 border border-gray-200 flex items-center justify-center text-gray-500 overflow-hidden shadow-xs">
+                <UserIcon size={18} />
+              </div>
+              <div className="h-5 w-px bg-gray-200 mx-1" />
+              <button 
+                onClick={logout} 
+                className="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer" 
+                title="تسجيل الخروج"
+                aria-label="تسجيل الخروج"
+              >
+                <Power size={18} />
+              </button>
+            </div>
+          </div>
+
         </div>
       </header>
 
