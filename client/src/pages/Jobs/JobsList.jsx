@@ -3,7 +3,7 @@ import useSWR from 'swr';
 import { useAuth } from '../../context/AuthContext';
 import JobTitlesService from '../../services/jobTitlesService';
 import JobModal from './JobModal';
-import { Plus, Search, Edit2, Trash2, Loader2, Briefcase, MoreVertical } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Loader2, Briefcase, MoreVertical, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { refreshJobTitles } from '../../utils/cacheManager';
@@ -202,20 +202,25 @@ const JobsList = () => {
           <div className="text-sm text-slate-600">
             الصفحة <span className="font-medium text-slate-900">{meta.page}</span> من <span className="font-medium text-slate-900">{meta.totalPages || 1}</span>
           </div>
+          {/* RTL order: السابق (right) → التالي (left) */}
           <div className="flex gap-2">
             <button
+              id="jobs-prev-page"
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1 || isLoading}
-              className="px-3 py-1.5 border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
+              <ChevronRight size={15} />
               السابق
             </button>
             <button
+              id="jobs-next-page"
               onClick={() => setPage(p => Math.min(meta.totalPages, p + 1))}
               disabled={page === meta.totalPages || meta.totalPages === 0 || isLoading}
-              className="px-3 py-1.5 border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               التالي
+              <ChevronLeft size={15} />
             </button>
           </div>
         </div>

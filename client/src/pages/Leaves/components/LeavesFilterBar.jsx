@@ -9,6 +9,12 @@ export default function LeavesFilterBar({
   caseTypeFilter = '',
   setCaseTypeFilter = null,
   caseTypeOptions = [],
+  viewFilter = '',
+  setViewFilter = null,
+  viewOptions = [],
+  yearFilter = '',
+  setYearFilter = null,
+  yearOptions = [],
   allowedProvinces = [],
   availableMofatishiyat = [],
   availableMohafathat = [],
@@ -21,8 +27,33 @@ export default function LeavesFilterBar({
   searchPlaceholder = 'البحث باسم الموظف...',
 }) {
   return (
-    <div className="flex flex-col sm:flex-row justify-between items-center mb-6 bg-white p-3 rounded-xl border border-gray-200">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-col sm:flex-row justify-between items-center gap-3 mb-6 bg-white p-3 rounded-xl border border-gray-200">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        {/* Record View Select (Optional, e.g. Special Cases lifecycle) */}
+        {setViewFilter && (
+          <>
+            <div className="relative flex items-center">
+              <select
+                id="filter-record-view"
+                aria-label="عرض السجلات"
+                value={viewFilter}
+                onChange={(e) => {
+                  setViewFilter(e.target.value);
+                  setPage?.(1);
+                }}
+                className="text-sm font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100/70 border border-emerald-200 px-3 py-2 rounded-lg outline-none cursor-pointer appearance-none pl-7 transition-colors"
+              >
+                {viewOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="absolute left-2 text-emerald-700 pointer-events-none" />
+            </div>
+            <div className="h-4 w-px bg-gray-200 ml-2" />
+          </>
+        )}
         {/* Province Select */}
         <div className="relative flex items-center">
           <select
@@ -102,6 +133,33 @@ export default function LeavesFilterBar({
                 {caseTypeOptions.map((opt) => (
                   <option key={opt} value={opt}>
                     {opt}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown size={14} className="absolute left-2 text-gray-500 pointer-events-none" />
+            </div>
+          </>
+        )}
+
+        {/* Year Select (Optional) */}
+        {setYearFilter && (
+          <>
+            <div className="h-4 w-px bg-gray-200 ml-2" />
+            <div className="relative flex items-center">
+              <select
+                id="filter-year"
+                aria-label="السنة"
+                value={yearFilter}
+                onChange={(e) => {
+                  setYearFilter(e.target.value);
+                  setPage?.(1);
+                }}
+                className="flex items-center gap-2 text-sm font-medium text-gray-600 px-3 py-2 hover:bg-gray-50 rounded-lg outline-none bg-transparent cursor-pointer appearance-none pl-7"
+              >
+                <option value="">السنة: الكل</option>
+                {yearOptions.map((y) => (
+                  <option key={y} value={String(y)}>
+                    {y}
                   </option>
                 ))}
               </select>

@@ -64,10 +64,44 @@ function getLifecycleCondition(statusFilter) {
     case "all":
       return null;
     case "active":
-    default:
+      // Legacy combined view (kept for backward compatibility)
       return {
         OR: [tempActiveCondition, permExitCondition],
       };
+    default:
+      return tempActiveCondition;
+  }
+}
+
+/**
+ * Builds a StartDate range condition for a given calendar year.
+ * Returns null when the year is empty/invalid.
+ */
+function getYearCondition(year) {
+  const y = Number(year);
+  if (!Number.isInteger(y) || y < 1900 || y > 2200) return null;
+  return {
+    StartDate: {
+      gte: new Date(y, 0, 1),
+      lt: new Date(y + 1, 0, 1),
+    },
+  };
+}
+
+/**
+ * Returns the distinct StartDate years present in SpecialCases (desc).
+ * Used to populate the year filter dropdown; fails soft to [].
+ */
+async function getDistinctYears() {
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT DISTINCT YEAR(StartDate) AS y
+      FROM SpecialCases
+      WHERE StartDate IS NOT NULL
+      ORDER BY y DESC`;
+    return rows.map((r) => Number(r.y)).filter((y) => Number.isInteger(y) && y > 0);
+  } catch (_) {
+    return [];
   }
 }
 
@@ -82,8 +116,9 @@ class SpecialCasesService {
     search = "",
     province = "",
     directorate = "",
-    statusFilter = "active",
-    caseType = ""
+    statusFilter = "temporary_active",
+    caseType = "",
+    year = ""
   ) {
     const { safePage, safeLimit, skip } = sanitizePagination(page, limit, 100);
 
@@ -96,7 +131,8 @@ class SpecialCasesService {
           page: safePage,
           limit: safeLimit,
           totalPages: 0,
-          counts: { active: 0, temporary_active: 0, permanent_exit: 0, archived: 0, all: 0 },
+          counts: { temporary_active: 0, permanent_exit: 0, archived: 0, all: 0 },
+          years: [],
         },
       };
     }
@@ -124,6 +160,11 @@ class SpecialCasesService {
       baseWhere.AND = [...(baseWhere.AND || []), ...tokenSearch.AND];
     }
 
+    const yearCondition = getYearCondition(year);
+    if (yearCondition) {
+      baseWhere.AND = [...(baseWhere.AND || []), yearCondition];
+    }
+
     const buildWhereForStatus = (status) => {
       const cond = getLifecycleCondition(status);
       if (!cond) return baseWhere;
@@ -135,7 +176,7 @@ class SpecialCasesService {
 
     const whereClause = buildWhereForStatus(statusFilter);
 
-    const [total, cases, activeCount, tempActiveCount, permExitCount, archivedCount, allCount] =
+    const [total, cases, tempActiveCount, permExitCount, archivedCount, allCount, years] =
       await Promise.all([
         prisma.specialCases.count({ where: whereClause }),
         prisma.specialCases.findMany({
@@ -156,11 +197,11 @@ class SpecialCasesService {
           take: safeLimit,
           orderBy: { Id: "desc" },
         }),
-        prisma.specialCases.count({ where: buildWhereForStatus("active") }),
         prisma.specialCases.count({ where: buildWhereForStatus("temporary_active") }),
         prisma.specialCases.count({ where: buildWhereForStatus("permanent_exit") }),
         prisma.specialCases.count({ where: buildWhereForStatus("archived") }),
         prisma.specialCases.count({ where: buildWhereForStatus("all") }),
+        getDistinctYears(),
       ]);
 
     return {
@@ -171,12 +212,12 @@ class SpecialCasesService {
         limit: safeLimit,
         totalPages: Math.ceil(total / safeLimit),
         counts: {
-          active: activeCount,
           temporary_active: tempActiveCount,
           permanent_exit: permExitCount,
           archived: archivedCount,
           all: allCount,
         },
+        years,
       },
     };
   }

@@ -14,7 +14,8 @@ import { refreshSpecialCases, refreshEmployees } from '../../utils/cacheManager'
 import { DateText, normalizeEmbeddedDates } from '../../utils/dateUtils';
 import { formatEmployeeName } from '../../utils/employeeUtils';
 import {
-  LIFECYCLE_TABS,
+  RECORD_VIEW_OPTIONS,
+  DEFAULT_RECORD_VIEW,
   ALL_SPECIAL_CASE_TYPES,
   getSpecialCaseStatus,
 } from '../../utils/specialCasesConstants';
@@ -26,9 +27,12 @@ import {
   Trash2,
   Edit2,
   UserCheck,
+  ChevronRight,
+  ChevronLeft,
+  Info,
 } from 'lucide-react';
 
-const casesFetcher = async ([_url, page, limit, search, directorate, province, statusFilter, caseType]) => {
+const casesFetcher = async ([_url, page, limit, search, directorate, province, statusFilter, caseType, year]) => {
   const result = await SpecialCasesService.getAll(
     page,
     limit,
@@ -36,7 +40,8 @@ const casesFetcher = async ([_url, page, limit, search, directorate, province, s
     province,
     directorate,
     statusFilter,
-    caseType
+    caseType,
+    year
   );
   if (!result.success) throw new Error('فشل جلب الحالات الخاصة');
   return result;
@@ -49,8 +54,9 @@ export default function SpecialCasesList() {
 
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
-  const [statusFilter, setStatusFilter] = useState('active');
+  const [statusFilter, setStatusFilter] = useState(DEFAULT_RECORD_VIEW);
   const [caseTypeFilter, setCaseTypeFilter] = useState('');
+  const [yearFilter, setYearFilter] = useState('');
   const [provinceFilter, setProvinceFilter] = useState('');
   const [directorateFilter, setDirectorateFilter] = useState('');
   const [searchInput, setSearchInput] = useState(() => searchParams.get('search')?.trim() || '');
@@ -62,15 +68,40 @@ export default function SpecialCasesList() {
   const debouncedSearch = useDebounce(searchInput, 500);
   const search = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : '';
 
+  // When searching from the default operational view, search across ALL records
+  // so historical / permanent-exit cases are always findable by name.
+  const isSearchAcrossAll = Boolean(search) && statusFilter === DEFAULT_RECORD_VIEW;
+  const effectiveStatusFilter = isSearchAcrossAll ? 'all' : statusFilter;
+
   const { data, isLoading, mutate } = useSWR(
-    ['/api/special-cases', page, limit, search, directorateFilter, provinceFilter, statusFilter, caseTypeFilter],
+    ['/api/special-cases', page, limit, search, directorateFilter, provinceFilter, effectiveStatusFilter, caseTypeFilter, yearFilter],
     casesFetcher,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
 
   const specialCases = Array.isArray(data) ? data : (data?.data || data?.records || []);
-  const meta = data?.meta || { total: 0, totalPages: 0, page: 1, counts: {} };
+  const meta = data?.meta || { total: 0, totalPages: 0, page: 1, counts: {}, years: [] };
   const showLoading = isLoading && !data;
+
+  // "عرض السجلات" dropdown options with live counts
+  const viewOptions = RECORD_VIEW_OPTIONS.map((opt) => {
+    const count = meta.counts?.[opt.id];
+    return {
+      value: opt.id,
+      label: count !== undefined ? `${opt.label} (${count})` : opt.label,
+    };
+  });
+
+  // "السنة" dropdown: distinct years from DB + current year (+ selected year), desc
+  const yearOptions = Array.from(
+    new Set([
+      new Date().getFullYear(),
+      ...(Array.isArray(meta.years) ? meta.years : []),
+      ...(yearFilter ? [Number(yearFilter)] : []),
+    ])
+  )
+    .filter((y) => Number.isInteger(y) && y > 0)
+    .sort((a, b) => b - a);
 
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -161,43 +192,11 @@ export default function SpecialCasesList() {
 
   return (
     <div className="flex flex-col h-full font-sans text-slate-800" dir="rtl">
-      {/* Segmented Lifecycle Tabs Bar */}
-      <div className="flex items-center gap-1.5 overflow-x-auto bg-white p-1.5 mb-4 rounded-xl border border-gray-200 custom-scrollbar shadow-sm">
-        {LIFECYCLE_TABS.map((tab) => {
-          const isSelected = statusFilter === tab.id;
-          const count = meta.counts?.[tab.id];
-          return (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setStatusFilter(tab.id);
-                setPage(1);
-              }}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
-                isSelected
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
-              }`}
-            >
-              <span>{tab.label}</span>
-              {count !== undefined && (
-                <span
-                  className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                    isSelected
-                      ? 'bg-white/20 text-white'
-                      : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Filter Controls Bar */}
+      {/* Filter Controls Bar (includes عرض السجلات + السنة) */}
       <LeavesFilterBar
+        viewFilter={statusFilter}
+        setViewFilter={setStatusFilter}
+        viewOptions={viewOptions}
         provinceFilter={provinceFilter}
         setProvinceFilter={setProvinceFilter}
         directorateFilter={directorateFilter}
@@ -205,6 +204,9 @@ export default function SpecialCasesList() {
         caseTypeFilter={caseTypeFilter}
         setCaseTypeFilter={setCaseTypeFilter}
         caseTypeOptions={ALL_SPECIAL_CASE_TYPES}
+        yearFilter={yearFilter}
+        setYearFilter={setYearFilter}
+        yearOptions={yearOptions}
         allowedProvinces={allowedProvinces}
         availableMofatishiyat={availableMofatishiyat}
         availableMohafathat={availableMohafathat}
@@ -216,6 +218,16 @@ export default function SpecialCasesList() {
         addButtonLabel="تسجيل حالة خاصة"
         searchPlaceholder="البحث باسم الموظف أو نوع الحالة..."
       />
+
+      {isSearchAcrossAll && (
+        <div
+          id="special-cases-search-scope-hint"
+          className="-mt-3 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-50 border border-sky-100 text-xs font-medium text-sky-800"
+        >
+          <Info size={14} className="shrink-0 text-sky-600" />
+          يتم البحث في جميع السجلات (السارية، الخروج النهائي، والأرشيف) لضمان العثور على أي موظف.
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col">
         <div className="overflow-x-auto flex-1 custom-scrollbar">
@@ -374,23 +386,28 @@ export default function SpecialCasesList() {
         </div>
 
         <div className="bg-white px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+          {/* RTL order: السابق (right) → page (middle) → التالي (left) */}
           <div className="flex gap-2">
             <button
-              onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
-              disabled={page === meta.totalPages || meta.totalPages === 0}
-              className="px-4 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
+              id="special-cases-prev-page"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="flex items-center gap-1 px-4 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
             >
-              التالي
+              <ChevronRight size={15} />
+              السابق
             </button>
             <button className="px-4 py-1.5 bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm">
               {meta.page}
             </button>
             <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="px-4 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
+              id="special-cases-next-page"
+              onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
+              disabled={page === meta.totalPages || meta.totalPages === 0}
+              className="flex items-center gap-1 px-4 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
             >
-              السابق
+              التالي
+              <ChevronLeft size={15} />
             </button>
           </div>
 

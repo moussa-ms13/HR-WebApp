@@ -11,7 +11,7 @@ import LeavesFilterBar from './components/LeavesFilterBar';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { useToast } from '../../components/ui/Toast';
 import { refreshLeaves, refreshEmployees } from '../../utils/cacheManager';
-import { MoreVertical, CalendarOff, ArrowUpDown, Loader2, Trash2, Printer } from 'lucide-react';
+import { MoreVertical, CalendarOff, ArrowUpDown, Loader2, Trash2, Printer, ChevronRight, ChevronLeft } from 'lucide-react';
 import { DateText } from '../../utils/formatDate';
 import { printLeaveCertificate } from '../../utils/printLeaveCertificate';
 import { formatEmployeeName } from '../../utils/employeeUtils';
@@ -308,23 +308,28 @@ const EmployeeStatesList = () => {
         </div>
 
         <div className="bg-white px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+          {/* RTL order: السابق (right) → page (middle) → التالي (left) */}
           <div className="flex gap-2">
             <button
-              onClick={() => setPage(p => Math.min(meta.totalPages, p + 1))}
-              disabled={page === meta.totalPages || meta.totalPages === 0}
-              className="px-4 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
+              id="leaves-prev-page"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="flex items-center gap-1 px-4 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
             >
-              التالي
+              <ChevronRight size={15} />
+              السابق
             </button>
             <button className="px-4 py-1.5 bg-emerald-500 text-white rounded-lg text-sm font-medium shadow-sm">
               {meta.page}
             </button>
             <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="px-4 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
+              id="leaves-next-page"
+              onClick={() => setPage(p => Math.min(meta.totalPages, p + 1))}
+              disabled={page === meta.totalPages || meta.totalPages === 0}
+              className="flex items-center gap-1 px-4 py-1.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors cursor-pointer"
             >
-              السابق
+              التالي
+              <ChevronLeft size={15} />
             </button>
           </div>
 

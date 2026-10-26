@@ -121,10 +121,15 @@ export function getSpecialCaseStatus(record) {
   };
 }
 
-export const LIFECYCLE_TABS = Object.freeze([
-  { id: 'active', label: 'الحالات السارية والقرارات الحالية', description: 'العمليات الحالية النشطة' },
-  { id: 'temporary_active', label: 'الوضعيات المؤقتة السارية فقط', description: 'انتداب، استيداع، خدمة وطنية' },
-  { id: 'permanent_exit', label: 'حالات الخروج النهائي', description: 'تحويل، تقاعد، استقالة' },
-  { id: 'archived', label: 'الأرشيف - الحالات المنتهية', description: 'السجلات التاريخية المكتملة' },
-  { id: 'all', label: 'كل السجلات', description: 'كافة السجلات' },
+/**
+ * "عرض السجلات" dropdown options for the Special Cases list.
+ * The first entry (temporary_active) is the default operational view.
+ */
+export const DEFAULT_RECORD_VIEW = 'temporary_active';
+
+export const RECORD_VIEW_OPTIONS = Object.freeze([
+  { id: 'temporary_active', label: 'الوضعيات السارية حالياً' },
+  { id: 'permanent_exit', label: 'قرارات الخروج النهائي - تحويل/تقاعد' },
+  { id: 'archived', label: 'الأرشيف التاريخي - الحالات المنتهية' },
+  { id: 'all', label: 'جميع السجلات' },
 ]);

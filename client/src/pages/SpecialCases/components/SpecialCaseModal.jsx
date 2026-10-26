@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, ArrowRightLeft, Search, Check, MapPin, FileText, User } from 'lucide-react';
+import { X, Loader2, ArrowRightLeft, Search, Check, MapPin, FileText, User, Lock } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../../utils/constants';
 import useDebounce from '../../../hooks/useDebounce';
@@ -18,6 +18,16 @@ const MIN_SEARCH_CHARS = 2;
 export const SPECIAL_CASE_TYPES = ALL_SPECIAL_CASE_TYPES;
 
 const DESTINATION_CASES = new Set(['انتداب', 'تحويل', 'نقل']);
+
+/** Today's date as local 'YYYY-MM-DD' (safe for comparing <input type="date"> values). */
+const getTodayStr = () => {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+
+/** True when a 'YYYY-MM-DD' date string is strictly before today. */
+const isPastDateStr = (dateStr) => Boolean(dateStr) && dateStr < getTodayStr();
 
 export default function SpecialCaseModal({
   isOpen,
@@ -56,6 +66,13 @@ export default function SpecialCaseModal({
 
   const isPermanent = isPermanentExit(form.CaseType);
   const needsDestination = DESTINATION_CASES.has(form.CaseType);
+
+  // Effective lifecycle status:
+  // - Permanent exits are final decisions → always active (locked).
+  // - Temporary case with a past EndDate → automatically ended (archive).
+  // - Otherwise → user's explicit choice.
+  const isEndDatePast = !isPermanent && isPastDateStr(form.EndDate);
+  const effectiveIsActive = isPermanent ? true : (isEndDatePast ? false : form.IsActive);
 
   // Initialize or reset form on open/record change
   useEffect(() => {
@@ -188,7 +205,7 @@ export default function SpecialCaseModal({
         EndDate: isPermanent ? null : (form.EndDate || null),
         ReferenceDoc: form.ReferenceDoc.trim(),
         Destination: needsDestination ? form.Destination.trim() : null,
-        IsActive: form.IsActive,
+        IsActive: effectiveIsActive,
       };
 
       if (record) {
@@ -500,21 +517,81 @@ export default function SpecialCaseModal({
                 </div>
               </div>
 
-              {/* IsActive Status */}
-              <div className="md:col-span-2 pt-2 border-t border-slate-100 flex items-center justify-between">
-                <div>
-                  <span className="text-xs font-semibold text-slate-700 block">حالة السريان</span>
-                  <span className="text-xs text-slate-400">تحديد ما إذا كانت الحالة نشطة وسارية المفعول حالياً</span>
+              {/* IsActive Status — RTL-safe segmented control */}
+              <div className="md:col-span-2 pt-3 border-t border-slate-100">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs font-semibold text-slate-700 block">حالة السريان</span>
+                    <span className="text-xs text-slate-400">
+                      {isPermanent
+                        ? 'قرارات الخروج النهائي نهائية ولا تحتاج إلى تفعيل أو إنهاء'
+                        : 'تحديد ما إذا كانت الحالة نشطة وسارية المفعول حالياً'}
+                    </span>
+                  </div>
+
+                  {isPermanent ? (
+                    <div
+                      id="special-case-status-locked"
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50 border border-blue-200 text-xs font-semibold text-blue-800 select-none"
+                    >
+                      <Lock size={13} className="text-blue-600" />
+                      قرار نهائي — ساري المفعول
+                    </div>
+                  ) : (
+                    <div
+                      role="radiogroup"
+                      aria-label="حالة السريان"
+                      className="inline-flex items-center p-1 bg-slate-100 rounded-xl gap-1"
+                    >
+                      <button
+                        id="special-case-status-active"
+                        type="button"
+                        role="radio"
+                        aria-checked={effectiveIsActive}
+                        disabled={isEndDatePast}
+                        onClick={() => setForm((prev) => ({ ...prev, IsActive: true }))}
+                        className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                          effectiveIsActive
+                            ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-emerald-200'
+                            : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'
+                        } disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer`}
+                      >
+                        <span
+                          className={`w-2 h-2 rounded-full transition-colors ${
+                            effectiveIsActive ? 'bg-emerald-500' : 'bg-slate-300'
+                          }`}
+                        />
+                        سارية المفعول (نشطة)
+                      </button>
+                      <button
+                        id="special-case-status-archived"
+                        type="button"
+                        role="radio"
+                        aria-checked={!effectiveIsActive}
+                        disabled={isEndDatePast}
+                        onClick={() => setForm((prev) => ({ ...prev, IsActive: false }))}
+                        className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 ${
+                          !effectiveIsActive
+                            ? 'bg-white text-slate-700 shadow-sm ring-1 ring-slate-200'
+                            : 'text-slate-500 hover:text-slate-700 hover:bg-white/60'
+                        } disabled:cursor-not-allowed cursor-pointer`}
+                      >
+                        <span
+                          className={`w-2 h-2 rounded-full transition-colors ${
+                            !effectiveIsActive ? 'bg-slate-500' : 'bg-slate-300'
+                          }`}
+                        />
+                        منتهية (أرشيف سابق)
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.IsActive}
-                    onChange={(e) => setForm((prev) => ({ ...prev, IsActive: e.target.checked }))}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-                </label>
+
+                {isEndDatePast && (
+                  <p className="mt-2.5 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-[11px] font-medium text-amber-800">
+                    تاريخ النهاية قد مضى — تم تصنيف الحالة تلقائياً كـ «منتهية (أرشيف)».
+                  </p>
+                )}
               </div>
             </div>
           </form>
