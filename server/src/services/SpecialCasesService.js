@@ -74,23 +74,25 @@ function getLifecycleCondition(statusFilter) {
 }
 
 /**
- * Builds a StartDate range condition for a given calendar year.
+ * Builds a StartDate or EndDate range condition for a given calendar year.
  * Returns null when the year is empty/invalid.
  */
 function getYearCondition(year) {
   const y = Number(year);
   if (!Number.isInteger(y) || y < 1900 || y > 2200) return null;
+  const startOfYear = new Date(y, 0, 1);
+  const endOfYear = new Date(y + 1, 0, 1);
   return {
-    StartDate: {
-      gte: new Date(y, 0, 1),
-      lt: new Date(y + 1, 0, 1),
-    },
+    OR: [
+      { StartDate: { gte: startOfYear, lt: endOfYear } },
+      { EndDate: { gte: startOfYear, lt: endOfYear } },
+    ],
   };
 }
 
 /**
- * Returns the distinct StartDate years present in SpecialCases (desc).
- * Used to populate the year filter dropdown; fails soft to [].
+ * Returns distinct StartDate/EndDate years present in SpecialCases (desc).
+ * Used to populate distinct years; fails soft to [].
  */
 async function getDistinctYears() {
   try {
@@ -98,6 +100,10 @@ async function getDistinctYears() {
       SELECT DISTINCT YEAR(StartDate) AS y
       FROM SpecialCases
       WHERE StartDate IS NOT NULL
+      UNION
+      SELECT DISTINCT YEAR(EndDate) AS y
+      FROM SpecialCases
+      WHERE EndDate IS NOT NULL
       ORDER BY y DESC`;
     return rows.map((r) => Number(r.y)).filter((y) => Number.isInteger(y) && y > 0);
   } catch (_) {
@@ -174,7 +180,13 @@ class SpecialCasesService {
       };
     };
 
-    const whereClause = buildWhereForStatus(statusFilter);
+    const currentYear = new Date().getFullYear();
+    const effectiveStatus =
+      statusFilter === "temporary_active" && year && Number(year) < currentYear
+        ? "all"
+        : statusFilter;
+
+    const whereClause = buildWhereForStatus(effectiveStatus);
 
     const [total, cases, tempActiveCount, permExitCount, archivedCount, allCount, years] =
       await Promise.all([

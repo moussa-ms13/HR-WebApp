@@ -68,10 +68,15 @@ export default function SpecialCasesList() {
   const debouncedSearch = useDebounce(searchInput, 500);
   const search = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : '';
 
-  // When searching from the default operational view, search across ALL records
-  // so historical / permanent-exit cases are always findable by name.
+  const currentYear = new Date().getFullYear();
+  const isPastYear = Boolean(yearFilter) && Number(yearFilter) < currentYear;
+
+  // When searching or selecting a past year from the default operational view,
+  // automatically search across ALL records so historical / exit cases appear immediately.
   const isSearchAcrossAll = Boolean(search) && statusFilter === DEFAULT_RECORD_VIEW;
-  const effectiveStatusFilter = isSearchAcrossAll ? 'all' : statusFilter;
+  const isPastYearAcrossAll = isPastYear && statusFilter === DEFAULT_RECORD_VIEW;
+  const isAutoExpanded = isSearchAcrossAll || isPastYearAcrossAll;
+  const effectiveStatusFilter = isAutoExpanded ? 'all' : statusFilter;
 
   const { data, isLoading, mutate } = useSWR(
     ['/api/special-cases', page, limit, search, directorateFilter, provinceFilter, effectiveStatusFilter, caseTypeFilter, yearFilter],
@@ -226,6 +231,16 @@ export default function SpecialCasesList() {
         >
           <Info size={14} className="shrink-0 text-sky-600" />
           يتم البحث في جميع السجلات (السارية، الخروج النهائي، والأرشيف) لضمان العثور على أي موظف.
+        </div>
+      )}
+
+      {isPastYearAcrossAll && !isSearchAcrossAll && (
+        <div
+          id="special-cases-year-scope-hint"
+          className="-mt-3 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-100 text-xs font-medium text-amber-800"
+        >
+          <Info size={14} className="shrink-0 text-amber-600" />
+          عرض سجلات سنة {yearFilter} عبر كافة الحالات (السارية، الخروج النهائي، والأرشيف التاريخي).
         </div>
       )}
 
