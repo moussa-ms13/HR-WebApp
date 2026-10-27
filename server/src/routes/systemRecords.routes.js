@@ -15,11 +15,14 @@ router.use(authenticate);
  * Query params: page, limit, search
  */
 router.get("/", hasPermission("checkBoxSystemRecords"), async (req, res) => {
-  const { page, limit, search } = req.query;
+  const { page, limit, search, action, sortBy, sortOrder } = req.query;
   const result = await SystemRecordService.getAll({
     page: page ? Number(page) : undefined,
     limit: limit ? Number(limit) : undefined,
     search: search || "",
+    action: action || "",
+    sortBy: sortBy || "CreatedDate",
+    sortOrder: sortOrder || "desc",
   });
   // Since our service now returns { success: true, data: records, meta: ... }
   // we just return result directly

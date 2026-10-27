@@ -60,26 +60,45 @@ class SystemRecordService {
   /**
    * Retrieve system records with optional filtering and pagination.
    */
-  static async getAll({ page = 1, limit = 50, usersId = null, search = "" } = {}) {
+  static async getAll({ page = 1, limit = 50, usersId = null, search = "", action = "", sortBy = "CreatedDate", sortOrder = "desc" } = {}) {
     const { safePage, safeLimit, skip } = sanitizePagination(page, limit, 100);
     const where = {};
     if (usersId) where.UsersId = usersId;
+    if (action) where.Title = { contains: action };
     
     const tokenSearch = buildTokenizedSearch(search, (token) => [
       { Title: { contains: token } },
       { Description: { contains: token } },
       { UserFullName: { contains: token } },
+      { DeviceName: { contains: token } },
       { Employee: { LastName: { contains: token } } },
       { Employee: { Name: { contains: token } } },
     ]);
     if (tokenSearch) {
-      where.AND = tokenSearch.AND;
+      if (where.Title) {
+        where.AND = [
+          { Title: where.Title },
+          ...tokenSearch.AND
+        ];
+        delete where.Title;
+      } else {
+        where.AND = tokenSearch.AND;
+      }
     }
+
+    let orderBy = { CreatedDate: "desc" };
+    const direction = sortOrder?.toLowerCase() === "asc" ? "asc" : "desc";
+    if (sortBy === "Id") orderBy = { Id: direction };
+    else if (sortBy === "CreatedDate") orderBy = { CreatedDate: direction };
+    else if (sortBy === "Title") orderBy = { Title: direction };
+    else if (sortBy === "UserFullName") orderBy = { UserFullName: direction };
+    else if (sortBy === "DeviceName") orderBy = { DeviceName: direction };
+    else if (sortBy === "Employee") orderBy = { Employee: { LastName: direction } };
 
     const [records, total] = await Promise.all([
       prisma.systemRecords.findMany({
         where,
-        orderBy: { CreatedDate: "desc" },
+        orderBy,
         skip,
         take: safeLimit,
         select: {
