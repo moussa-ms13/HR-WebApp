@@ -29,7 +29,7 @@ router.use(authenticate);
  */
 router.get("/", async (req, res, next) => {
   try {
-    const { page, limit, category, employeeId, search, directorate, province } = req.query;
+    const { page, limit, category, employeeId, search, directorate, province, sortBy, sortOrder } = req.query;
     const result = await EmployeeStatesService.getAll(
       req.user,
       Number(page) || 1,
@@ -38,7 +38,9 @@ router.get("/", async (req, res, next) => {
       employeeId || null,
       search || "",
       directorate || "",
-      province || ""
+      province || "",
+      sortBy || "Id",
+      sortOrder || "desc"
     );
     res.json({ success: true, ...result });
   } catch (error) {

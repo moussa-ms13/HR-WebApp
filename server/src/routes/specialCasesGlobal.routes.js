@@ -17,7 +17,7 @@ router.use(authenticate);
  * GET /api/special-cases?page&limit&search&province&directorate&statusFilter&caseType&year
  */
 router.get("/", hasPermission(PERMISSIONS.SPECIAL_CASES), async (req, res) => {
-  const { page, limit, search, province, directorate, statusFilter, caseType, year } = req.query;
+  const { page, limit, search, province, directorate, statusFilter, caseType, year, sortBy, sortOrder } = req.query;
   const result = await SpecialCasesService.getAll(
     req.user,
     Number(page) || 1,
@@ -27,7 +27,9 @@ router.get("/", hasPermission(PERMISSIONS.SPECIAL_CASES), async (req, res) => {
     directorate || "",
     statusFilter || "temporary_active",
     caseType || "",
-    year || ""
+    year || "",
+    sortBy || "Id",
+    sortOrder || "desc"
   );
   res.json({ success: true, ...result });
 });

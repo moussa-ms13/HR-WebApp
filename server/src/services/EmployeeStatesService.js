@@ -18,7 +18,7 @@ class EmployeeStatesService {
   /**
    * Fetch all employee states with pagination and geographic RBAC.
    */
-  static async getAll(requestingUser, page = 1, limit = 25, category = "", employeeId = null, search = "", directorate = "", province = "") {
+  static async getAll(requestingUser, page = 1, limit = 25, category = "", employeeId = null, search = "", directorate = "", province = "", sortBy = "Id", sortOrder = "desc") {
     const { safePage, safeLimit, skip } = sanitizePagination(page, limit, 100);
 
     // Build where clause with geographic filter via Employee relation
@@ -62,6 +62,26 @@ class EmployeeStatesService {
 
     const cachedTotal = CacheService.get(countCacheKey);
 
+    let orderBy = { Id: "desc" };
+    const safeOrder = String(sortOrder || "").toLowerCase() === "asc" ? "asc" : "desc";
+    if (sortBy === "Employee" || sortBy === "employee" || sortBy === "Name") {
+      orderBy = { Employee: { LastName: safeOrder } };
+    } else if (sortBy === "RecordCategory" || sortBy === "category" || sortBy === "Category") {
+      orderBy = { RecordCategory: safeOrder };
+    } else if (sortBy === "StateTypeOrReason" || sortBy === "type" || sortBy === "StateType") {
+      orderBy = { StateTypeOrReason: safeOrder };
+    } else if (sortBy === "StartDate" || sortBy === "startDate") {
+      orderBy = { StartDate: safeOrder };
+    } else if (sortBy === "EndDate" || sortBy === "endDate") {
+      orderBy = { EndDate: safeOrder };
+    } else if (sortBy === "DaysCount" || sortBy === "TotalDays" || sortBy === "daysCount") {
+      orderBy = { DaysCount: safeOrder };
+    } else if (sortBy === "IsResumed" || sortBy === "status" || sortBy === "Status") {
+      orderBy = { IsResumed: safeOrder };
+    } else if (sortBy === "Id" || sortBy === "id") {
+      orderBy = { Id: safeOrder };
+    }
+
     const statesPromise = prisma.employeeStates.findMany({
       where: whereClause,
       select: {
@@ -103,7 +123,7 @@ class EmployeeStatesService {
       },
       skip,
       take: safeLimit,
-      orderBy: { Id: "desc" },
+      orderBy,
     });
 
     let total, states;

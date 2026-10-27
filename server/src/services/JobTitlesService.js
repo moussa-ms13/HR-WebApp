@@ -3,6 +3,17 @@ const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
 const cacheService = require("./CacheService");
 
+function normalizeEmploymentCategory(cat) {
+  if (!cat) return "";
+  const trimmed = cat.trim();
+  if (trimmed === "اسلاك تقنية" || trimmed === "أسلاك تقنية") return "أسلاك تقنية (خاصة)";
+  if (trimmed === "متعاقدين بدوام جزئي") return "متعاقدون بدوام جزئي";
+  if (trimmed === "متعاقدين بدوام كلي") return "متعاقدون بدوام كلي";
+  if (trimmed === "أسلاك مشتركة") return "اسلاك مشتركة";
+  if (trimmed === "غير محدد") return "";
+  return trimmed;
+}
+
 class JobTitlesService {
   /**
    * Fetch all Job Titles with optional pagination/search
@@ -79,7 +90,7 @@ class JobTitlesService {
 
     const job = await prisma.jobTitles.create({
       data: {
-        EmploymentCategory: data.EmploymentCategory,
+        EmploymentCategory: normalizeEmploymentCategory(data.EmploymentCategory),
         RankName: data.RankName,
         CategoryLevel: data.CategoryLevel,
         IndexNumber: Number(data.IndexNumber) || 0,
@@ -120,7 +131,7 @@ class JobTitlesService {
     const updatedJob = await prisma.jobTitles.update({
       where: { Id: id },
       data: {
-        EmploymentCategory: data.EmploymentCategory ?? job.EmploymentCategory,
+        EmploymentCategory: data.EmploymentCategory !== undefined ? normalizeEmploymentCategory(data.EmploymentCategory) : job.EmploymentCategory,
         RankName: data.RankName ?? job.RankName,
         CategoryLevel: data.CategoryLevel ?? job.CategoryLevel,
         IndexNumber: data.IndexNumber !== undefined ? Number(data.IndexNumber) : job.IndexNumber

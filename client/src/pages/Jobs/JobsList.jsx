@@ -22,25 +22,25 @@ const HeaderCell = ({
   sortKey = null, 
   currentSort = '', 
   onSort = null, 
-  align = 'right',
+  align = 'right', 
   className = '' 
 }) => {
   const isSorted = sortKey && currentSort === sortKey;
   return (
     <th 
       onClick={() => sortKey && onSort?.(sortKey)}
-      className={`py-4 px-5 font-semibold text-xs sm:text-sm text-slate-700 whitespace-nowrap bg-slate-50/70 border-b border-slate-100 select-none ${
-        sortKey ? 'cursor-pointer hover:text-slate-900 group' : ''
+      className={`py-4 px-4 font-medium text-sm text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 select-none ${
+        sortKey ? 'cursor-pointer hover:bg-slate-50/80 hover:text-slate-800 group transition-colors' : ''
       } ${align === 'center' ? 'text-center' : ''} ${className}`}
     >
       <div className={`flex items-center gap-1.5 transition-colors ${align === 'center' ? 'justify-center' : ''}`}>
-        <span>{label}</span>
+        <span className={isSorted ? 'text-slate-900 font-semibold' : ''}>{label}</span>
         {sortKey && (
           <ArrowUpDown 
             size={12} 
             className={`transition-colors ${
               isSorted 
-                ? 'text-emerald-600 font-bold' 
+                ? 'text-[#10B981] font-bold' 
                 : 'text-gray-300 group-hover:text-gray-500'
             }`} 
           />
@@ -97,12 +97,13 @@ const JobsList = () => {
     return [];
   }, [data]);
 
-  // Distinct employment categories
-  const categories = useMemo(() => {
-    const defaults = ['اسلاك مشتركة', 'أسلاك تقنية (خاصة)', 'متعاقدون بدوام كلي', 'متعاقدون بدوام جزئي'];
-    const fromData = rawJobs.map(j => j.EmploymentCategory).filter(Boolean);
-    return Array.from(new Set([...defaults, ...fromData]));
-  }, [rawJobs]);
+  // Canonical 4 employment categories
+  const categories = [
+    'اسلاك مشتركة',
+    'أسلاك تقنية (خاصة)',
+    'متعاقدون بدوام كلي',
+    'متعاقدون بدوام جزئي',
+  ];
 
   const handleSort = (field) => {
     if (sortField === field) {
@@ -248,17 +249,17 @@ const JobsList = () => {
       </div>
 
       {/* Standalone Table Card */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden flex-1 flex flex-col">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col relative">
         <div className="overflow-x-auto flex-1 custom-scrollbar">
           <table className="w-full text-right border-collapse">
-            <thead className="sticky top-0 z-10 bg-slate-50/70 border-b border-slate-100">
+            <thead className="sticky top-0 z-10 bg-white">
               <tr>
                 <HeaderCell label="المعرف" sortKey="Id" currentSort={sortField} onSort={handleSort} />
                 <HeaderCell label="صنف التوظيف" sortKey="EmploymentCategory" currentSort={sortField} onSort={handleSort} />
                 <HeaderCell label="اسم الرتبة" sortKey="RankName" currentSort={sortField} onSort={handleSort} />
                 <HeaderCell label="الصنف" sortKey="CategoryLevel" currentSort={sortField} onSort={handleSort} />
                 <HeaderCell label="الرقم الاستدلالي" sortKey="IndexNumber" currentSort={sortField} onSort={handleSort} />
-                <th className="py-4 px-5 font-semibold text-xs sm:text-sm text-slate-700 whitespace-nowrap bg-slate-50/70 border-b border-slate-100 text-center select-none">
+                <th className="py-4 px-4 font-medium text-sm text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center select-none">
                   الإجراء
                 </th>
               </tr>
@@ -280,17 +281,17 @@ const JobsList = () => {
                 </tr>
               ) : (
                 paginatedJobs.map((job) => (
-                  <tr key={job.Id} className="hover:bg-slate-50/60 transition-colors group">
-                    <td className="py-3.5 px-5 text-gray-500 font-mono text-xs">{job.Id}</td>
-                    <td className="py-3.5 px-5 font-medium text-slate-700">{job.EmploymentCategory}</td>
-                    <td className="py-3.5 px-5 font-bold text-slate-800">{job.RankName}</td>
-                    <td className="py-3.5 px-5">
+                  <tr key={job.Id} className="hover:bg-slate-50/50 transition-colors group">
+                    <td className="py-3 px-4 text-gray-500 font-mono text-xs">{job.Id}</td>
+                    <td className="py-3 px-4 font-medium text-slate-700">{job.EmploymentCategory}</td>
+                    <td className="py-3 px-4 font-bold text-slate-800">{job.RankName}</td>
+                    <td className="py-3 px-4">
                       <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-xs font-bold border border-slate-200">
                         {job.CategoryLevel || '-'}
                       </span>
                     </td>
-                    <td className="py-3.5 px-5 font-mono text-gray-600 text-xs">{job.IndexNumber}</td>
-                    <td className="py-3.5 px-5 text-center">
+                    <td className="py-3 px-4 font-mono text-gray-600 text-xs">{job.IndexNumber}</td>
+                    <td className="py-3 px-4 text-center">
                       <div className="relative inline-block text-right" onClick={(e) => e.stopPropagation()}>
                         <button 
                           onClick={() => setMenuOpenId(menuOpenId === job.Id ? null : job.Id)}

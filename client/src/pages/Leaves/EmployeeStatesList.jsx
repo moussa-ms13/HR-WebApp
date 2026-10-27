@@ -16,8 +16,8 @@ import { DateText } from '../../utils/formatDate';
 import { printLeaveCertificate } from '../../utils/printLeaveCertificate';
 import { formatEmployeeName } from '../../utils/employeeUtils';
 
-const fetcher = async ([_url, page, limit, category, search, directorate, province]) => {
-  const result = await EmployeeStatesService.getAll(page, limit, category, search, directorate, province);
+const fetcher = async ([_url, page, limit, category, search, directorate, province, sortBy, sortOrder]) => {
+  const result = await EmployeeStatesService.getAll(page, limit, category, search, directorate, province, sortBy, sortOrder);
   if (!result.success) throw new Error("Failed to fetch");
   return result;
 };
@@ -34,6 +34,20 @@ const EmployeeStatesList = () => {
   const [directorateFilter, setDirectorateFilter] = useState('');
   const [searchInput, setSearchInput] = useState(() => searchParams.get('search')?.trim() || '');
 
+  // Sorting state
+  const [sortBy, setSortBy] = useState('Id');
+  const [sortOrder, setSortOrder] = useState('desc');
+
+  const handleSort = (field) => {
+    if (sortBy === field) {
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder(field === 'Id' ? 'desc' : 'asc');
+    }
+    setPage(1);
+  };
+
   const allowedProvinces = getAllowedProvinces(useAuth().user);
   const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
   const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
@@ -43,7 +57,7 @@ const EmployeeStatesList = () => {
   const search = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : '';
 
   const { data, isLoading, mutate } = useSWR(
-    ['/api/employee-states', page, limit, '', search, directorateFilter, provinceFilter],
+    ['/api/employee-states', page, limit, '', search, directorateFilter, provinceFilter, sortBy, sortOrder],
     fetcher,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
@@ -169,14 +183,38 @@ const EmployeeStatesList = () => {
     }
   };
 
-  const HeaderCell = ({ label }) => (
-    <th className="py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100">
-      <div className="flex items-center gap-1.5 cursor-pointer hover:text-slate-800 transition-colors">
-        {label}
-        <ArrowUpDown size={12} className="text-gray-300" />
-      </div>
-    </th>
-  );
+  const HeaderCell = ({ 
+    label, 
+    sortKey = null, 
+    currentSort = '', 
+    onSort = null, 
+    align = 'right', 
+    className = '' 
+  }) => {
+    const isSorted = sortKey && currentSort === sortKey;
+    return (
+      <th 
+        onClick={() => sortKey && onSort?.(sortKey)}
+        className={`py-4 px-4 font-medium text-sm text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 select-none ${
+          sortKey ? 'cursor-pointer hover:bg-slate-50/80 hover:text-slate-800 group transition-colors' : ''
+        } ${align === 'center' ? 'text-center' : ''} ${className}`}
+      >
+        <div className={`flex items-center gap-1.5 transition-colors ${align === 'center' ? 'justify-center' : ''}`}>
+          <span className={isSorted ? 'text-slate-900 font-semibold' : ''}>{label}</span>
+          {sortKey && (
+            <ArrowUpDown 
+              size={12} 
+              className={`transition-colors ${
+                isSorted 
+                  ? 'text-[#10B981] font-bold' 
+                  : 'text-gray-300 group-hover:text-gray-500'
+              }`} 
+            />
+          )}
+        </div>
+      </th>
+    );
+  };
 
   return (
     <div className="flex flex-col h-full font-sans text-slate-800" dir="rtl">
@@ -200,16 +238,16 @@ const EmployeeStatesList = () => {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col">
         <div className="overflow-x-auto flex-1 custom-scrollbar">
           <table className="w-full text-right border-collapse">
-            <thead className="sticky top-0 z-10">
+            <thead className="sticky top-0 z-10 bg-white">
               <tr>
-                <HeaderCell label="الموظف" />
-                <HeaderCell label="الفئة" />
-                <HeaderCell label="النوع" />
-                <HeaderCell label="تاريخ البداية" />
-                <HeaderCell label="تاريخ النهاية" />
-                <HeaderCell label="المدة (أيام)" />
-                <HeaderCell label="حالة الاستئناف" />
-                <th className="py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center">الإجراء</th>
+                <HeaderCell label="الموظف" sortKey="Employee" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="الفئة" sortKey="RecordCategory" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="النوع" sortKey="StateTypeOrReason" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="تاريخ البداية" sortKey="StartDate" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="تاريخ النهاية" sortKey="EndDate" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="المدة (أيام)" sortKey="DaysCount" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="حالة الاستئناف" sortKey="IsResumed" currentSort={sortBy} onSort={handleSort} />
+                <th className="py-4 px-4 font-medium text-sm text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center select-none">الإجراء</th>
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-gray-100">

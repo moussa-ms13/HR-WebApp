@@ -167,6 +167,8 @@ const EMPLOYEE_SUMMARY_SELECT = Object.freeze({
 const SORT_MAPPING = Object.freeze({
   id: "Id",
   Id: "Id",
+  jobNumber: "Id",
+  JobNumber: "Id",
   name: "Name",
   Name: "Name",
   lastName: "LastName",

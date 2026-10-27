@@ -21,25 +21,25 @@ const HeaderCell = ({
   sortKey = null, 
   currentSort = '', 
   onSort = null, 
-  align = 'right',
+  align = 'right', 
   className = '' 
 }) => {
   const isSorted = sortKey && currentSort === sortKey;
   return (
     <th 
       onClick={() => sortKey && onSort?.(sortKey)}
-      className={`py-4 px-5 font-semibold text-xs sm:text-sm text-slate-700 whitespace-nowrap bg-slate-50/70 border-b border-slate-100 select-none ${
-        sortKey ? 'cursor-pointer hover:text-slate-900 group' : ''
+      className={`py-4 px-4 font-medium text-sm text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 select-none ${
+        sortKey ? 'cursor-pointer hover:bg-slate-50/80 hover:text-slate-800 group transition-colors' : ''
       } ${align === 'center' ? 'text-center' : ''} ${className}`}
     >
       <div className={`flex items-center gap-1.5 transition-colors ${align === 'center' ? 'justify-center' : ''}`}>
-        <span>{label}</span>
+        <span className={isSorted ? 'text-slate-900 font-semibold' : ''}>{label}</span>
         {sortKey && (
           <ArrowUpDown 
             size={12} 
             className={`transition-colors ${
               isSorted 
-                ? 'text-emerald-600 font-bold' 
+                ? 'text-[#10B981] font-bold' 
                 : 'text-gray-300 group-hover:text-gray-500'
             }`} 
           />
@@ -179,17 +179,17 @@ const SystemRecordsList = () => {
       </div>
 
       {/* Standalone Table Card */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden flex-1 flex flex-col">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col relative">
         <div className="overflow-x-auto flex-1 custom-scrollbar">
           <table className="w-full text-right border-collapse">
-            <thead className="sticky top-0 z-10 bg-slate-50/70 border-b border-slate-100">
+            <thead className="sticky top-0 z-10 bg-white">
               <tr>
                 <HeaderCell label="المعرف" sortKey="Id" currentSort={sortBy} onSort={handleSort} />
                 <HeaderCell label="تاريخ الحركة" sortKey="CreatedDate" currentSort={sortBy} onSort={handleSort} />
                 <HeaderCell label="عنوان الحركة" sortKey="Title" currentSort={sortBy} onSort={handleSort} />
                 <HeaderCell label="الموظف المعني" sortKey="Employee" currentSort={sortBy} onSort={handleSort} />
                 <HeaderCell label="المنفذ" sortKey="UserFullName" currentSort={sortBy} onSort={handleSort} />
-                <th className="py-4 px-5 font-semibold text-xs sm:text-sm text-slate-700 whitespace-nowrap bg-slate-50/70 border-b border-slate-100 select-none">
+                <th className="py-4 px-4 font-medium text-sm text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 select-none">
                   الوصف
                 </th>
                 <HeaderCell label="اسم الجهاز" sortKey="DeviceName" currentSort={sortBy} onSort={handleSort} />
@@ -212,13 +212,13 @@ const SystemRecordsList = () => {
                 </tr>
               ) : (
                 records.map((rec) => (
-                  <tr key={rec?.Id || Math.random()} className="hover:bg-slate-50/60 transition-colors group">
-                    <td className="py-3.5 px-5 text-gray-500 font-mono text-xs">{rec?.Id}</td>
-                    <td className="py-3.5 px-5 text-slate-600 text-xs">
+                  <tr key={rec?.Id || Math.random()} className="hover:bg-slate-50/50 transition-colors group">
+                    <td className="py-3 px-4 text-gray-500 font-mono text-xs">{rec?.Id}</td>
+                    <td className="py-3 px-4 text-slate-600 text-xs">
                       <DateText value={rec?.CreatedDate} showTime />
                     </td>
-                    <td className="py-3.5 px-5 font-bold text-slate-800">{rec?.Title}</td>
-                    <td className="py-3.5 px-5 font-medium text-slate-700">
+                    <td className="py-3 px-4 font-bold text-slate-800">{rec?.Title}</td>
+                    <td className="py-3 px-4 font-medium text-slate-700">
                       {rec?.Employee ? (
                         <Link 
                           to={`/employees/${rec.Employee.Id}`} 
@@ -230,14 +230,14 @@ const SystemRecordsList = () => {
                         <span className="text-gray-400 font-normal">—</span>
                       )}
                     </td>
-                    <td className="py-3.5 px-5 font-medium text-slate-700">{rec?.UserFullName || '—'}</td>
+                    <td className="py-3 px-4 font-medium text-slate-700">{rec?.UserFullName || '—'}</td>
                     <td 
-                      className="py-3.5 px-5 text-slate-600 max-w-[280px] truncate text-xs" 
+                      className="py-3 px-4 text-slate-600 max-w-[280px] truncate text-xs" 
                       title={rec?.Description}
                     >
                       {rec?.Description || '—'}
                     </td>
-                    <td className="py-3.5 px-5 text-gray-400 text-xs font-mono" dir="ltr">
+                    <td className="py-3 px-4 text-gray-400 text-xs font-mono" dir="ltr">
                       {rec?.DeviceName || '—'}
                     </td>
                   </tr>

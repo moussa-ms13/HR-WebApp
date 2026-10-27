@@ -109,9 +109,13 @@ class ExportService {
       formattedDirectorates[p] = Array.from(dirs).sort();
     }
 
-    const employmentCategories = Array.from(
-      new Set(jobTitles.map((j) => (j.EmploymentCategory || "").trim()).filter(Boolean))
-    ).sort();
+    const CANONICAL_CATEGORIES = [
+      "اسلاك مشتركة",
+      "أسلاك تقنية (خاصة)",
+      "متعاقدون بدوام كلي",
+      "متعاقدون بدوام جزئي",
+    ];
+    const employmentCategories = CANONICAL_CATEGORIES;
 
     const dbLeaveTypes = dbLeaveStates.map((s) => (s.StateTypeOrReason || "").trim()).filter(Boolean);
     const leaveTypes = Array.from(new Set([...STANDARD_LEAVE_TYPES, ...dbLeaveTypes])).sort();

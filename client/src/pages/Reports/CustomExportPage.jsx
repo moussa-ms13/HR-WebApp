@@ -464,7 +464,10 @@ const CustomExportPage = () => {
                 className="w-full text-xs font-medium bg-slate-50/80 border border-slate-200 rounded-lg px-3 py-2 text-slate-800 focus:bg-white focus:ring-1 focus:ring-emerald-500 focus:border-emerald-600 outline-hidden"
               >
                 <option value="">جميع فئات التوظيف</option>
-                {filterOptions.employmentCategories.map((c) => (
+                {(filterOptions.employmentCategories?.length > 0
+                  ? filterOptions.employmentCategories.filter((c) => c && c !== 'غير محدد' && c !== 'اسلاك تقنية' && c !== 'متعاقدين بدوام جزئي')
+                  : ['اسلاك مشتركة', 'أسلاك تقنية (خاصة)', 'متعاقدون بدوام كلي', 'متعاقدون بدوام جزئي']
+                ).map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>

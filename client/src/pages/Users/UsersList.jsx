@@ -21,25 +21,25 @@ const HeaderCell = ({
   sortKey = null, 
   currentSort = '', 
   onSort = null, 
-  align = 'right',
+  align = 'right', 
   className = '' 
 }) => {
   const isSorted = sortKey && currentSort === sortKey;
   return (
     <th 
       onClick={() => sortKey && onSort?.(sortKey)}
-      className={`py-4 px-5 font-semibold text-xs sm:text-sm text-slate-700 whitespace-nowrap bg-slate-50/70 border-b border-slate-100 select-none ${
-        sortKey ? 'cursor-pointer hover:text-slate-900 group' : ''
+      className={`py-4 px-4 font-medium text-sm text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 select-none ${
+        sortKey ? 'cursor-pointer hover:bg-slate-50/80 hover:text-slate-800 group transition-colors' : ''
       } ${align === 'center' ? 'text-center' : ''} ${className}`}
     >
       <div className={`flex items-center gap-1.5 transition-colors ${align === 'center' ? 'justify-center' : ''}`}>
-        <span>{label}</span>
+        <span className={isSorted ? 'text-slate-900 font-semibold' : ''}>{label}</span>
         {sortKey && (
           <ArrowUpDown 
             size={12} 
             className={`transition-colors ${
               isSorted 
-                ? 'text-emerald-600 font-bold' 
+                ? 'text-[#10B981] font-bold' 
                 : 'text-gray-300 group-hover:text-gray-500'
             }`} 
           />
@@ -232,10 +232,10 @@ const UsersList = () => {
       </div>
 
       {/* Standalone Table Card */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden flex-1 flex flex-col">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col relative">
         <div className="overflow-x-auto flex-1 custom-scrollbar">
           <table className="w-full text-right border-collapse">
-            <thead className="sticky top-0 z-10 bg-slate-50/70 border-b border-slate-100">
+            <thead className="sticky top-0 z-10 bg-white">
               <tr>
                 <HeaderCell label="المعرف" sortKey="Id" currentSort={sortField} onSort={handleSort} />
                 <HeaderCell label="الاسم الكامل" sortKey="FullName" currentSort={sortField} onSort={handleSort} />
@@ -243,7 +243,7 @@ const UsersList = () => {
                 <HeaderCell label="الصلاحية" sortKey="Role" currentSort={sortField} onSort={handleSort} />
                 <HeaderCell label="البريد الإلكتروني" sortKey="Email" currentSort={sortField} onSort={handleSort} />
                 <HeaderCell label="رقم الهاتف" sortKey="Phone" currentSort={sortField} onSort={handleSort} />
-                <th className="py-4 px-5 font-semibold text-xs sm:text-sm text-slate-700 whitespace-nowrap bg-slate-50/70 border-b border-slate-100 text-center select-none">
+                <th className="py-4 px-4 font-medium text-sm text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center select-none">
                   الإجراء
                 </th>
               </tr>
@@ -265,11 +265,11 @@ const UsersList = () => {
                 </tr>
               ) : (
                 paginatedUsers.map((u) => (
-                  <tr key={u.Id} className="hover:bg-slate-50/60 transition-colors group">
-                    <td className="py-3.5 px-5 text-gray-500 font-mono text-xs">{u.Id}</td>
-                    <td className="py-3.5 px-5 font-bold text-slate-800">{u.FullName}</td>
-                    <td className="py-3.5 px-5 text-slate-600 font-medium font-mono text-xs" dir="ltr">{u.UserName}</td>
-                    <td className="py-3.5 px-5">
+                  <tr key={u.Id} className="hover:bg-slate-50/50 transition-colors group">
+                    <td className="py-3 px-4 text-gray-500 font-mono text-xs">{u.Id}</td>
+                    <td className="py-3 px-4 font-bold text-slate-800">{u.FullName}</td>
+                    <td className="py-3 px-4 text-slate-600 font-medium font-mono text-xs" dir="ltr">{u.UserName}</td>
+                    <td className="py-3 px-4">
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${
                         u.Role === 'Admin' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
                         u.Role === 'Read' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
@@ -279,9 +279,9 @@ const UsersList = () => {
                         {u.Role}
                       </span>
                     </td>
-                    <td className="py-3.5 px-5 text-gray-500 text-xs font-mono">{u.Email || '-'}</td>
-                    <td className="py-3.5 px-5 text-gray-500 text-xs font-mono" dir="ltr">{u.Phone || '-'}</td>
-                    <td className="py-3.5 px-5 text-center">
+                    <td className="py-3 px-4 text-gray-500 text-xs font-mono">{u.Email || '-'}</td>
+                    <td className="py-3 px-4 text-gray-500 text-xs font-mono" dir="ltr">{u.Phone || '-'}</td>
+                    <td className="py-3 px-4 text-center">
                       <div className="relative inline-block text-right" onClick={(e) => e.stopPropagation()}>
                         <button 
                           onClick={() => setMenuOpenId(menuOpenId === u.Id ? null : u.Id)}

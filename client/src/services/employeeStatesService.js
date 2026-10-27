@@ -3,13 +3,10 @@ import apiClient from './apiClient';
 class EmployeeStatesService {
   /**
    * Fetch paginated employee states.
-   * @param {number} page 
-   * @param {number} limit 
-   * @param {string} category 
    */
-  static async getAll(page = 1, limit = 20, category = '', search = '', directorate = '', province = '') {
+  static async getAll(page = 1, limit = 25, category = '', search = '', directorate = '', province = '', sortBy = '', sortOrder = '') {
     const response = await apiClient.get('/employee-states', {
-      params: { page, limit, category, search, directorate, province }
+      params: { page, limit, category, search, directorate, province, sortBy, sortOrder }
     });
     return response.data;
   }

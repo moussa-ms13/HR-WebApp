@@ -124,7 +124,9 @@ class SpecialCasesService {
     directorate = "",
     statusFilter = "temporary_active",
     caseType = "",
-    year = ""
+    year = "",
+    sortBy = "Id",
+    sortOrder = "desc"
   ) {
     const { safePage, safeLimit, skip } = sanitizePagination(page, limit, 100);
 
@@ -188,6 +190,24 @@ class SpecialCasesService {
 
     const whereClause = buildWhereForStatus(effectiveStatus);
 
+    let orderBy = { Id: "desc" };
+    const safeOrder = String(sortOrder || "").toLowerCase() === "asc" ? "asc" : "desc";
+    if (sortBy === "Employee" || sortBy === "employee" || sortBy === "Name") {
+      orderBy = { Employee: { LastName: safeOrder } };
+    } else if (sortBy === "CaseType" || sortBy === "caseType") {
+      orderBy = { CaseType: safeOrder };
+    } else if (sortBy === "Destination" || sortBy === "destination") {
+      orderBy = { Destination: safeOrder };
+    } else if (sortBy === "ReferenceDoc" || sortBy === "referenceDoc") {
+      orderBy = { ReferenceDoc: safeOrder };
+    } else if (sortBy === "StartDate" || sortBy === "startDate") {
+      orderBy = { StartDate: safeOrder };
+    } else if (sortBy === "Status" || sortBy === "status" || sortBy === "IsActive") {
+      orderBy = { IsActive: safeOrder };
+    } else if (sortBy === "Id" || sortBy === "id") {
+      orderBy = { Id: safeOrder };
+    }
+
     const [total, cases, tempActiveCount, permExitCount, archivedCount, allCount, years] =
       await Promise.all([
         prisma.specialCases.count({ where: whereClause }),
@@ -207,7 +227,7 @@ class SpecialCasesService {
           },
           skip,
           take: safeLimit,
-          orderBy: { Id: "desc" },
+          orderBy,
         }),
         prisma.specialCases.count({ where: buildWhereForStatus("temporary_active") }),
         prisma.specialCases.count({ where: buildWhereForStatus("permanent_exit") }),

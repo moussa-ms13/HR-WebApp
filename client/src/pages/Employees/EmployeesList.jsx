@@ -29,14 +29,38 @@ const fetcher = async (
   return result;
 };
 
-const HeaderCell = ({ label, align }) => (
-  <th className={`py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 ${align === 'center' ? 'text-center' : ''}`}>
-    <div className={`flex items-center gap-1.5 cursor-pointer hover:text-slate-800 transition-colors ${align === 'center' ? 'justify-center' : ''}`}>
-      {label}
-      <ArrowUpDown size={12} className="text-gray-300" />
-    </div>
-  </th>
-);
+const HeaderCell = ({ 
+  label, 
+  sortKey = null, 
+  currentSort = '', 
+  onSort = null, 
+  align = 'right', 
+  className = '' 
+}) => {
+  const isSorted = sortKey && currentSort === sortKey;
+  return (
+    <th 
+      onClick={() => sortKey && onSort?.(sortKey)}
+      className={`py-4 px-4 font-medium text-sm text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 select-none ${
+        sortKey ? 'cursor-pointer hover:bg-slate-50/80 hover:text-slate-800 group transition-colors' : ''
+      } ${align === 'center' ? 'text-center' : ''} ${className}`}
+    >
+      <div className={`flex items-center gap-1.5 transition-colors ${align === 'center' ? 'justify-center' : ''}`}>
+        <span className={isSorted ? 'text-slate-900 font-semibold' : ''}>{label}</span>
+        {sortKey && (
+          <ArrowUpDown 
+            size={12} 
+            className={`transition-colors ${
+              isSorted 
+                ? 'text-[#10B981] font-bold' 
+                : 'text-gray-300 group-hover:text-gray-500'
+            }`} 
+          />
+        )}
+      </div>
+    </th>
+  );
+};
 
 const renderStatusBadge = (status) => {
   if (status === 'مرسم' || status === 'مثبت' || status === 'نشط') {
@@ -86,6 +110,20 @@ const EmployeesList = () => {
   const [directorateFilter, setDirectorateFilter] = useState('');
   const [fileStatusFilter, setFileStatusFilter] = useState('');
   const [isExporting, setIsExporting] = useState(false);
+
+  // Sorting state
+  const [sortBy, setSortBy] = useState('Id');
+  const [sortOrder, setSortOrder] = useState('desc');
+
+  const handleSort = (field) => {
+    if (sortBy === field) {
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder(field === 'Id' ? 'desc' : 'asc');
+    }
+    setPage(1);
+  };
   
   const allowedProvinces = getAllowedProvinces(useAuth().user);
 
@@ -93,7 +131,7 @@ const EmployeesList = () => {
   const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
 
   const { data, error, isLoading, isValidating, mutate } = useSWR(
-    ['/api/employees', page, limit, search, provinceFilter, directorateFilter, fileStatusFilter],
+    ['/api/employees', page, limit, search, provinceFilter, directorateFilter, fileStatusFilter, '', sortBy, sortOrder],
     fetcher,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
@@ -345,15 +383,15 @@ const EmployeesList = () => {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col relative">
         <div className="overflow-x-auto flex-1 custom-scrollbar">
           <table className="w-full text-right border-collapse">
-            <thead className="sticky top-0 z-10">
+            <thead className="sticky top-0 z-10 bg-white">
               <tr>
-                <HeaderCell label="الرقم الوظيفي" />
-                <HeaderCell label="اللقب والاسم" />
-                <HeaderCell label="اللقب والاسم (FR)" align="center" />
-                <HeaderCell label="الولاية" />
-                <HeaderCell label="الحالة" />
-                <HeaderCell label="الملف" />
-                <th className="py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center">الإجراء</th>
+                <HeaderCell label="الرقم الوظيفي" sortKey="Id" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="اللقب والاسم" sortKey="LastName" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="اللقب والاسم (FR)" sortKey="LastNameFr" currentSort={sortBy} onSort={handleSort} align="center" />
+                <HeaderCell label="الولاية" sortKey="Province" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="الحالة" sortKey="EmployeeStatus" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="الملف" sortKey="IsProfileComplete" currentSort={sortBy} onSort={handleSort} />
+                <th className="py-4 px-4 font-medium text-sm text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center select-none">الإجراء</th>
               </tr>
             </thead>
             <tbody className={`text-sm divide-y divide-gray-100 transition-opacity duration-200 ${isRefreshing ? 'opacity-50' : 'opacity-100'}`}>

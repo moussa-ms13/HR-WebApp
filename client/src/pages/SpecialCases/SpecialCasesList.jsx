@@ -32,7 +32,7 @@ import {
   Info,
 } from 'lucide-react';
 
-const casesFetcher = async ([_url, page, limit, search, directorate, province, statusFilter, caseType, year]) => {
+const casesFetcher = async ([_url, page, limit, search, directorate, province, statusFilter, caseType, year, sortBy, sortOrder]) => {
   const result = await SpecialCasesService.getAll(
     page,
     limit,
@@ -41,7 +41,9 @@ const casesFetcher = async ([_url, page, limit, search, directorate, province, s
     directorate,
     statusFilter,
     caseType,
-    year
+    year,
+    sortBy,
+    sortOrder
   );
   if (!result.success) throw new Error('فشل جلب الحالات الخاصة');
   return result;
@@ -61,6 +63,20 @@ export default function SpecialCasesList() {
   const [directorateFilter, setDirectorateFilter] = useState('');
   const [searchInput, setSearchInput] = useState(() => searchParams.get('search')?.trim() || '');
 
+  // Sorting state
+  const [sortBy, setSortBy] = useState('Id');
+  const [sortOrder, setSortOrder] = useState('desc');
+
+  const handleSort = (field) => {
+    if (sortBy === field) {
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder(field === 'Id' ? 'desc' : 'asc');
+    }
+    setPage(1);
+  };
+
   const allowedProvinces = getAllowedProvinces(user);
   const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
   const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
@@ -79,7 +95,7 @@ export default function SpecialCasesList() {
   const effectiveStatusFilter = isAutoExpanded ? 'all' : statusFilter;
 
   const { data, isLoading, mutate } = useSWR(
-    ['/api/special-cases', page, limit, search, directorateFilter, provinceFilter, effectiveStatusFilter, caseTypeFilter, yearFilter],
+    ['/api/special-cases', page, limit, search, directorateFilter, provinceFilter, effectiveStatusFilter, caseTypeFilter, yearFilter, sortBy, sortOrder],
     casesFetcher,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
@@ -186,14 +202,38 @@ export default function SpecialCasesList() {
     }
   };
 
-  const HeaderCell = ({ label, className = "" }) => (
-    <th className={`py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 ${className}`}>
-      <div className="flex items-center gap-1.5 cursor-pointer hover:text-slate-800 transition-colors">
-        {label}
-        <ArrowUpDown size={12} className="text-gray-300" />
-      </div>
-    </th>
-  );
+  const HeaderCell = ({ 
+    label, 
+    sortKey = null, 
+    currentSort = '', 
+    onSort = null, 
+    align = 'right', 
+    className = '' 
+  }) => {
+    const isSorted = sortKey && currentSort === sortKey;
+    return (
+      <th 
+        onClick={() => sortKey && onSort?.(sortKey)}
+        className={`py-4 px-4 font-medium text-sm text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 select-none ${
+          sortKey ? 'cursor-pointer hover:bg-slate-50/80 hover:text-slate-800 group transition-colors' : ''
+        } ${align === 'center' ? 'text-center' : ''} ${className}`}
+      >
+        <div className={`flex items-center gap-1.5 transition-colors ${align === 'center' ? 'justify-center' : ''}`}>
+          <span className={isSorted ? 'text-slate-900 font-semibold' : ''}>{label}</span>
+          {sortKey && (
+            <ArrowUpDown 
+              size={12} 
+              className={`transition-colors ${
+                isSorted 
+                  ? 'text-[#10B981] font-bold' 
+                  : 'text-gray-300 group-hover:text-gray-500'
+              }`} 
+            />
+          )}
+        </div>
+      </th>
+    );
+  };
 
   return (
     <div className="flex flex-col h-full font-sans text-slate-800" dir="rtl">
@@ -247,20 +287,15 @@ export default function SpecialCasesList() {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col">
         <div className="overflow-x-auto flex-1 custom-scrollbar">
           <table className="w-full text-right border-collapse">
-            <thead className="sticky top-0 z-10">
+            <thead className="sticky top-0 z-10 bg-white">
               <tr>
-                <HeaderCell label="الموظف" />
-                <HeaderCell label="نوع الحالة" />
-                <HeaderCell label="الوجهة / المقر الجديد" />
-                <HeaderCell label="رقم وتاريخ المقرر" />
-                <HeaderCell label="تاريخ السريان" />
-                <th className="py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center">
-                  <div className="flex items-center justify-center gap-1.5 cursor-pointer hover:text-slate-800 transition-colors">
-                    الحالة الإدارية
-                    <ArrowUpDown size={12} className="text-gray-300" />
-                  </div>
-                </th>
-                <th className="py-4 px-4 font-medium text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center">
+                <HeaderCell label="الموظف" sortKey="Employee" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="نوع الحالة" sortKey="CaseType" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="الوجهة / المقر الجديد" sortKey="Destination" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="رقم وتاريخ المقرر" sortKey="ReferenceDoc" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="تاريخ السريان" sortKey="StartDate" currentSort={sortBy} onSort={handleSort} />
+                <HeaderCell label="الحالة الإدارية" sortKey="Status" currentSort={sortBy} onSort={handleSort} align="center" />
+                <th className="py-4 px-4 font-medium text-sm text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center select-none">
                   الإجراءات
                 </th>
               </tr>

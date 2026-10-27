@@ -9,10 +9,12 @@ class SpecialCasesService {
     directorate = '',
     statusFilter = 'temporary_active',
     caseType = '',
-    year = ''
+    year = '',
+    sortBy = '',
+    sortOrder = ''
   ) {
     const response = await apiClient.get('/special-cases', {
-      params: { page, limit, search, province, directorate, statusFilter, caseType, year }
+      params: { page, limit, search, province, directorate, statusFilter, caseType, year, sortBy, sortOrder }
     });
     return response.data;
   }
