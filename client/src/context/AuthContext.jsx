@@ -38,8 +38,11 @@ export const AuthProvider = ({ children }) => {
       return { success: false, message: 'فشل تسجيل الدخول' };
     } catch (error) {
       console.error('Login error:', error);
-      const message = error.response?.data?.message || 'حدث خطأ أثناء الاتصال بالخادم';
-      return { success: false, message };
+      const is401 = error.response?.status === 401;
+      const message = is401
+        ? (error.response?.data?.message || 'اسم المستخدم أو كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى')
+        : (error.response?.data?.message || 'حدث خطأ أثناء الاتصال بالخادم');
+      return { success: false, message, isAuthError: is401 };
     }
   };
 

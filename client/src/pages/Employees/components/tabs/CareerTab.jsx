@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
 import apiClient from '../../../../services/apiClient';
+import { useAuth } from '../../../../context/AuthContext';
 import { useToast } from '../../../../components/ui/Toast';
 import { DateText, normalizeEmbeddedDates } from '../../../../utils/dateUtils';
 import { refreshEmployeeCareer, refreshEmployees } from '../../../../utils/cacheManager';
@@ -72,6 +73,7 @@ const formatReferenceDoc = (doc) => {
 };
 
 const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
+  const { hasPermission } = useAuth();
   const toast = useToast();
   const id = employee?.Id;
 
@@ -111,13 +113,15 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
   const currentYears = currentDegreeLevel;
 
   const category = employee?.JobTitle?.Category || employee?.JobTitle?.EmploymentCategory || employee?.EmploymentCategory || '';
-  const isContractual = category.includes('متعاقد');
+  const isContractual = category.includes('متعاقد') || employee?.EmployeeStatus === 'متعاقد';
 
   // Career Modals State
   const [showRankModal, setShowRankModal] = useState(false);
   const [showPositionModal, setShowPositionModal] = useState(false);
   const [showDegreeModal, setShowDegreeModal] = useState(false);
   const [showContractualModal, setShowContractualModal] = useState(false);
+  const [editingDegree, setEditingDegree] = useState(null);
+  const [editingContractualDegree, setEditingContractualDegree] = useState(null);
 
   const initialContractualForm = {
     Years: '',
@@ -264,18 +268,36 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
   };
 
   // --- Degree Handlers ---
+  const handleEditDegree = (record) => {
+    setEditingDegree(record);
+    setDegreeForm({
+      DegreeLevel: record.DegreeLevel ?? '',
+      PromotionDuration: record.PromotionDuration || record.Pace || '',
+      EffectiveDate: record.EffectiveDate ? new Date(record.EffectiveDate).toISOString().split('T')[0] : '',
+      ReferenceDoc: record.ReferenceDoc || '',
+      Notes: record.Notes || '',
+    });
+    setShowDegreeModal(true);
+  };
+
   const handleDegreeSubmit = async (e) => {
     e.preventDefault();
     try {
       setIsSubmittingDegree(true);
-      await apiClient.post(`/employees/${id}/degrees`, degreeForm);
+      if (editingDegree) {
+        await apiClient.put(`/employees/${id}/degrees/${editingDegree.Id}`, degreeForm);
+        toast.success('تم تعديل الدرجة بنجاح');
+      } else {
+        await apiClient.post(`/employees/${id}/degrees`, degreeForm);
+        toast.success('تمت إضافة الدرجة بنجاح');
+      }
       await refreshEmployeeCareer(id);
       await refreshEmployees(id);
       mutateDegrees();
       if (onRefresh) onRefresh();
       setShowDegreeModal(false);
+      setEditingDegree(null);
       setDegreeForm(initialDegreeForm);
-      toast.success('تمت إضافة الدرجة بنجاح');
     } catch (err) {
       toast.error(err.response?.data?.message || 'حدث خطأ أثناء حفظ الدرجة');
     } finally {
@@ -300,7 +322,19 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
   };
 
   // --- Contractual Experience Allowance Handlers ---
+  const handleEditContractualDegree = (record) => {
+    setEditingContractualDegree(record);
+    setContractualForm({
+      Years: record.DegreeLevel ?? '',
+      EffectiveDate: record.EffectiveDate ? new Date(record.EffectiveDate).toISOString().split('T')[0] : '',
+      ReferenceDoc: record.ReferenceDoc || '',
+      Notes: record.Notes || '',
+    });
+    setShowContractualModal(true);
+  };
+
   const handleOpenContractualModal = () => {
+    setEditingContractualDegree(null);
     const nextYear = highestExistingDegree > 0 ? highestExistingDegree + 1 : 1;
     setContractualForm({
       Years: nextYear,
@@ -315,23 +349,30 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
     e.preventDefault();
     const years = Number(contractualForm.Years) || 1;
     const percentage = (years * 1.4).toFixed(1);
+    const payload = {
+      DegreeLevel: years,
+      Pace: `${percentage}%`,
+      PromotionDuration: `${percentage}%`,
+      EffectiveDate: contractualForm.EffectiveDate,
+      ReferenceDoc: contractualForm.ReferenceDoc,
+      Notes: contractualForm.Notes,
+    };
     try {
       setIsSubmittingDegree(true);
-      await apiClient.post(`/employees/${id}/degrees`, {
-        DegreeLevel: years,
-        Pace: `${percentage}%`,
-        PromotionDuration: `${percentage}%`,
-        EffectiveDate: contractualForm.EffectiveDate,
-        ReferenceDoc: contractualForm.ReferenceDoc,
-        Notes: contractualForm.Notes,
-      });
+      if (editingContractualDegree) {
+        await apiClient.put(`/employees/${id}/degrees/${editingContractualDegree.Id}`, payload);
+        toast.success('تم تعديل تعويض الخبرة المهنية بنجاح');
+      } else {
+        await apiClient.post(`/employees/${id}/degrees`, payload);
+        toast.success('تمت إضافة تعويض الخبرة المهنية بنجاح');
+      }
       await refreshEmployeeCareer(id);
       await refreshEmployees(id);
       mutateDegrees();
       if (onRefresh) onRefresh();
       setShowContractualModal(false);
+      setEditingContractualDegree(null);
       setContractualForm(initialContractualForm);
-      toast.success('تمت إضافة تعويض الخبرة المهنية بنجاح');
     } catch (err) {
       toast.error(err.response?.data?.message || 'حدث خطأ أثناء حفظ تعويض الخبرة المهنية');
     } finally {
@@ -438,92 +479,94 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
         </div>
       </div>
 
-      {/* ── Position History ── */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-visible flex flex-col shadow-sm">
-        <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-slate-800">
-            حركة في المناصب و المناصب العليا
-          </h3>
-          <button
-            onClick={() => {
-              setEditingPositionId(null);
-              setPositionForm(initialPositionForm);
-              setShowPositionModal(true);
-            }}
-            className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors cursor-pointer"
-          >
-            <Plus size={16} />
-            إضافة منصب
-          </button>
-        </div>
-        <div className="overflow-x-auto flex-1 custom-scrollbar">
-          <table className="w-full text-right border-collapse whitespace-nowrap">
-            <thead className="bg-white text-gray-500 text-sm border-b border-gray-200 sticky top-0">
-              <tr>
-                <th className="py-4 px-6 font-medium">المنصب</th>
-                <th className="py-4 px-6 font-medium">تاريخ التعيين</th>
-                <th className="py-4 px-6 font-medium">تاريخ الانتهاء</th>
-                <th className="py-4 px-6 font-medium">المقرر</th>
-                <th className="py-4 px-6 font-medium w-16 text-center">إجراء</th>
-              </tr>
-            </thead>
-            <tbody className="text-sm text-slate-700 divide-y divide-gray-100">
-              {isCareerLoading ? (
+      {/* ── Position History (Hidden for Contractual Employees) ── */}
+      {!isContractual && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-visible flex flex-col shadow-sm">
+          <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+            <h3 className="text-lg font-bold text-slate-800">
+              حركة في المناصب و المناصب العليا
+            </h3>
+            <button
+              onClick={() => {
+                setEditingPositionId(null);
+                setPositionForm(initialPositionForm);
+                setShowPositionModal(true);
+              }}
+              className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              <Plus size={16} />
+              إضافة منصب
+            </button>
+          </div>
+          <div className="overflow-x-auto flex-1 custom-scrollbar">
+            <table className="w-full text-right border-collapse whitespace-nowrap">
+              <thead className="bg-white text-gray-500 text-sm border-b border-gray-200 sticky top-0">
                 <tr>
-                  <td colSpan="5" className="py-12 text-center text-gray-400">
-                    <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
-                    جاري تحميل البيانات...
-                  </td>
+                  <th className="py-4 px-6 font-medium">المنصب</th>
+                  <th className="py-4 px-6 font-medium">تاريخ التعيين</th>
+                  <th className="py-4 px-6 font-medium">تاريخ الانتهاء</th>
+                  <th className="py-4 px-6 font-medium">المقرر</th>
+                  <th className="py-4 px-6 font-medium w-16 text-center">إجراء</th>
                 </tr>
-              ) : positionHistory.length === 0 ? (
-                <tr>
-                  <td colSpan="5" className="py-12 text-center text-gray-400">
-                    <Clock size={32} className="mx-auto text-gray-300 mb-2" />
-                    لا توجد حركة مناصب عليا لهذا الموظف
-                  </td>
-                </tr>
-              ) : (
-                positionHistory.map((record) => (
-                  <tr key={record.Id} className="hover:bg-gray-50 transition-colors">
-                    <td className="py-4 px-6 font-bold text-slate-800">{record.PositionName || '—'}</td>
-                    <td className="py-4 px-6 text-gray-600">
-                      <DateText value={record.InstallDate} />
-                    </td>
-                    <td className="py-4 px-6 text-gray-600">
-                      {record.EndDate ? (
-                        <DateText value={record.EndDate} />
-                      ) : (
-                        <span className="text-emerald-600 font-medium">ساري</span>
-                      )}
-                    </td>
-                    <td className="py-4 px-6 text-gray-600">
-                      {normalizeEmbeddedDates(record.Reference) || '—'}
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => handleEditPosition(record)}
-                          className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-2 rounded-lg transition-colors cursor-pointer"
-                          title="تعديل"
-                        >
-                          <Edit3 size={16} />
-                        </button>
-                        <button
-                          onClick={() => handleDeletePosition(record.Id)}
-                          className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors cursor-pointer"
-                          title="حذف"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+              </thead>
+              <tbody className="text-sm text-slate-700 divide-y divide-gray-100">
+                {isCareerLoading ? (
+                  <tr>
+                    <td colSpan="5" className="py-12 text-center text-gray-400">
+                      <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
+                      جاري تحميل البيانات...
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : positionHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan="5" className="py-12 text-center text-gray-400">
+                      <Clock size={32} className="mx-auto text-gray-300 mb-2" />
+                      لا توجد حركة مناصب عليا لهذا الموظف
+                    </td>
+                  </tr>
+                ) : (
+                  positionHistory.map((record) => (
+                    <tr key={record.Id} className="hover:bg-gray-50 transition-colors">
+                      <td className="py-4 px-6 font-bold text-slate-800">{record.PositionName || '—'}</td>
+                      <td className="py-4 px-6 text-gray-600">
+                        <DateText value={record.InstallDate} />
+                      </td>
+                      <td className="py-4 px-6 text-gray-600">
+                        {record.EndDate ? (
+                          <DateText value={record.EndDate} />
+                        ) : (
+                          <span className="text-emerald-600 font-medium">ساري</span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-gray-600">
+                        {normalizeEmbeddedDates(record.Reference) || '—'}
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleEditPosition(record)}
+                            className="text-blue-500 hover:text-blue-700 hover:bg-blue-50 p-2 rounded-lg transition-colors cursor-pointer"
+                            title="تعديل"
+                          >
+                            <Edit3 size={16} />
+                          </button>
+                          <button
+                            onClick={() => handleDeletePosition(record.Id)}
+                            className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors cursor-pointer"
+                            title="حذف"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Degree History / Professional Experience Allowance ── */}
       {!isContractual ? (
@@ -538,6 +581,7 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
             </h3>
             <button
               onClick={() => {
+                setEditingDegree(null);
                 setDegreeForm(initialDegreeForm);
                 setShowDegreeModal(true);
               }}
@@ -707,8 +751,8 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
                           )}
                         </div>
 
-                        {/* Column 5 — Notes & Delete Action (col-span-1) */}
-                        <div className="col-span-1 sm:col-span-1 flex items-center justify-end gap-2">
+                        {/* Column 5 — Notes & Actions (col-span-1) */}
+                        <div className="col-span-1 sm:col-span-1 flex items-center justify-end gap-1 sm:gap-2">
                           {record.Notes && record.Notes.trim() && record.Notes !== '—' && (
                             <div
                               className="p-1.5 rounded-md text-amber-700 bg-amber-50 border border-amber-200/70 cursor-help shrink-0 transition-colors hover:bg-amber-100"
@@ -718,13 +762,25 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
                             </div>
                           )}
 
-                          <button
-                            onClick={() => handleDeleteDegree(record.Id)}
-                            className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors cursor-pointer shrink-0"
-                            title="حذف الدرجة"
-                          >
-                            <Trash2 size={15} />
-                          </button>
+                          {hasPermission('checkBoxEdit') && (
+                            <button
+                              onClick={() => handleEditDegree(record)}
+                              className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition-colors cursor-pointer shrink-0"
+                              title="تعديل الدرجة"
+                            >
+                              <Edit3 size={15} />
+                            </button>
+                          )}
+
+                          {hasPermission('checkBoxDelete') && (
+                            <button
+                              onClick={() => handleDeleteDegree(record.Id)}
+                              className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors cursor-pointer shrink-0"
+                              title="حذف الدرجة"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -902,8 +958,8 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
                           )}
                         </div>
 
-                        {/* Column 5 (col-span-1 flex items-center justify-end gap-2) */}
-                        <div className="col-span-1 sm:col-span-1 flex items-center justify-end gap-2">
+                        {/* Column 5 (col-span-1 flex items-center justify-end gap-1 sm:gap-2) */}
+                        <div className="col-span-1 sm:col-span-1 flex items-center justify-end gap-1 sm:gap-2">
                           {deg.Notes && deg.Notes.trim() && deg.Notes !== '—' && (
                             <div
                               className="p-1.5 rounded-md text-amber-700 bg-amber-50 border border-amber-200/70 cursor-help shrink-0 transition-colors hover:bg-amber-100"
@@ -913,13 +969,25 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
                             </div>
                           )}
 
-                          <button
-                            onClick={() => handleDeleteContractualDegree(deg.Id, years)}
-                            className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors cursor-pointer shrink-0"
-                            title="حذف تعويض الخبرة"
-                          >
-                            <Trash2 size={15} />
-                          </button>
+                          {hasPermission('checkBoxEdit') && (
+                            <button
+                              onClick={() => handleEditContractualDegree(deg)}
+                              className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition-colors cursor-pointer shrink-0"
+                              title="تعديل تعويض الخبرة"
+                            >
+                              <Edit3 size={15} />
+                            </button>
+                          )}
+
+                          {hasPermission('checkBoxDelete') && (
+                            <button
+                              onClick={() => handleDeleteContractualDegree(deg.Id, years)}
+                              className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-lg transition-colors cursor-pointer shrink-0"
+                              title="حذف تعويض الخبرة"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -1101,10 +1169,13 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-xl overflow-hidden flex flex-col" dir="rtl">
             <div className="flex justify-between items-center p-6 border-b border-gray-200 bg-slate-50">
               <h2 className="text-xl font-bold text-slate-800">
-                إضافة درجة جديدة
+                {editingDegree ? 'تعديل الدرجة' : 'إضافة درجة جديدة'}
               </h2>
               <button
-                onClick={() => setShowDegreeModal(false)}
+                onClick={() => {
+                  setShowDegreeModal(false);
+                  setEditingDegree(null);
+                }}
                 className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
               >
                 <X size={24} />
@@ -1176,7 +1247,10 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
               <div className="flex justify-end gap-3 p-6 border-t border-gray-200 bg-slate-50">
                 <button
                   type="button"
-                  onClick={() => setShowDegreeModal(false)}
+                  onClick={() => {
+                    setShowDegreeModal(false);
+                    setEditingDegree(null);
+                  }}
                   className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   إلغاء
@@ -1186,7 +1260,7 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
                   disabled={isSubmittingDegree}
                   className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-70 flex items-center justify-center min-w-[100px] cursor-pointer"
                 >
-                  {isSubmittingDegree ? <Loader2 className="animate-spin" size={20} /> : 'إضافة'}
+                  {isSubmittingDegree ? <Loader2 className="animate-spin" size={20} /> : (editingDegree ? 'حفظ التعديل' : 'إضافة')}
                 </button>
               </div>
             </form>
@@ -1200,10 +1274,13 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-xl overflow-hidden flex flex-col" dir="rtl">
             <div className="flex justify-between items-center p-6 border-b border-gray-200 bg-slate-50">
               <h2 className="text-xl font-bold text-slate-800">
-                إضافة تعويض خبرة مهنية
+                {editingContractualDegree ? 'تعديل تعويض خبرة مهنية' : 'إضافة تعويض خبرة مهنية'}
               </h2>
               <button
-                onClick={() => setShowContractualModal(false)}
+                onClick={() => {
+                  setShowContractualModal(false);
+                  setEditingContractualDegree(null);
+                }}
                 className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
               >
                 <X size={24} />
@@ -1285,7 +1362,10 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
               <div className="flex justify-end gap-3 p-6 border-t border-gray-200 bg-slate-50 -mx-6 -mb-6 mt-6">
                 <button
                   type="button"
-                  onClick={() => setShowContractualModal(false)}
+                  onClick={() => {
+                    setShowContractualModal(false);
+                    setEditingContractualDegree(null);
+                  }}
                   className="px-4 py-2 border border-slate-300 rounded-lg text-slate-700 text-sm font-medium hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   إلغاء
@@ -1295,7 +1375,7 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
                   disabled={isSubmittingDegree}
                   className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-70 flex items-center justify-center min-w-[100px] cursor-pointer"
                 >
-                  {isSubmittingDegree ? <Loader2 className="animate-spin" size={20} /> : 'إضافة'}
+                  {isSubmittingDegree ? <Loader2 className="animate-spin" size={20} /> : (editingContractualDegree ? 'حفظ التعديل' : 'إضافة')}
                 </button>
               </div>
             </form>

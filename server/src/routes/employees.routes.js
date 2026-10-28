@@ -204,6 +204,19 @@ router.post("/:id/degrees", hasPermission(PERMISSIONS.ADD), async (req, res) => 
 });
 
 /**
+ * PUT /api/employees/:id/degrees/:degreeId
+ */
+router.put("/:id/degrees/:degreeId", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
+  const record = await DegreeHistoryService.update(
+    Number(req.params.id),
+    Number(req.params.degreeId),
+    req.body,
+    req.user
+  );
+  res.json({ success: true, data: record });
+});
+
+/**
  * DELETE /api/employees/:id/degrees/:degreeId
  */
 router.delete("/:id/degrees/:degreeId", hasPermission(PERMISSIONS.DELETE), async (req, res) => {

@@ -104,24 +104,38 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
     }
   };
 
+  const isContractualJob = (job) => {
+    if (!job) return false;
+    const cat = job.EmploymentCategory || '';
+    return (
+      cat.includes('متعاقد') ||
+      ['متعاقدون بدوام كلي', 'متعاقدون بدوام جزئي', 'متعاقدين بدوام كلي', 'متعاقدين بدوام جزئي'].includes(cat.trim())
+    );
+  };
+
   // Helper: build form state from employee data
-  const buildFormDataFromEmployee = (emp) => ({
-    ...initialFormData,
-    ...emp,
-    LastNameFr: emp.LastNameFr || '',
-    NameFr: emp.NameFr || '',
-    Gender: emp.Gender && emp.Gender !== 'غير محدد' ? emp.Gender : '',
-    MaritalStatus: emp.MaritalStatus && emp.MaritalStatus !== 'غير محدد' ? emp.MaritalStatus : (emp.FamilyStatus && emp.FamilyStatus !== 'غير محدد' ? emp.FamilyStatus : ''),
-    isProfileComplete: emp.IsProfileComplete || emp.isProfileComplete || false,
-    JobTitleId: emp.JobTitleId ?? '',
-    Degree: emp.Degree ?? 0,
-    NumberOfChildren: emp.NumberOfChildren || 0,
-    DateOfBirth: formatDateForInput(emp.DateOfBirth),
-    InstallationDate: formatDateForInput(emp.InstallationDate),
-    LastDegreeDate: formatDateForInput(emp.LastDegreeDate),
-    PositionDate: formatDateForInput(emp.PositionDate),
-    ConfirmationDate: formatDateForInput(emp.ConfirmationDate),
-  });
+  const buildFormDataFromEmployee = (emp) => {
+    const job = jobTitles.find(j => String(j.Id) === String(emp.JobTitleId)) || emp.JobTitle;
+    const isContr = isContractualJob(job) || emp.EmployeeStatus === 'متعاقد';
+    return {
+      ...initialFormData,
+      ...emp,
+      LastNameFr: emp.LastNameFr || '',
+      NameFr: emp.NameFr || '',
+      Gender: emp.Gender && emp.Gender !== 'غير محدد' ? emp.Gender : '',
+      MaritalStatus: emp.MaritalStatus && emp.MaritalStatus !== 'غير محدد' ? emp.MaritalStatus : (emp.FamilyStatus && emp.FamilyStatus !== 'غير محدد' ? emp.FamilyStatus : ''),
+      isProfileComplete: emp.IsProfileComplete || emp.isProfileComplete || false,
+      JobTitleId: emp.JobTitleId ?? '',
+      Degree: emp.Degree ?? 0,
+      NumberOfChildren: emp.NumberOfChildren || 0,
+      DateOfBirth: formatDateForInput(emp.DateOfBirth),
+      InstallationDate: formatDateForInput(emp.InstallationDate),
+      LastDegreeDate: formatDateForInput(emp.LastDegreeDate),
+      PositionDate: formatDateForInput(emp.PositionDate),
+      ConfirmationDate: isContr ? '' : formatDateForInput(emp.ConfirmationDate),
+      EmployeeStatus: isContr ? 'متعاقد' : (emp.EmployeeStatus === 'متربص' ? 'متربص' : 'مرسم'),
+    };
+  };
 
   const [formData, setFormData] = useState(initialFormData);
 
@@ -219,13 +233,22 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
       const updated = { ...prev, [name]: type === 'number' ? Number(value) : value };
 
       // Cascading Rules
+      if (name === 'JobTitleId') {
+        const job = jobTitles.find(j => String(j.Id) === String(value));
+        if (job && isContractualJob(job)) {
+          updated.EmployeeStatus = 'متعاقد';
+          updated.ConfirmationDate = '';
+        } else if (updated.EmployeeStatus === 'متعاقد') {
+          updated.EmployeeStatus = 'مرسم';
+        }
+      }
       if (name === 'MaritalStatus' && (value === 'أعزب' || value === 'عزباء')) {
         updated.NumberOfChildren = 0;
       }
       if (name === 'Province') {
         updated.Directorate = '';
       }
-      if (name === 'EmployeeStatus' && value === 'متربص') {
+      if (name === 'EmployeeStatus' && (value === 'متربص' || value === 'متعاقد')) {
         updated.ConfirmationDate = '';
       }
       if (name === 'Degree' && Number(value) === 0) {
@@ -613,14 +636,50 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
 
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">الحالة</label>
-                      <select name="EmployeeStatus" value={formData.EmployeeStatus} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white">
-                        <option value="مرسم">مرسم</option>
-                        <option value="متربص">متربص</option>
-                      </select>
+                      {(() => {
+                        const curJob = jobTitles.find(j => String(j.Id) === String(formData.JobTitleId));
+                        const isContr = (curJob && isContractualJob(curJob)) || formData.EmployeeStatus === 'متعاقد';
+                        if (isContr) {
+                          return (
+                            <select
+                              name="EmployeeStatus"
+                              value="متعاقد"
+                              disabled
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none text-sm bg-slate-100 text-slate-700 cursor-not-allowed font-medium"
+                            >
+                              <option value="متعاقد">متعاقد</option>
+                            </select>
+                          );
+                        }
+                        return (
+                          <select
+                            name="EmployeeStatus"
+                            value={formData.EmployeeStatus || 'مرسم'}
+                            onChange={handleChange}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
+                          >
+                            <option value="مرسم">مرسم</option>
+                            <option value="متربص">متربص</option>
+                          </select>
+                        );
+                      })()}
                     </div>
                     <div className="sm:col-span-1 lg:col-span-2">
                       <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ التثبيت</label>
-                      <input type="date" name="ConfirmationDate" value={formData.ConfirmationDate} onChange={handleChange} disabled={formData.EmployeeStatus === 'متربص'} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100" />
+                      {(() => {
+                        const curJob = jobTitles.find(j => String(j.Id) === String(formData.JobTitleId));
+                        const isContr = (curJob && isContractualJob(curJob)) || formData.EmployeeStatus === 'متعاقد';
+                        return (
+                          <input
+                            type="date"
+                            name="ConfirmationDate"
+                            value={formData.ConfirmationDate}
+                            onChange={handleChange}
+                            disabled={formData.EmployeeStatus === 'متربص' || isContr}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
+                          />
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>

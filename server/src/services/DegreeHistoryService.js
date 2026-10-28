@@ -5,6 +5,7 @@
 const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
+const cacheService = require("./CacheService");
 const { ROLES, getAllowedProvinces } = require("../config/constants");
 
 class DegreeHistoryService {
@@ -100,6 +101,7 @@ class DegreeHistoryService {
     });
 
     await this._syncEmployeeDegree(employeeId);
+    cacheService.invalidateEmployeeEcosystem();
 
     const empCategory = employee.JobTitle?.EmploymentCategory || "";
     const isContractual = empCategory.includes("متعاقد") || pace.includes("%");
@@ -134,6 +136,96 @@ class DegreeHistoryService {
     };
   }
 
+  static async update(arg1, arg2, data, requestingUser) {
+    let employeeId = Number(arg1);
+    let degreeId = Number(arg2);
+
+    let existing = await prisma.degreeHistory.findFirst({
+      where: { Id: degreeId, EmployeesId: employeeId },
+    });
+    if (!existing) {
+      // Handle reversed args in case called as (degreeId, employeeId, data, user)
+      const reversed = await prisma.degreeHistory.findFirst({
+        where: { Id: employeeId, EmployeesId: degreeId },
+      });
+      if (reversed) {
+        degreeId = Number(arg1);
+        employeeId = Number(arg2);
+        existing = reversed;
+      } else {
+        throw ApiError.notFound(`سجل الدرجة أو تعويض الخبرة غير موجود.`);
+      }
+    }
+
+    const employee = await this._assertAccess(employeeId, requestingUser);
+
+    const updatedData = {};
+    if (data.DegreeLevel != null && data.DegreeLevel !== "") {
+      const degreeLevelNum = Number(data.DegreeLevel);
+      if (isNaN(degreeLevelNum) || degreeLevelNum < 0 || degreeLevelNum > 45) {
+        throw ApiError.badRequest("قيمة الدرجة أو سنوات الخبرة غير صالحة (يجب أن تكون بين 0 و 45).");
+      }
+      updatedData.DegreeLevel = degreeLevelNum;
+    }
+
+    if (data.EffectiveDate) {
+      updatedData.EffectiveDate = new Date(data.EffectiveDate);
+    }
+
+    if (data.PromotionDuration !== undefined || data.Pace !== undefined) {
+      const pace = String(data.PromotionDuration || data.Pace || "").trim();
+      updatedData.PromotionDuration = pace.slice(0, 50);
+    }
+
+    if (data.ReferenceDoc !== undefined) {
+      updatedData.ReferenceDoc = data.ReferenceDoc || "";
+    }
+
+    if (data.Notes !== undefined) {
+      updatedData.Notes = data.Notes || null;
+    }
+
+    const record = await prisma.degreeHistory.update({
+      where: { Id: degreeId },
+      data: updatedData,
+    });
+
+    await this._syncEmployeeDegree(employeeId);
+    cacheService.invalidateEmployeeEcosystem();
+
+    const empCategory = employee.JobTitle?.EmploymentCategory || "";
+    const isContractual = empCategory.includes("متعاقد") || (record.PromotionDuration && record.PromotionDuration.includes("%"));
+
+    if (isContractual) {
+      const percentage = record.PromotionDuration && record.PromotionDuration.includes("%")
+        ? (record.PromotionDuration.includes("=") ? record.PromotionDuration.split("=").pop().trim() : record.PromotionDuration)
+        : `${(record.DegreeLevel * 1.4).toFixed(1)}%`;
+
+      await SystemRecordService.log({
+        userFullName: requestingUser.fullName,
+        title: "تعديل تعويض خبرة مهنية",
+        description: `تم تعديل تعويض خبرة مهنية (${record.DegreeLevel} سنة - ${percentage}) للموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
+        usersId: requestingUser.id,
+        employeesId: employeeId,
+        ipAddress: requestingUser.ipAddress,
+      });
+    } else {
+      await SystemRecordService.log({
+        userFullName: requestingUser.fullName,
+        title: "تعديل درجة",
+        description: `تم تعديل الدرجة ${record.DegreeLevel} للموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
+        usersId: requestingUser.id,
+        employeesId: employeeId,
+        ipAddress: requestingUser.ipAddress,
+      });
+    }
+
+    return {
+      ...record,
+      Pace: record.PromotionDuration,
+    };
+  }
+
   static async delete(employeeId, degreeId, requestingUser) {
     const employee = await this._assertAccess(employeeId, requestingUser);
 
@@ -144,6 +236,7 @@ class DegreeHistoryService {
 
     await prisma.degreeHistory.delete({ where: { Id: degreeId } });
     await this._syncEmployeeDegree(employeeId);
+    cacheService.invalidateEmployeeEcosystem();
 
     const empCategory = employee.JobTitle?.EmploymentCategory || "";
     const isContractual = empCategory.includes("متعاقد") || (existing.PromotionDuration && existing.PromotionDuration.includes("%"));

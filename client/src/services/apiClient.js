@@ -30,10 +30,15 @@ apiClient.interceptors.response.use(
   },
   (error) => {
     if (error.response && error.response.status === 401) {
-      // Clear storage and redirect to login
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      const isLoginRequest = error.config?.url?.includes('/auth/login') || error.config?.url?.includes('/login');
+      const isAlreadyOnLoginPage = typeof window !== 'undefined' && window.location.pathname === '/login';
+
+      if (!isLoginRequest && !isAlreadyOnLoginPage) {
+        // Clear storage and redirect to login
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

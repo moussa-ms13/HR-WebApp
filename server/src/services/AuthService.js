@@ -40,7 +40,7 @@ class AuthService {
     });
 
     if (!user) {
-      throw ApiError.unauthorized("Invalid credentials.");
+      throw ApiError.unauthorized("اسم المستخدم أو كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى");
     }
 
     // Verify password: bcrypt hashes (new users) + legacy plain-text fallback
@@ -51,7 +51,7 @@ class AuthService {
       passwordValid = user.Password === password;
     }
     if (!passwordValid) {
-      throw ApiError.unauthorized("Invalid credentials.");
+      throw ApiError.unauthorized("اسم المستخدم أو كلمة المرور غير صحيحة، يرجى المحاولة مرة أخرى");
     }
 
     // Build permissions map from Roles

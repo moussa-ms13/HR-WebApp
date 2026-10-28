@@ -28,5 +28,6 @@ router.use("/employee-files", employeeFilesDownloadRoutes);
 router.use("/settings", settingsRoutes);
 router.use("/leave-balances", require("./leaveBalances.routes"));
 router.use("/exports", require("./export.routes"));
+router.use("/degree-history", require("./degreeHistory.routes"));
 
 module.exports = router;

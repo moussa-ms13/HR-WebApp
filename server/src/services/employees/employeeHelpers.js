@@ -280,6 +280,30 @@ function validateEmployeeCreation(data) {
   }
 }
 
+/**
+ * Enforces statutory status rules:
+ * - 'متعاقدون بدوام كلي' & 'متعاقدون بدوام جزئي' -> strictly 'متعاقد'
+ * - 'اسلاك مشتركة' & 'أسلاك تقنية (خاصة)' -> strictly 'مرسم' or 'متربص' (defaults to 'مرسم' if 'متعاقد')
+ * @param {string} employmentCategory
+ * @param {string} [requestedStatus]
+ * @returns {string}
+ */
+function resolveStatutoryStatus(employmentCategory, requestedStatus = "مرسم") {
+  const cat = (employmentCategory || "").trim();
+  const isContractual =
+    cat.includes("متعاقد") ||
+    ["متعاقدون بدوام كلي", "متعاقدون بدوام جزئي", "متعاقدين بدوام كلي", "متعاقدين بدوام جزئي"].includes(cat);
+
+  if (isContractual) {
+    return "متعاقد";
+  }
+
+  // Regular corps
+  const status = (requestedStatus || "").trim();
+  if (status === "متربص") return "متربص";
+  return "مرسم";
+}
+
 module.exports = {
   EMPLOYEE_LIST_SELECT,
   EMPLOYEE_SEARCH_SELECT,
@@ -289,4 +313,5 @@ module.exports = {
   normalizeFrenchNames,
   computeProfileCompleteness,
   validateEmployeeCreation,
+  resolveStatutoryStatus,
 };

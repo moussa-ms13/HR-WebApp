@@ -21,6 +21,7 @@ const {
   normalizeFrenchNames,
   computeProfileCompleteness,
   validateEmployeeCreation,
+  resolveStatutoryStatus,
 } = require("./employees/employeeHelpers");
 
 const getJobTitlesMap = async () => {
@@ -382,6 +383,18 @@ class EmployeesService {
     const { finalLastNameFr, finalNameFr } = normalizeFrenchNames(data);
     const isProfileComplete = computeProfileCompleteness(data);
 
+    const jobTitleId = Number(data.JobTitleId) || 0;
+    let employeeStatus = data.EmployeeStatus || "مرسم";
+    if (jobTitleId > 0) {
+      const jobTitle = await prisma.jobTitles.findUnique({
+        where: { Id: jobTitleId },
+        select: { EmploymentCategory: true },
+      });
+      if (jobTitle?.EmploymentCategory) {
+        employeeStatus = resolveStatutoryStatus(jobTitle.EmploymentCategory, employeeStatus);
+      }
+    }
+
     const employee = await prisma.employees.create({
       data: {
         Name: String(data.Name || "").trim(),
@@ -401,11 +414,11 @@ class EmployeesService {
         NIN: data.NIN || "",
         SIS: data.SIS || "",
         AssignedPosition: data.AssignedPosition || "",
-        ConfirmationDate: data.ConfirmationDate ? new Date(data.ConfirmationDate) : null,
+        ConfirmationDate: employeeStatus === "متربص" || employeeStatus === "متعاقد" ? null : (data.ConfirmationDate ? new Date(data.ConfirmationDate) : null),
         Degree: Number(data.Degree) || 0,
-        EmployeeStatus: data.EmployeeStatus || "مرسم",
+        EmployeeStatus: employeeStatus,
         InstallationDate: data.InstallationDate ? new Date(data.InstallationDate) : defaultDate,
-        JobTitleId: Number(data.JobTitleId) || 0,
+        JobTitleId: jobTitleId,
         LastDegreeDate: data.LastDegreeDate ? new Date(data.LastDegreeDate) : defaultDate,
         PositionDate: data.PositionDate ? new Date(data.PositionDate) : null,
         StatusDate: defaultDate,
@@ -451,6 +464,18 @@ class EmployeesService {
     const { finalLastNameFr, finalNameFr } = normalizeFrenchNames(data, existing);
     const isProfileComplete = computeProfileCompleteness(data, existing);
 
+    const targetJobTitleId = data.JobTitleId !== undefined ? Number(data.JobTitleId) : existing.JobTitleId;
+    let targetEmployeeStatus = data.EmployeeStatus ?? existing.EmployeeStatus ?? "مرسم";
+    if (targetJobTitleId > 0) {
+      const jobTitle = await prisma.jobTitles.findUnique({
+        where: { Id: targetJobTitleId },
+        select: { EmploymentCategory: true },
+      });
+      if (jobTitle?.EmploymentCategory) {
+        targetEmployeeStatus = resolveStatutoryStatus(jobTitle.EmploymentCategory, targetEmployeeStatus);
+      }
+    }
+
     const employee = await prisma.employees.update({
       where: { Id: id },
       data: {
@@ -469,12 +494,12 @@ class EmployeesService {
         NIN: data.NIN ?? existing.NIN,
         SIS: data.SIS ?? existing.SIS,
         AssignedPosition: data.AssignedPosition ?? existing.AssignedPosition,
-        ConfirmationDate: data.ConfirmationDate ? new Date(data.ConfirmationDate) : existing.ConfirmationDate,
+        ConfirmationDate: targetEmployeeStatus === "متربص" || targetEmployeeStatus === "متعاقد" ? null : (data.ConfirmationDate ? new Date(data.ConfirmationDate) : existing.ConfirmationDate),
         Degree: data.Degree !== undefined ? Number(data.Degree) : existing.Degree,
-        EmployeeStatus: data.EmployeeStatus ?? existing.EmployeeStatus,
+        EmployeeStatus: targetEmployeeStatus,
         InstallationDate: data.InstallationDate ? new Date(data.InstallationDate) : existing.InstallationDate,
         LastDegreeDate: data.LastDegreeDate ? new Date(data.LastDegreeDate) : existing.LastDegreeDate,
-        JobTitleId: data.JobTitleId !== undefined ? Number(data.JobTitleId) : existing.JobTitleId,
+        JobTitleId: targetJobTitleId,
         PositionDate: data.PositionDate ? new Date(data.PositionDate) : existing.PositionDate,
         Address: data.Address ?? existing.Address,
         Email: data.Email ?? existing.Email,

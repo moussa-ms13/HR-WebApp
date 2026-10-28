@@ -97,8 +97,13 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
   const { data: jobTitlesData } = useSWR(isEditing ? '/job-titles' : null, fetcher, { keepPreviousData: true });
   const jobTitles = jobTitlesData?.data || [];
 
+  const selectedJob = jobTitles.find(j => String(j.Id) === String(editData.JobTitleId || employee?.JobTitleId)) || employee?.JobTitle;
+  const empCat = selectedJob?.EmploymentCategory || employee?.EmploymentCategory || '';
+  const isContractual = empCat.includes('متعاقد') || ['متعاقدون بدوام كلي', 'متعاقدون بدوام جزئي', 'متعاقدين بدوام كلي', 'متعاقدين بدوام جزئي'].includes(empCat.trim()) || employee?.EmployeeStatus === 'متعاقد';
+
   const enterEditMode = () => {
     if (!employee) return;
+    const initialIsContr = (employee.JobTitle?.EmploymentCategory && employee.JobTitle.EmploymentCategory.includes('متعاقد')) || employee.EmployeeStatus === 'متعاقد';
     setEditData({
       Name: employee.Name || '',
       LastName: employee.LastName || '',
@@ -123,11 +128,11 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
       Directorate: employee.Directorate || '',
       JobTitleId: employee.JobTitleId ?? '',
       AssignedPosition: employee.AssignedPosition || '',
-      EmployeeStatus: employee.EmployeeStatus || '',
+      EmployeeStatus: initialIsContr ? 'متعاقد' : (employee.EmployeeStatus || 'مرسم'),
       InstallationDate: sanitizeDate(employee.InstallationDate),
       Degree: employee.Degree ?? 0,
       LastDegreeDate: sanitizeDate(employee.LastDegreeDate),
-      ConfirmationDate: sanitizeDate(employee.ConfirmationDate),
+      ConfirmationDate: initialIsContr ? '' : sanitizeDate(employee.ConfirmationDate),
       PositionDate: sanitizeDate(employee.PositionDate),
       IsProfileComplete: employee.IsProfileComplete || false,
     });
@@ -141,7 +146,20 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
     setShowTree(false);
   };
 
-  const editField = (key, value) => setEditData((prev) => ({ ...prev, [key]: value }));
+  const editField = (key, value) => setEditData((prev) => {
+    const updated = { ...prev, [key]: value };
+    if (key === 'JobTitleId') {
+      const job = jobTitles.find(j => String(j.Id) === String(value));
+      const isJobContr = job && (job.EmploymentCategory?.includes('متعاقد') || ['متعاقدون بدوام كلي', 'متعاقدون بدوام جزئي', 'متعاقدين بدوام كلي', 'متعاقدين بدوام جزئي'].includes(job.EmploymentCategory?.trim()));
+      if (isJobContr) {
+        updated.EmployeeStatus = 'متعاقد';
+        updated.ConfirmationDate = '';
+      } else if (updated.EmployeeStatus === 'متعاقد') {
+        updated.EmployeeStatus = 'مرسم';
+      }
+    }
+    return updated;
+  });
 
   const handleTreeSelect = (selectedPlace) => {
     setEditData((prev) => ({
@@ -645,17 +663,26 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
           <div>
             <span className="block text-xs font-medium text-gray-400 mb-1">الحالة الوظيفية</span>
             {isEditing ? (
-              <select
-                value={editData.EmployeeStatus}
-                onChange={(e) => editField('EmployeeStatus', e.target.value)}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 bg-white"
-              >
-                <option value="">—</option>
-                <option value="مرسم">مرسم</option>
-                <option value="متربص">متربص</option>
-              </select>
+              isContractual ? (
+                <select
+                  value="متعاقد"
+                  disabled
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none bg-slate-100 text-slate-700 cursor-not-allowed font-medium"
+                >
+                  <option value="متعاقد">متعاقد</option>
+                </select>
+              ) : (
+                <select
+                  value={editData.EmployeeStatus || 'مرسم'}
+                  onChange={(e) => editField('EmployeeStatus', e.target.value)}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 bg-white"
+                >
+                  <option value="مرسم">مرسم</option>
+                  <option value="متربص">متربص</option>
+                </select>
+              )
             ) : (
-              <span className="block font-semibold text-emerald-600">{employee.EmployeeStatus || 'نشط'}</span>
+              <span className="block font-semibold text-emerald-600">{employee.EmployeeStatus || 'مرسم'}</span>
             )}
           </div>
 
@@ -667,8 +694,8 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
                 value={editData.ConfirmationDate}
                 onChange={(e) => editField('ConfirmationDate', e.target.value)}
                 type="date"
-                disabled={editData.EmployeeStatus === 'متربص'}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100"
+                disabled={editData.EmployeeStatus === 'متربص' || isContractual}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
               />
             ) : (
               <span className="block font-semibold text-slate-800">
