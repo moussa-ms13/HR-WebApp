@@ -137,8 +137,10 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
           DaysCount: record.DaysCount,
           StartDate: record.StartDate ? new Date(record.StartDate).toISOString().split('T')[0] : '',
           EndDate: record.EndDate ? new Date(record.EndDate).toISOString().split('T')[0] : '',
-          IsResumed: record.IsResumed || false,
-          ActualReturnDate: record.ActualReturnDate ? new Date(record.ActualReturnDate).toISOString().split('T')[0] : '',
+          IsResumed: record._openResumption ? true : (record.IsResumed || false),
+          ActualReturnDate: record._openResumption
+            ? (record.ActualReturnDate ? new Date(record.ActualReturnDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0])
+            : (record.ActualReturnDate ? new Date(record.ActualReturnDate).toISOString().split('T')[0] : ''),
           Notes: record.Notes || '',
           DoctorName: record.DoctorName || '',
           CertificateDate: record.CertificateDate ? new Date(record.CertificateDate).toISOString().split('T')[0] : '',

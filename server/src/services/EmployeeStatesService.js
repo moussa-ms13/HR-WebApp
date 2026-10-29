@@ -14,17 +14,111 @@ const {
 } = require("../utils/queryBuilder");
 const CacheService = require("./CacheService");
 
+/**
+ * Builds Prisma where condition for leave lifecycle filtering.
+ * Active: not resumed AND EndDate >= today (start of day)
+ * Resumed: manually resumed (IsResumed: true) OR EndDate < today (start of day)
+ * All: no lifecycle filter
+ */
+function getLeaveLifecycleCondition(statusFilter) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const activeCondition = {
+    IsResumed: false,
+    EndDate: { gte: today },
+  };
+
+  const resumedCondition = {
+    OR: [
+      { IsResumed: true },
+      { EndDate: { lt: today } },
+    ],
+  };
+
+  switch (statusFilter) {
+    case "active":
+      return activeCondition;
+    case "resumed":
+      return resumedCondition;
+    case "all":
+      return null;
+    default:
+      return activeCondition;
+  }
+}
+
+/**
+ * Builds a StartDate or EndDate range condition for a given calendar year.
+ */
+function getYearCondition(year) {
+  const y = Number(year);
+  if (!Number.isInteger(y) || y < 1900 || y > 2200) return null;
+  const startOfYear = new Date(y, 0, 1);
+  const endOfYear = new Date(y + 1, 0, 1);
+  return {
+    OR: [
+      { StartDate: { gte: startOfYear, lt: endOfYear } },
+      { EndDate: { gte: startOfYear, lt: endOfYear } },
+    ],
+  };
+}
+
+/**
+ * Returns distinct StartDate/EndDate years present in EmployeeStates (desc).
+ */
+async function getDistinctYears() {
+  try {
+    const rows = await prisma.$queryRaw`
+      SELECT DISTINCT YEAR(StartDate) AS y
+      FROM EmployeeStates
+      WHERE StartDate IS NOT NULL
+      UNION
+      SELECT DISTINCT YEAR(EndDate) AS y
+      FROM EmployeeStates
+      WHERE EndDate IS NOT NULL
+      ORDER BY y DESC`;
+    return rows.map((r) => Number(r.y)).filter((y) => Number.isInteger(y) && y > 0);
+  } catch (_) {
+    return [];
+  }
+}
+
 class EmployeeStatesService {
   /**
-   * Fetch all employee states with pagination and geographic RBAC.
+   * Fetch all employee states with pagination, geographic RBAC, lifecycle filtering, leave type, and year stepper.
    */
-  static async getAll(requestingUser, page = 1, limit = 25, category = "", employeeId = null, search = "", directorate = "", province = "", sortBy = "Id", sortOrder = "desc") {
+  static async getAll(
+    requestingUser,
+    page = 1,
+    limit = 25,
+    category = "",
+    employeeId = null,
+    search = "",
+    directorate = "",
+    province = "",
+    sortBy = "Id",
+    sortOrder = "desc",
+    statusFilter = "active",
+    stateType = "",
+    year = ""
+  ) {
     const { safePage, safeLimit, skip } = sanitizePagination(page, limit, 100);
 
     // Build where clause with geographic filter via Employee relation
     const { provinceFilter, isForbidden } = resolveGeographicFilter(requestingUser, province);
     if (isForbidden) {
-      return { data: [], meta: { total: 0, page: safePage, limit: safeLimit, totalPages: 0 } };
+      return {
+        data: [],
+        meta: {
+          total: 0,
+          page: safePage,
+          limit: safeLimit,
+          totalPages: 0,
+          counts: { active: 0, resumed: 0, all: 0 },
+          years: [],
+        },
+      };
     }
 
     const employeeFilter = {
@@ -33,9 +127,10 @@ class EmployeeStatesService {
       ...(directorate ? { Directorate: directorate } : {}),
     };
 
-    const whereClause = {
+    const baseWhere = {
       Employee: employeeFilter,
       ...(category ? { RecordCategory: category } : {}),
+      ...(stateType && String(stateType).trim() ? { StateTypeOrReason: String(stateType).trim() } : {}),
     };
 
     // Search: tokenized multi-word search across employee name, state type, notes, etc.
@@ -49,18 +144,34 @@ class EmployeeStatesService {
       { Employee: { JobTitle: { RankName: { contains: token } } } },
     ]);
     if (tokenSearch) {
-      whereClause.AND = [...(whereClause.AND || []), ...tokenSearch.AND];
+      baseWhere.AND = [...(baseWhere.AND || []), ...tokenSearch.AND];
     }
 
-    const countCacheKey = `state_count_${JSON.stringify({
-      prov: provinceFilter,
-      emp: employeeId || "",
-      dir: directorate || "",
-      cat: category || "",
-      s: search || "",
-    })}`;
+    const yearCondition = getYearCondition(year);
+    if (yearCondition) {
+      baseWhere.AND = [...(baseWhere.AND || []), yearCondition];
+    }
 
-    const cachedTotal = CacheService.get(countCacheKey);
+    const buildWhereForStatus = (status) => {
+      const cond = getLeaveLifecycleCondition(status);
+      if (!cond) return baseWhere;
+      return {
+        ...baseWhere,
+        AND: [...(baseWhere.AND || []), cond],
+      };
+    };
+
+    // Default to 'all' if employeeId is explicitly targeted (e.g. employee profile leaves tab)
+    const effectiveDefaultStatus = employeeId ? "all" : "active";
+    const requestedStatus = statusFilter || effectiveDefaultStatus;
+
+    // Smart auto-expand: when searching (>= 2 chars) or selecting a past year from 'active', expand to 'all'
+    const currentYear = new Date().getFullYear();
+    const isSearchExpanded = Boolean(search && search.trim().length >= 2) && requestedStatus === "active";
+    const isPastYearExpanded = Boolean(year && Number(year) < currentYear) && requestedStatus === "active";
+    const effectiveStatus = (isSearchExpanded || isPastYearExpanded) ? "all" : requestedStatus;
+
+    const whereClause = buildWhereForStatus(effectiveStatus);
 
     let orderBy = { Id: "desc" };
     const safeOrder = String(sortOrder || "").toLowerCase() === "asc" ? "asc" : "desc";
@@ -126,19 +237,14 @@ class EmployeeStatesService {
       orderBy,
     });
 
-    let total, states;
-    if (cachedTotal !== undefined) {
-      states = await statesPromise;
-      total = cachedTotal;
-    } else {
-      const [totalCount, statesResult] = await Promise.all([
-        prisma.employeeStates.count({ where: whereClause }),
-        statesPromise,
-      ]);
-      total = totalCount;
-      states = statesResult;
-      CacheService.set(countCacheKey, total, 60);
-    }
+    const [total, states, activeCount, resumedCount, allCount, years] = await Promise.all([
+      prisma.employeeStates.count({ where: whereClause }),
+      statesPromise,
+      prisma.employeeStates.count({ where: buildWhereForStatus("active") }),
+      prisma.employeeStates.count({ where: buildWhereForStatus("resumed") }),
+      prisma.employeeStates.count({ where: buildWhereForStatus("all") }),
+      getDistinctYears(),
+    ]);
 
     return {
       data: states,
@@ -147,6 +253,12 @@ class EmployeeStatesService {
         page: safePage,
         limit: safeLimit,
         totalPages: Math.ceil(total / safeLimit),
+        counts: {
+          active: activeCount,
+          resumed: resumedCount,
+          all: allCount,
+        },
+        years,
       },
     };
   }

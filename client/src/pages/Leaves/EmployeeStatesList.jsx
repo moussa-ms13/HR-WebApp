@@ -11,25 +11,68 @@ import LeavesFilterBar from './components/LeavesFilterBar';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { useToast } from '../../components/ui/Toast';
 import { refreshLeaves, refreshEmployees } from '../../utils/cacheManager';
-import { MoreVertical, CalendarOff, ArrowUpDown, Loader2, Trash2, Printer, ChevronRight, ChevronLeft } from 'lucide-react';
+import {
+  MoreVertical,
+  CalendarOff,
+  ArrowUpDown,
+  Loader2,
+  Trash2,
+  Printer,
+  ChevronRight,
+  ChevronLeft,
+  Info,
+  UserCheck,
+  Edit2,
+} from 'lucide-react';
 import { DateText } from '../../utils/formatDate';
 import { printLeaveCertificate } from '../../utils/printLeaveCertificate';
 import { formatEmployeeName } from '../../utils/employeeUtils';
 
-const fetcher = async ([_url, page, limit, category, search, directorate, province, sortBy, sortOrder]) => {
-  const result = await EmployeeStatesService.getAll(page, limit, category, search, directorate, province, sortBy, sortOrder);
+const RECORD_VIEW_OPTIONS = [
+  { id: 'active', label: 'العطل الجارية حالياً' },
+  { id: 'resumed', label: 'أرشيف العطل المستأنفة' },
+  { id: 'all', label: 'جميع السجلات' },
+];
+const DEFAULT_RECORD_VIEW = 'active';
+
+const LEAVE_TYPE_OPTIONS = [
+  'عطلة سنوية',
+  'عطلة مرضية',
+  'عطلة أمومة',
+  'عطلة استثنائية',
+  'عطلة بدون أجر',
+  'غياب',
+];
+
+const fetcher = async ([_url, page, limit, category, search, directorate, province, sortBy, sortOrder, statusFilter, stateType, year]) => {
+  const result = await EmployeeStatesService.getAll(
+    page,
+    limit,
+    category,
+    search,
+    directorate,
+    province,
+    sortBy,
+    sortOrder,
+    statusFilter,
+    stateType,
+    year
+  );
   if (!result.success) throw new Error("Failed to fetch");
   return result;
 };
 
 const EmployeeStatesList = () => {
-  const { hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const [searchParams] = useSearchParams();
   const toast = useToast();
 
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
 
+  const [statusFilter, setStatusFilter] = useState(DEFAULT_RECORD_VIEW);
+  const [stateTypeFilter, setStateTypeFilter] = useState('');
+  const [yearFilter, setYearFilter] = useState('');
   const [provinceFilter, setProvinceFilter] = useState('');
   const [directorateFilter, setDirectorateFilter] = useState('');
   const [searchInput, setSearchInput] = useState(() => searchParams.get('search')?.trim() || '');
@@ -48,7 +91,7 @@ const EmployeeStatesList = () => {
     setPage(1);
   };
 
-  const allowedProvinces = getAllowedProvinces(useAuth().user);
+  const allowedProvinces = getAllowedProvinces(user);
   const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
   const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
 
@@ -56,8 +99,18 @@ const EmployeeStatesList = () => {
   const debouncedSearch = useDebounce(searchInput, 500);
   const search = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : '';
 
+  const currentYear = new Date().getFullYear();
+  const isPastYear = Boolean(yearFilter) && Number(yearFilter) < currentYear;
+
+  // When searching or selecting a past year from the default operational view,
+  // automatically search across ALL records so historical leaves appear immediately.
+  const isSearchAcrossAll = Boolean(search) && statusFilter === DEFAULT_RECORD_VIEW;
+  const isPastYearAcrossAll = isPastYear && statusFilter === DEFAULT_RECORD_VIEW;
+  const isAutoExpanded = isSearchAcrossAll || isPastYearAcrossAll;
+  const effectiveStatusFilter = isAutoExpanded ? 'all' : statusFilter;
+
   const { data, isLoading, mutate } = useSWR(
-    ['/api/employee-states', page, limit, '', search, directorateFilter, provinceFilter, sortBy, sortOrder],
+    ['/api/employee-states', page, limit, '', search, directorateFilter, provinceFilter, sortBy, sortOrder, effectiveStatusFilter, stateTypeFilter, yearFilter],
     fetcher,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
@@ -68,8 +121,28 @@ const EmployeeStatesList = () => {
   };
 
   const states = Array.isArray(data) ? data : (data?.records || data?.data || []);
-  const meta = data?.meta || { total: 0, totalPages: 0, page: 1 };
+  const meta = data?.meta || { total: 0, totalPages: 0, page: 1, counts: {}, years: [] };
   const showLoading = isLoading && !data;
+
+  // "عرض السجلات" dropdown options with live counts
+  const viewOptions = RECORD_VIEW_OPTIONS.map((opt) => {
+    const count = meta.counts?.[opt.id];
+    return {
+      value: opt.id,
+      label: count !== undefined ? `${opt.label} (${count})` : opt.label,
+    };
+  });
+
+  // "السنة" dropdown / stepper: distinct years from DB + current year (+ selected year), desc
+  const yearOptions = Array.from(
+    new Set([
+      new Date().getFullYear(),
+      ...(Array.isArray(meta.years) ? meta.years : []),
+      ...(yearFilter ? [Number(yearFilter)] : []),
+    ])
+  )
+    .filter((y) => Number.isInteger(y) && y > 0)
+    .sort((a, b) => b - a);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUnifiedModalOpen, setIsUnifiedModalOpen] = useState(false);
@@ -116,7 +189,9 @@ const EmployeeStatesList = () => {
 
   const handleModalSuccess = async () => {
     setIsModalOpen(false);
+    setSelectedState(null);
     await refreshLeaves();
+    await refreshEmployees();
     mutate();
   };
 
@@ -146,25 +221,29 @@ const EmployeeStatesList = () => {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
     if (diffDays < 0) return 'overdue';
-    if (diffDays >= 0 && diffDays <= 7) return 'warning';
+    if (diffDays >= 0 && diffDays <= 3) return 'warning';
     return 'active';
   };
 
   const getStatusStyles = (status) => {
     switch (status) {
-      case 'resumed': return 'bg-emerald-100 text-emerald-800 border border-emerald-300';
-      case 'overdue': return 'animate-pulse bg-red-100 text-red-800 border border-red-300';
-      case 'warning': return 'animate-pulse bg-orange-100 text-orange-800 border border-orange-300';
-      case 'permanent': return 'bg-green-100 text-green-800 border border-green-300';
+      case 'resumed':
+        return 'bg-slate-100 text-slate-600 border border-slate-200';
+      case 'overdue':
+        return 'animate-pulse bg-red-50 text-red-700 border border-red-200';
+      case 'warning':
+        return 'animate-pulse bg-amber-50 text-amber-700 border border-amber-200';
+      case 'permanent':
       case 'active':
-      default: return 'bg-green-100 text-green-800 border border-green-300';
+      default:
+        return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
     }
   };
 
   const getRowBgStyles = (status) => {
     switch (status) {
-      case 'overdue': return 'bg-red-50 hover:bg-red-100';
-      case 'warning': return 'bg-orange-50 hover:bg-orange-100';
+      case 'overdue': return 'bg-red-50/40 hover:bg-red-50/70';
+      case 'warning': return 'bg-amber-50/40 hover:bg-amber-50/70';
       case 'resumed':
       case 'permanent':
       case 'active':
@@ -220,10 +299,20 @@ const EmployeeStatesList = () => {
     <div className="flex flex-col h-full font-sans text-slate-800" dir="rtl">
       {/* Extracted Filter Controls Bar */}
       <LeavesFilterBar
+        viewFilter={statusFilter}
+        setViewFilter={setStatusFilter}
+        viewOptions={viewOptions}
         provinceFilter={provinceFilter}
         setProvinceFilter={setProvinceFilter}
         directorateFilter={directorateFilter}
         setDirectorateFilter={setDirectorateFilter}
+        caseTypeFilter={stateTypeFilter}
+        setCaseTypeFilter={setStateTypeFilter}
+        caseTypeOptions={LEAVE_TYPE_OPTIONS}
+        caseTypeLabel="نوع العطلة: الكل"
+        yearFilter={yearFilter}
+        setYearFilter={setYearFilter}
+        yearOptions={yearOptions}
         allowedProvinces={allowedProvinces}
         availableMofatishiyat={availableMofatishiyat}
         availableMohafathat={availableMohafathat}
@@ -233,7 +322,28 @@ const EmployeeStatesList = () => {
         canAdd={hasPermission('checkBoxAdd')}
         onAdd={handleAdd}
         addButtonLabel="تسجيل عطلة"
+        searchPlaceholder="البحث باسم الموظف أو نوع العطلة..."
       />
+
+      {isSearchAcrossAll && (
+        <div
+          id="leaves-search-scope-hint"
+          className="-mt-3 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-50 border border-sky-100 text-xs font-medium text-sky-800"
+        >
+          <Info size={14} className="shrink-0 text-sky-600" />
+          يتم البحث في جميع السجلات (العطل الجارية والأرشيف المستأنف) لضمان العثور على أي موظف.
+        </div>
+      )}
+
+      {isPastYearAcrossAll && !isSearchAcrossAll && (
+        <div
+          id="leaves-year-scope-hint"
+          className="-mt-3 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-100 text-xs font-medium text-amber-800"
+        >
+          <Info size={14} className="shrink-0 text-amber-600" />
+          عرض سجلات سنة {yearFilter} عبر كافة السجلات (الجارية والأرشيف المستأنف).
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col">
         <div className="overflow-x-auto flex-1 custom-scrollbar">
@@ -306,12 +416,27 @@ const EmployeeStatesList = () => {
                           </button>
 
                           {menuOpenId === st.Id && (
-                            <div className="absolute left-0 mt-2 w-40 rounded-xl shadow-lg bg-white ring-1 ring-black/5 z-50 py-1">
+                            <div className="absolute left-0 mt-2 w-44 rounded-xl shadow-lg bg-white ring-1 ring-black/5 z-50 py-1 font-sans">
+                              {hasPermission('checkBoxEdit') && !st.IsResumed && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedState({ ...st, _openResumption: true });
+                                    setIsModalOpen(true);
+                                    setMenuOpenId(null);
+                                  }}
+                                  className="w-full text-right px-4 py-2 text-sm font-bold text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 cursor-pointer transition-colors"
+                                >
+                                  <UserCheck size={15} className="text-emerald-600" />
+                                  إدراج استئناف
+                                </button>
+                              )}
                               {hasPermission('checkBoxEdit') && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setSelectedState(st); setIsModalOpen(true); setMenuOpenId(null); }}
                                   className="w-full text-right px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 cursor-pointer transition-colors"
                                 >
+                                  <Edit2 size={14} className="text-gray-500" />
                                   تعديل السجل
                                 </button>
                               )}

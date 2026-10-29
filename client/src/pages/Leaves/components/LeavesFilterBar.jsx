@@ -9,6 +9,7 @@ export default function LeavesFilterBar({
   caseTypeFilter = '',
   setCaseTypeFilter = null,
   caseTypeOptions = [],
+  caseTypeLabel = 'نوع الحالة: الكل',
   viewFilter = '',
   setViewFilter = null,
   viewOptions = [],
@@ -205,7 +206,7 @@ export default function LeavesFilterBar({
                 }}
                 className="flex items-center gap-2 text-sm font-medium text-gray-600 px-3 py-2 hover:bg-gray-50 rounded-lg outline-none bg-transparent cursor-pointer appearance-none pl-7"
               >
-                <option value="">نوع الحالة: الكل</option>
+                <option value="">{caseTypeLabel}</option>
                 {caseTypeOptions.map((opt) => (
                   <option key={opt} value={opt}>
                     {opt}

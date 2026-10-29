@@ -14,13 +14,23 @@ const fetcher = async (url) => {
 
 const getLeaveStatusPill = (leave) => {
   if (leave.IsResumed) {
-    return <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-200">مستأنف</span>;
+    return <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold border border-slate-200">تم الاستئناف</span>;
   }
   const end = new Date(leave.EndDate);
-  if (end < new Date()) {
-    return <span className="bg-orange-50 text-orange-700 px-3 py-1 rounded-full text-xs font-bold border border-orange-200">منتهي</span>;
+  if (isNaN(end.getTime())) {
+    return <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-200">ساري المفعول</span>;
   }
-  return <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-bold border border-blue-200">ساري</span>;
+  const today = new Date();
+  end.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  const diffDays = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) {
+    return <span className="bg-red-50 text-red-700 px-3 py-1 rounded-full text-xs font-bold border border-red-200">لم يستأنف</span>;
+  }
+  if (diffDays <= 3) {
+    return <span className="bg-amber-50 text-amber-700 px-3 py-1 rounded-full text-xs font-bold border border-amber-200">يستأنف قريباً</span>;
+  }
+  return <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-200">ساري المفعول</span>;
 };
 
 const LeavesTab = ({ employee, onRefresh }) => {
@@ -44,7 +54,7 @@ const LeavesTab = ({ employee, onRefresh }) => {
 
   // Fetch leaves history
   const { data: leavesData, isLoading: isLeavesLoading, mutate: mutateLeaves } = useSWR(
-    id ? `/employee-states?employeeId=${id}` : null,
+    id ? `/employee-states?employeeId=${id}&statusFilter=all` : null,
     fetcher,
     { keepPreviousData: true, revalidateOnFocus: false, dedupingInterval: 60000 }
   );

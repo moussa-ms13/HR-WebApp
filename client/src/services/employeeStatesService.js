@@ -4,9 +4,33 @@ class EmployeeStatesService {
   /**
    * Fetch paginated employee states.
    */
-  static async getAll(page = 1, limit = 25, category = '', search = '', directorate = '', province = '', sortBy = '', sortOrder = '') {
+  static async getAll(
+    page = 1,
+    limit = 25,
+    category = '',
+    search = '',
+    directorate = '',
+    province = '',
+    sortBy = '',
+    sortOrder = '',
+    statusFilter = 'active',
+    stateType = '',
+    year = ''
+  ) {
     const response = await apiClient.get('/employee-states', {
-      params: { page, limit, category, search, directorate, province, sortBy, sortOrder }
+      params: {
+        page,
+        limit,
+        category,
+        search,
+        directorate,
+        province,
+        sortBy,
+        sortOrder,
+        statusFilter,
+        stateType,
+        year,
+      }
     });
     return response.data;
   }
