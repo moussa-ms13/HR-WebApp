@@ -12,6 +12,7 @@ import {
 } from '../../../../utils/specialCasesConstants';
 import ReintegrateModal from '../../../SpecialCases/components/ReintegrateModal';
 import { Shield, Edit3, Trash2, Loader2, UserCheck } from 'lucide-react';
+import { SpecialCaseStatusBadge, default as UnifiedBadge } from '../../../../components/common/UnifiedBadge';
 
 const CASE_TYPE_COLORS = {
   'استقالة': { bg: 'bg-red-50', border: 'border-red-300', text: 'text-red-800' },
@@ -177,11 +178,9 @@ const SpecialCasesTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => 
                   return (
                     <tr key={sc.Id} className="hover:bg-gray-50 transition-colors">
                       <td className="py-4 px-6">
-                        <span
-                          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${colors.bg} ${colors.text} border ${colors.border}`}
-                        >
+                        <UnifiedBadge className="font-bold text-slate-800">
                           {sc.CaseType}
-                        </span>
+                        </UnifiedBadge>
                       </td>
                       <td className="py-4 px-6 text-gray-600 font-mono">
                         <DateText value={sc.StartDate} />
@@ -200,9 +199,7 @@ const SpecialCasesTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => 
                         {sc.ReferenceDoc || '—'}
                       </td>
                       <td className="py-4 px-6 text-center">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${statusInfo.badgeStyle}`}>
-                          {statusInfo.badgeLabel}
-                        </span>
+                        <SpecialCaseStatusBadge status={statusInfo} />
                       </td>
                       <td className="py-4 px-6">
                         <div className="flex items-center justify-center gap-1.5">

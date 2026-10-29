@@ -6,31 +6,24 @@ import ManageLeaveDebtModal from '../../../Leaves/components/ManageLeaveDebtModa
 import { DateText } from '../../../../utils/formatDate';
 import { formatEmployeeName } from '../../../../utils/employeeUtils';
 import { useAuth } from '../../../../context/AuthContext';
+import { LeaveStatusBadge } from '../../../../components/common/UnifiedBadge';
 
 const fetcher = async (url) => {
   const res = await apiClient.get(url);
   return res.data;
 };
 
-const getLeaveStatusPill = (leave) => {
-  if (leave.IsResumed) {
-    return <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-full text-xs font-bold border border-slate-200">تم الاستئناف</span>;
-  }
+const getLeaveRowStatus = (leave) => {
+  if (leave.IsResumed) return 'resumed';
   const end = new Date(leave.EndDate);
-  if (isNaN(end.getTime())) {
-    return <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-200">ساري المفعول</span>;
-  }
+  if (isNaN(end.getTime())) return 'active';
   const today = new Date();
   end.setHours(0, 0, 0, 0);
   today.setHours(0, 0, 0, 0);
   const diffDays = Math.ceil((end - today) / (1000 * 60 * 60 * 24));
-  if (diffDays < 0) {
-    return <span className="bg-red-50 text-red-700 px-3 py-1 rounded-full text-xs font-bold border border-red-200">لم يستأنف</span>;
-  }
-  if (diffDays <= 3) {
-    return <span className="bg-amber-50 text-amber-700 px-3 py-1 rounded-full text-xs font-bold border border-amber-200">يستأنف قريباً</span>;
-  }
-  return <span className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold border border-emerald-200">ساري المفعول</span>;
+  if (diffDays < 0) return 'overdue';
+  if (diffDays <= 3) return 'warning';
+  return 'active';
 };
 
 const LeavesTab = ({ employee, onRefresh }) => {
@@ -293,7 +286,7 @@ const LeavesTab = ({ employee, onRefresh }) => {
                     <td className="py-4 px-6 text-gray-600"><DateText value={leave.StartDate} /></td>
                     <td className="py-4 px-6 text-gray-600"><DateText value={leave.EndDate} /></td>
                     <td className="py-4 px-6 font-medium text-slate-700">{leave.DaysCount}</td>
-                    <td className="py-4 px-6">{getLeaveStatusPill(leave)}</td>
+                    <td className="py-4 px-6"><LeaveStatusBadge status={getLeaveRowStatus(leave)} /></td>
                     <td className="py-4 px-6 text-center">
                       {hasPermission('checkBoxPrint') && (leave.StateTypeOrReason === 'عطلة سنوية' || leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة') ? (
                         <button

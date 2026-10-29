@@ -79,7 +79,8 @@ export function getSpecialCaseStatus(record) {
     return {
       key: 'permanent_exit',
       badgeLabel: 'قرار نهائي',
-      badgeStyle: 'bg-blue-50 text-blue-700 border border-blue-200',
+      badgeStyle: 'bg-slate-50 text-slate-700 border border-slate-200/90',
+      dotColor: 'bg-indigo-500',
       dateSubtitle: 'قرار نهائي',
       isReintegratable: false,
     };
@@ -105,7 +106,8 @@ export function getSpecialCaseStatus(record) {
     return {
       key: 'archived',
       badgeLabel: 'منتهية (أرشيف)',
-      badgeStyle: 'bg-slate-100 text-slate-600 border border-slate-200',
+      badgeStyle: 'bg-slate-50/50 text-slate-500 border border-dashed border-slate-200',
+      dotColor: 'bg-slate-400',
       dateSubtitle: hasEndDate ? null : 'منتهية',
       isReintegratable: false,
     };
@@ -115,7 +117,8 @@ export function getSpecialCaseStatus(record) {
   return {
     key: 'temporary_active',
     badgeLabel: 'سارية المفعول',
-    badgeStyle: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+    badgeStyle: 'bg-slate-50 text-slate-700 border border-slate-200/90',
+    dotColor: 'bg-emerald-500',
     dateSubtitle: hasEndDate ? null : 'مستمرة', // Never 'دائمة' for temporary cases
     isReintegratable: true,
   };

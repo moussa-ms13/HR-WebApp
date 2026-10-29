@@ -7,6 +7,7 @@ import { ArrowRight, User, Loader2, Building2, Calendar, FileText } from 'lucide
 import { DateText } from '../../utils/formatDate';
 import { formatEmployeeName, getAssetUrl } from '../../utils/employeeUtils';
 import ConfirmModal from '../../components/ui/ConfirmModal';
+import { StatutoryStatusBadge } from '../../components/common/UnifiedBadge';
 
 // Modular Domain Tabs
 import ProfileOverviewTab from './components/tabs/ProfileOverviewTab';
@@ -134,22 +135,7 @@ const EmployeeProfile = () => {
           </p>
         )}
         <div className="mt-1.5 flex items-center gap-2">
-          {employee.EmployeeStatus === 'متربص' ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200/70">
-              <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
-              متربص
-            </span>
-          ) : employee.EmployeeStatus === 'متعاقد' ? (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200/70">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-              متعاقد
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-              مرسم
-            </span>
-          )}
+          <StatutoryStatusBadge status={employee.EmployeeStatus} />
         </div>
         <p className="text-sm font-medium text-gray-500 mt-2 flex items-center justify-center gap-1.5 flex-wrap">
           <span>{employee.JobTitle?.RankName || 'موظف'}</span>

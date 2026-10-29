@@ -10,6 +10,7 @@ import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { refreshEmployees } from '../../utils/cacheManager';
 import { formatEmployeeName } from '../../utils/employeeUtils';
+import { StatutoryStatusBadge, ProfileCompletenessBadge } from '../../components/common/UnifiedBadge';
 
 const fetcher = async (
   [_url, page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder]
@@ -62,38 +63,7 @@ const HeaderCell = ({
   );
 };
 
-const renderStatusBadge = (status) => {
-  if (status === 'مرسم' || status === 'مثبت' || status === 'نشط') {
-    return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-        مرسم
-      </span>
-    );
-  }
-  if (status === 'متربص') {
-    return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-700 border border-sky-200/70">
-        <span className="w-1.5 h-1.5 rounded-full bg-sky-500"></span>
-        متربص
-      </span>
-    );
-  }
-  if (status === 'متعاقد') {
-    return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200/70">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-        متعاقد
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-50 text-slate-700 border border-slate-200/70">
-      <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
-      {status || 'مرسم'}
-    </span>
-  );
-};
+
 
 const EmployeesList = () => {
   const { hasPermission } = useAuth();
@@ -440,25 +410,12 @@ const EmployeesList = () => {
                     
                     {/* Status */}
                     <td className="py-3 px-4">
-                      {renderStatusBadge(emp.EmployeeStatus)}
+                      <StatutoryStatusBadge status={emp.EmployeeStatus} />
                     </td>
 
                     {/* Profile Completion */}
                     <td className="py-3 px-4 text-center">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                          emp.IsProfileComplete
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}
-                      >
-                        <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            emp.IsProfileComplete ? 'bg-emerald-500' : 'bg-amber-500'
-                          }`}
-                        ></span>
-                        {emp.IsProfileComplete ? 'مكتمل' : 'ناقص'}
-                      </span>
+                      <ProfileCompletenessBadge isComplete={emp.IsProfileComplete} />
                     </td>
 
                     {/* Action */}

@@ -10,6 +10,7 @@ import {
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { refreshUsers } from '../../utils/cacheManager';
+import { UserRoleBadge } from '../../components/common/UnifiedBadge';
 
 const fetcher = async () => {
   const res = await UsersService.getAll();
@@ -270,14 +271,7 @@ const UsersList = () => {
                     <td className="py-3 px-4 font-bold text-slate-800">{u.FullName}</td>
                     <td className="py-3 px-4 text-slate-600 font-medium font-mono text-xs" dir="ltr">{u.UserName}</td>
                     <td className="py-3 px-4">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${
-                        u.Role === 'Admin' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
-                        u.Role === 'Read' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
-                        'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      }`}>
-                        {u.Role === 'Admin' ? <ShieldCheck size={12} className="ml-1" /> : <Shield size={12} className="ml-1" />}
-                        {u.Role}
-                      </span>
+                      <UserRoleBadge role={u.Role} />
                     </td>
                     <td className="py-3 px-4 text-gray-500 text-xs font-mono">{u.Email || '-'}</td>
                     <td className="py-3 px-4 text-gray-500 text-xs font-mono" dir="ltr">{u.Phone || '-'}</td>

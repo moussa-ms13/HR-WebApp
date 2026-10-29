@@ -19,6 +19,7 @@ import {
   ALL_SPECIAL_CASE_TYPES,
   getSpecialCaseStatus,
 } from '../../utils/specialCasesConstants';
+import { SpecialCaseStatusBadge } from '../../components/common/UnifiedBadge';
 import {
   ArrowRightLeft,
   ArrowUpDown,
@@ -365,9 +366,7 @@ export default function SpecialCasesList() {
                       </td>
 
                       <td className="py-3 px-4 text-center">
-                        <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-bold ${statusInfo.badgeStyle}`}>
-                          {statusInfo.badgeLabel}
-                        </span>
+                        <SpecialCaseStatusBadge status={statusInfo} />
                       </td>
 
                       <td className="py-3 px-4 text-center">

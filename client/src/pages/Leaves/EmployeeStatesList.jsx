@@ -27,6 +27,7 @@ import {
 import { DateText } from '../../utils/formatDate';
 import { printLeaveCertificate } from '../../utils/printLeaveCertificate';
 import { formatEmployeeName } from '../../utils/employeeUtils';
+import { LeaveStatusBadge } from '../../components/common/UnifiedBadge';
 
 const RECORD_VIEW_OPTIONS = [
   { id: 'active', label: 'العطل الجارية حالياً' },
@@ -399,9 +400,7 @@ const EmployeeStatesList = () => {
                         {st?.DurationDays || st?.DaysCount || 0}
                       </td>
                       <td className="py-3 px-4">
-                        <span className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-bold ${getStatusStyles(status)}`}>
-                          {getStatusLabel(status)}
-                        </span>
+                        <LeaveStatusBadge status={status} />
                       </td>
                       <td className="py-3 px-4 text-center">
                         <div className="relative inline-block text-right">

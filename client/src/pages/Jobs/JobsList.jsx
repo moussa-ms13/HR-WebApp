@@ -10,6 +10,7 @@ import {
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { refreshJobTitles } from '../../utils/cacheManager';
+import UnifiedBadge from '../../components/common/UnifiedBadge';
 
 const fetcher = async () => {
   const result = await JobTitlesService.getAll(1, 500, '', { forceRefresh: true });
@@ -286,9 +287,9 @@ const JobsList = () => {
                     <td className="py-3 px-4 font-medium text-slate-700">{job.EmploymentCategory}</td>
                     <td className="py-3 px-4 font-bold text-slate-800">{job.RankName}</td>
                     <td className="py-3 px-4">
-                      <span className="bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-xs font-bold border border-slate-200">
+                      <UnifiedBadge className="font-semibold">
                         {job.CategoryLevel || '-'}
-                      </span>
+                      </UnifiedBadge>
                     </td>
                     <td className="py-3 px-4 font-mono text-gray-600 text-xs">{job.IndexNumber}</td>
                     <td className="py-3 px-4 text-center">

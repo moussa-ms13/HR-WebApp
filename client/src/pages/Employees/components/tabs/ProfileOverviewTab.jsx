@@ -8,6 +8,7 @@ import { DateText } from '../../../../utils/formatDate';
 import { formatEmployeeName } from '../../../../utils/employeeUtils';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../../../utils/constants';
 import { refreshEmployees, refreshEmployeeCareer } from '../../../../utils/cacheManager';
+import { ProfileCompletenessBadge } from '../../../../components/common/UnifiedBadge';
 import {
   User,
   Briefcase,
@@ -767,16 +768,7 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
         <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-gray-800">حالة اكتمال الملف</span>
-            <span
-              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
-                employee.IsProfileComplete
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                  : 'bg-amber-50 text-amber-700 border border-amber-200'
-              }`}
-            >
-              {employee.IsProfileComplete ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
-              {employee.IsProfileComplete ? 'مكتمل' : 'غير مكتمل'}
-            </span>
+            <ProfileCompletenessBadge isComplete={employee.IsProfileComplete} />
           </div>
         </div>
       )}
