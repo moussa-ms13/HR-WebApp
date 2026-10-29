@@ -30,7 +30,6 @@ import {
   UserCheck,
   ChevronRight,
   ChevronLeft,
-  Info,
 } from 'lucide-react';
 
 const casesFetcher = async ([_url, page, limit, search, directorate, province, statusFilter, caseType, year, sortBy, sortOrder]) => {
@@ -264,26 +263,6 @@ export default function SpecialCasesList() {
         addButtonLabel="تسجيل حالة خاصة"
         searchPlaceholder="البحث باسم الموظف أو نوع الحالة..."
       />
-
-      {isSearchAcrossAll && (
-        <div
-          id="special-cases-search-scope-hint"
-          className="-mt-3 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-50 border border-sky-100 text-xs font-medium text-sky-800"
-        >
-          <Info size={14} className="shrink-0 text-sky-600" />
-          يتم البحث في جميع السجلات (السارية، الخروج النهائي، والأرشيف) لضمان العثور على أي موظف.
-        </div>
-      )}
-
-      {isPastYearAcrossAll && !isSearchAcrossAll && (
-        <div
-          id="special-cases-year-scope-hint"
-          className="-mt-3 mb-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 border border-amber-100 text-xs font-medium text-amber-800"
-        >
-          <Info size={14} className="shrink-0 text-amber-600" />
-          عرض سجلات سنة {yearFilter} عبر كافة الحالات (السارية، الخروج النهائي، والأرشيف التاريخي).
-        </div>
-      )}
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden flex-1 flex flex-col">
         <div className="overflow-x-auto flex-1 custom-scrollbar">
