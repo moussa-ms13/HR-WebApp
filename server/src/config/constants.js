@@ -70,11 +70,22 @@ const PROVINCE_MAP = Object.freeze({
 });
 
 /**
- * Given a user's permissions object, returns an array of province
+ * Given a user object or a permissions map, returns an array of province
  * strings the user is allowed to access.
- * Admin users bypass this — callers should check role first.
  */
-function getAllowedProvinces(permissions) {
+function getAllowedProvinces(permissionsOrUser) {
+  if (!permissionsOrUser) return [];
+
+  const role = permissionsOrUser.role || permissionsOrUser.Role;
+  if (role === ROLES.ADMIN) {
+    return Object.values(PROVINCE_MAP);
+  }
+
+  const permissions =
+    permissionsOrUser.permissions && typeof permissionsOrUser.permissions === "object"
+      ? permissionsOrUser.permissions
+      : permissionsOrUser;
+
   const allowed = [];
   for (const [permKey, provinceName] of Object.entries(PROVINCE_MAP)) {
     if (permissions[permKey] === true) {

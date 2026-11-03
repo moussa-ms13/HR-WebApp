@@ -319,7 +319,7 @@ const EmployeeStatesList = () => {
         searchInput={searchInput}
         handleSearchChange={handleSearchChange}
         setPage={setPage}
-        canAdd={hasPermission('checkBoxAdd')}
+        canAdd={hasPermission('checkBoxAdd') || hasPermission('checkBoxEdit')}
         onAdd={handleAdd}
         addButtonLabel="تسجيل عطلة"
         searchPlaceholder="البحث باسم الموظف أو نوع العطلة..."
@@ -395,7 +395,7 @@ const EmployeeStatesList = () => {
 
                           {menuOpenId === st.Id && (
                             <div className="absolute left-0 mt-2 w-44 rounded-xl shadow-lg bg-white ring-1 ring-black/5 z-50 py-1 font-sans">
-                              {hasPermission('checkBoxEdit') && !st.IsResumed && (
+                              {(hasPermission('checkBoxAdd') || hasPermission('checkBoxEdit')) && !st.IsResumed && (
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -409,7 +409,7 @@ const EmployeeStatesList = () => {
                                   إدراج استئناف
                                 </button>
                               )}
-                              {hasPermission('checkBoxEdit') && (
+                              {(hasPermission('checkBoxAdd') || hasPermission('checkBoxEdit')) && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setSelectedState(st); setIsModalOpen(true); setMenuOpenId(null); }}
                                   className="w-full text-right px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 cursor-pointer transition-colors"

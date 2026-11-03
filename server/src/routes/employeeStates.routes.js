@@ -4,8 +4,10 @@
 // ============================================================
 const express = require("express");
 const EmployeeStatesService = require("../services/EmployeeStatesService");
-const { authenticate, hasPermission } = require("../middleware/auth");
-const { PERMISSIONS } = require("../config/constants");
+const CacheService = require("../services/CacheService");
+const SystemRecordService = require("../services/SystemRecordService");
+const { authenticate, hasPermission, hasAnyPermission } = require("../middleware/auth");
+const { PERMISSIONS, ROLES, getAllowedProvinces } = require("../config/constants");
 const prisma = require("../config/database");
 
 const ANNUAL_LEAVE_TYPE = "عطلة سنوية";
@@ -79,7 +81,7 @@ router.get("/:id", async (req, res, next) => {
 /**
  * POST /api/employee-states
  */
-router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res, next) => {
+router.post("/", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res, next) => {
   try {
     const {
       EmployeesId,
@@ -107,31 +109,92 @@ router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res, next) => {
     if (isNaN(employeesId) || employeesId <= 0) {
       return res.status(400).json({ success: false, message: "معرّف الموظف غير صالح" });
     }
+
+    const employee = await prisma.employees.findUnique({
+      where: { Id: employeesId },
+      include: { JobTitle: true },
+    });
+    if (!employee) {
+      return res.status(404).json({ success: false, message: "الموظف غير موجود" });
+    }
+
+    if (req.user?.role !== ROLES.ADMIN) {
+      const allowed = getAllowedProvinces(req.user);
+      if (!allowed.includes(employee.Province)) {
+        return res.status(403).json({
+          success: false,
+          message: `غير مصرح لك بإدارة سجلات ولاية: ${employee.Province}`,
+        });
+      }
+    }
+
+    // Scenario B: If the user selected 'إدراج استئناف' or submitted a resumption in Create mode,
+    // find the employee's active un-resumed leave and resume it directly instead of creating a duplicate entry.
+    const isResumptionRequest =
+      RecordCategory === "إدراج استئناف" ||
+      StateTypeOrReason === "إدراج استئناف" ||
+      Boolean(IsResumed) === true;
+
+    if (isResumptionRequest) {
+      const activeLeave = await prisma.employeeStates.findFirst({
+        where: { EmployeesId: employeesId, IsResumed: false },
+        orderBy: { Id: "desc" },
+      });
+
+      if (activeLeave) {
+        const resumed = await EmployeeStatesService.resumeLeaveEarly(
+          activeLeave.Id,
+          {
+            actualReturnDate:
+              ActualReturnDate || StartDate || new Date().toISOString().split("T")[0],
+            notes: Notes,
+          },
+          req.user
+        );
+        return res.status(200).json({
+          success: true,
+          data: resumed.data || resumed,
+          breakdown: resumed.breakdown || [],
+        });
+      }
+    }
+
+    const effectiveCategory =
+      RecordCategory === "إدراج استئناف" ? "تسجيل عطلة" : RecordCategory;
+    const effectiveStateType =
+      StateTypeOrReason === "إدراج استئناف" ? "عطلة سنوية" : StateTypeOrReason;
+
     const parsedStartDate = new Date(StartDate);
-    if (!RecordCategory || !StateTypeOrReason || !StartDate || isNaN(parsedStartDate.getTime())) {
+    if (!effectiveCategory || !effectiveStateType || !StartDate || isNaN(parsedStartDate.getTime())) {
       return res.status(400).json({ success: false, message: "الحقول المطلوبة ناقصة أو تاريخ البدء غير صالح" });
     }
     if (isNaN(daysCount) || daysCount < 0) {
       return res.status(400).json({ success: false, message: "عدد الأيام غير صالح" });
     }
 
-    // ADAPT THIS LINE to match how this project's `authenticate`
-    // middleware actually populates req.user.
+    // If creating a new active leave, automatically mark any previous un-resumed leave for this employee as resumed
+    if (!isResumptionRequest) {
+      await prisma.employeeStates.updateMany({
+        where: { EmployeesId: employeesId, IsResumed: false },
+        data: { IsResumed: true },
+      });
+    }
+
     const usersId = req.user?.userName ?? req.user?.userId ?? req.user?.UserId ?? String(req.user?.id ?? req.user?.Id ?? "system");
 
     const baseData = {
       EmployeesId: employeesId,
-      RecordCategory,
-      CurrentJobTitle: CurrentJobTitle || "",
-      StateTypeOrReason,
+      RecordCategory: effectiveCategory,
+      CurrentJobTitle: CurrentJobTitle || employee.JobTitle?.RankName || "",
+      StateTypeOrReason: effectiveStateType,
       DaysCount: daysCount,
       RequestedDays: daysCount,
       StartDate: parsedStartDate,
       EndDate: EndDate && !isNaN(new Date(EndDate).getTime()) ? new Date(EndDate) : parsedStartDate,
       AddedDate: new Date(),
       UsersId: usersId,
-      IsResumed: Boolean(IsResumed),
-      ActualReturnDate: ActualReturnDate && !isNaN(new Date(ActualReturnDate).getTime()) ? new Date(ActualReturnDate) : null,
+      IsResumed: Boolean(isResumptionRequest),
+      ActualReturnDate: ActualReturnDate && !isNaN(new Date(ActualReturnDate).getTime()) ? new Date(ActualReturnDate) : (isResumptionRequest ? parsedStartDate : null),
       IsResumedEarly: false,
       Notes: Notes || null,
       DoctorName: (DoctorName !== undefined ? DoctorName : req.body.doctorName) ? String(DoctorName || req.body.doctorName).trim() : null,
@@ -150,14 +213,24 @@ router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res, next) => {
     };
 
     const isAnnualLeave =
-      RecordCategory === "تسجيل عطلة" &&
-      StateTypeOrReason === ANNUAL_LEAVE_TYPE &&
-      daysCount > 0;
+      effectiveCategory === "تسجيل عطلة" &&
+      effectiveStateType === ANNUAL_LEAVE_TYPE &&
+      daysCount > 0 &&
+      !isResumptionRequest;
 
     // Non-annual entries (sick/maternity/unpaid leave, permanent special
     // states, etc.) don't touch LeaveBalance at all — plain create.
     if (!isAnnualLeave) {
       const created = await prisma.employeeStates.create({ data: baseData });
+      await SystemRecordService.log({
+        userFullName: req.user?.fullName || usersId,
+        title: "إضافة وضعية/إجازة موظف",
+        description: `تمت إضافة ${effectiveCategory}: '${effectiveStateType}' للموظف '${employee.LastName} ${employee.Name}' بواسطة '${usersId}'.`,
+        usersId: req.user?.id || 1,
+        employeesId,
+        ipAddress: req.user?.ipAddress,
+      }).catch(() => {});
+      CacheService.invalidateEmployeeEcosystem();
       return res.status(201).json({ success: true, data: created });
     }
 
@@ -205,6 +278,16 @@ router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res, next) => {
       { maxWait: 15000, timeout: 60000 }
     );
 
+    await SystemRecordService.log({
+      userFullName: req.user?.fullName || usersId,
+      title: "إضافة وضعية/إجازة موظف",
+      description: `تمت إضافة ${effectiveCategory}: '${effectiveStateType}' للموظف '${employee.LastName} ${employee.Name}' بواسطة '${usersId}'.`,
+      usersId: req.user?.id || 1,
+      employeesId,
+      ipAddress: req.user?.ipAddress,
+    }).catch(() => {});
+    CacheService.invalidateEmployeeEcosystem();
+
     return res.status(201).json({ success: true, data: result });
   } catch (error) {
     if (error instanceof InsufficientBalanceError) {
@@ -221,7 +304,7 @@ router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res, next) => {
 /**
  * PUT /api/employee-states/:id
  */
-router.put("/:id", hasPermission(PERMISSIONS.EDIT), async (req, res, next) => {
+router.put("/:id", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res, next) => {
   try {
     const state = await EmployeeStatesService.update(Number(req.params.id), req.body, req.user);
     res.json({ success: true, data: state });
@@ -233,7 +316,7 @@ router.put("/:id", hasPermission(PERMISSIONS.EDIT), async (req, res, next) => {
 /**
  * PUT /api/employee-states/:id/resume
  */
-router.put("/:id/resume", hasPermission(PERMISSIONS.EDIT), async (req, res, next) => {
+router.put("/:id/resume", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res, next) => {
   try {
     const result = await EmployeeStatesService.resumeLeaveEarly(Number(req.params.id), req.body, req.user);
     res.json({

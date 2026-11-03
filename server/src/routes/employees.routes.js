@@ -5,7 +5,8 @@ const express = require("express");
 const EmployeesService = require("../services/EmployeesService");
 const CareerHistoryService = require("../services/CareerHistoryService");
 const DegreeHistoryService = require("../services/DegreeHistoryService");
-const { authenticate, hasPermission } = require("../middleware/auth");
+const EmployeeStatesService = require("../services/EmployeeStatesService");
+const { authenticate, hasPermission, hasAnyPermission } = require("../middleware/auth");
 const { PERMISSIONS } = require("../config/constants");
 
 const router = express.Router();
@@ -226,6 +227,36 @@ router.delete("/:id/degrees/:degreeId", hasPermission(PERMISSIONS.DELETE), async
     req.user
   );
   res.json({ success: true, ...result });
+});
+
+/**
+ * PUT /api/employees/:id/states/:stateId
+ * Updates or resumes an employee state record scoped to an employee.
+ */
+router.put("/:id/states/:stateId", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res, next) => {
+  try {
+    const state = await EmployeeStatesService.update(Number(req.params.stateId), req.body, req.user);
+    res.json({ success: true, data: state });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/employees/:id/states/:stateId/resume
+ * Resumes an employee leave record early or on time.
+ */
+router.put("/:id/states/:stateId/resume", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res, next) => {
+  try {
+    const result = await EmployeeStatesService.resumeLeaveEarly(Number(req.params.stateId), req.body, req.user);
+    res.json({
+      success: true,
+      data: result.data || result,
+      breakdown: result.breakdown || [],
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 module.exports = router;

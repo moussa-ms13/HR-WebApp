@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
 import useSWR from 'swr';
 import apiClient from '../../../../services/apiClient';
-import { Calendar, Loader2, SlidersHorizontal, Printer } from 'lucide-react';
+import { Calendar, Loader2, SlidersHorizontal, Printer, UserCheck } from 'lucide-react';
 import ManageLeaveDebtModal from '../../../Leaves/components/ManageLeaveDebtModal';
+import EmployeeStateModal from '../../../Leaves/EmployeeStateModal';
 import { DateText } from '../../../../utils/formatDate';
 import { formatEmployeeName } from '../../../../utils/employeeUtils';
 import { useAuth } from '../../../../context/AuthContext';
+import { useToast } from '../../../../components/ui/Toast';
+import { refreshLeaves, refreshEmployees } from '../../../../utils/cacheManager';
 import { LeaveStatusBadge } from '../../../../components/common/UnifiedBadge';
 
 const fetcher = async (url) => {
@@ -28,9 +31,12 @@ const getLeaveRowStatus = (leave) => {
 
 const LeavesTab = ({ employee, onRefresh }) => {
   const { hasPermission } = useAuth();
+  const toast = useToast();
   const id = employee?.Id;
   const [isManageLeaveDebtOpen, setIsManageLeaveDebtOpen] = useState(false);
   const [printingLeaveId, setPrintingLeaveId] = useState(null);
+  const [selectedLeaveForModal, setSelectedLeaveForModal] = useState(null);
+  const [isStateModalOpen, setIsStateModalOpen] = useState(false);
 
   // Dynamic on-demand certificate printing
   const handlePrintCertificate = async (leave) => {
@@ -40,6 +46,7 @@ const LeavesTab = ({ employee, onRefresh }) => {
       await printLeaveCertificate(leave, employee);
     } catch (err) {
       console.error('Failed to print leave certificate:', err);
+      toast.error(err.response?.data?.message || err.message || 'حدث خطأ أثناء إعداد مستند الطباعة');
     } finally {
       setPrintingLeaveId(null);
     }
@@ -288,24 +295,47 @@ const LeavesTab = ({ employee, onRefresh }) => {
                     <td className="py-4 px-6 font-medium text-slate-700">{leave.DaysCount}</td>
                     <td className="py-4 px-6"><LeaveStatusBadge status={getLeaveRowStatus(leave)} /></td>
                     <td className="py-4 px-6 text-center">
-                      {hasPermission('checkBoxPrint') && (leave.StateTypeOrReason === 'عطلة سنوية' || leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة') ? (
-                        <button
-                          type="button"
-                          onClick={() => handlePrintCertificate(leave)}
-                          disabled={printingLeaveId === leave.Id}
-                          className="px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 transition-colors cursor-pointer inline-flex items-center gap-1.5 text-xs font-bold"
-                          title={leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة' ? 'طباعة المقرر' : 'طباعة سند العطلة السنوية'}
-                        >
-                          {printingLeaveId === leave.Id ? (
-                            <Loader2 size={13} className="animate-spin text-emerald-600" />
-                          ) : (
-                            <Printer size={13} />
+                      <div className="inline-flex items-center justify-center gap-2">
+                        {(hasPermission('checkBoxAdd') || hasPermission('checkBoxEdit')) && !leave.IsResumed && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedLeaveForModal({
+                                ...leave,
+                                EmployeesId: leave.EmployeesId || id,
+                                Employee: leave.Employee || employee,
+                                _openResumption: true,
+                              });
+                              setIsStateModalOpen(true);
+                            }}
+                            className="px-2.5 py-1.5 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer inline-flex items-center gap-1.5 text-xs font-bold"
+                            title="إدراج استئناف العمل"
+                          >
+                            <UserCheck size={13} className="text-emerald-600" />
+                            <span>إدراج استئناف</span>
+                          </button>
+                        )}
+                        {hasPermission('checkBoxPrint') && (leave.StateTypeOrReason === 'عطلة سنوية' || leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة') && (
+                          <button
+                            type="button"
+                            onClick={() => handlePrintCertificate(leave)}
+                            disabled={printingLeaveId === leave.Id}
+                            className="px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 transition-colors cursor-pointer inline-flex items-center gap-1.5 text-xs font-bold"
+                            title={leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة' ? 'طباعة المقرر' : 'طباعة سند العطلة السنوية'}
+                          >
+                            {printingLeaveId === leave.Id ? (
+                              <Loader2 size={13} className="animate-spin text-emerald-600" />
+                            ) : (
+                              <Printer size={13} />
+                            )}
+                            <span>{leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة' ? 'طباعة المقرر' : 'طباعة السند'}</span>
+                          </button>
+                        )}
+                        {!((hasPermission('checkBoxAdd') || hasPermission('checkBoxEdit')) && !leave.IsResumed) &&
+                          !(hasPermission('checkBoxPrint') && (leave.StateTypeOrReason === 'عطلة سنوية' || leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة')) && (
+                            <span className="text-slate-300 text-xs">-</span>
                           )}
-                          <span>{leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة' ? 'طباعة المقرر' : 'طباعة السند'}</span>
-                        </button>
-                      ) : (
-                        <span className="text-slate-300 text-xs">-</span>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -321,6 +351,25 @@ const LeavesTab = ({ employee, onRefresh }) => {
         onClose={handleModalClose}
         employeeId={employee?.Id}
         employeeName={formatEmployeeName(employee, '')}
+      />
+
+      {/* Leave Resumption / Edit Modal */}
+      <EmployeeStateModal
+        isOpen={isStateModalOpen}
+        onClose={() => {
+          setIsStateModalOpen(false);
+          setSelectedLeaveForModal(null);
+        }}
+        record={selectedLeaveForModal}
+        onSuccess={async () => {
+          setIsStateModalOpen(false);
+          setSelectedLeaveForModal(null);
+          await refreshLeaves(id);
+          await refreshEmployees();
+          mutateLeaves();
+          mutateBalances();
+          if (onRefresh) onRefresh();
+        }}
       />
     </div>
   );

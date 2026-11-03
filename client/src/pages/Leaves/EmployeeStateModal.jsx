@@ -5,7 +5,7 @@ import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils
 import useDebounce from '../../hooks/useDebounce';
 import EmployeeStatesService from '../../services/employeeStatesService';
 import EmployeeService from '../../services/employeeService';
-import { refreshLeaves, refreshSpecialCases } from '../../utils/cacheManager';
+import { refreshLeaves, refreshSpecialCases, refreshEmployees } from '../../utils/cacheManager';
 import { useToast } from '../../components/ui/Toast';
 import { normalizeGender } from '../../utils/leaveCertificateConfig';
 import { formatEmployeeName } from '../../utils/employeeUtils';
@@ -201,12 +201,14 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
+    const isResumptionTab = tab === 'إدراج استئناف';
     setFormData(prev => ({
       ...prev,
       RecordCategory: tab,
-      StateTypeOrReason: tab === 'تسجيل عطلة' ? LEAVE_TYPES[0] : SPECIAL_CASE_TYPES[0],
+      StateTypeOrReason: tab === 'حالة خاصة' ? SPECIAL_CASE_TYPES[0] : LEAVE_TYPES[0],
       DaysCount: 30,
-      IsResumed: false
+      IsResumed: isResumptionTab,
+      ActualReturnDate: isResumptionTab ? (prev.ActualReturnDate || new Date().toISOString().split('T')[0]) : prev.ActualReturnDate,
     }));
   };
 
@@ -339,16 +341,30 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
 
     try {
       const empId = Number(formData.EmployeesId);
-      const isNewResumption = Boolean(record && formData.IsResumed && !record.IsResumed && formData.ActualReturnDate);
+      // Scenario A: If opened via "إدراج استئناف" (_openResumption) or category is 'إدراج استئناف',
+      // explicitly force IsResumed = true and ensure ActualReturnDate has a valid date.
+      const effectiveIsResumed = Boolean(
+        formData.IsResumed ||
+        record?._openResumption ||
+        formData.RecordCategory === 'إدراج استئناف'
+      );
+      const effectiveReturnDate =
+        formData.ActualReturnDate ||
+        (effectiveIsResumed ? new Date().toISOString().split('T')[0] : '');
+
+      const isNewResumption = Boolean(
+        record && effectiveIsResumed && !record.IsResumed && effectiveReturnDate
+      );
 
       if (isNewResumption) {
         const resumeRes = await EmployeeStatesService.resume(record.Id, {
-          actualReturnDate: formData.ActualReturnDate,
+          actualReturnDate: effectiveReturnDate,
           notes: formData.Notes,
         });
 
         await refreshLeaves(empId);
         await refreshSpecialCases(empId);
+        await refreshEmployees();
 
         if (resumeRes?.breakdown?.length > 0) {
           const breakdownSummary = resumeRes.breakdown.map(b => `${b.refunded} يوم لسنة ${b.year}`).join('، ');
@@ -369,8 +385,8 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
         DaysCount: Number(formData.DaysCount),
         StartDate: formData.StartDate,
         EndDate: formData.EndDate,
-        IsResumed: formData.IsResumed,
-        ActualReturnDate: formData.ActualReturnDate || null,
+        IsResumed: effectiveIsResumed,
+        ActualReturnDate: effectiveReturnDate || null,
         CurrentJobTitle: emp?.JobTitle?.RankName || emp?.CurrentJobTitle || "",
         Notes: formData.Notes || null,
         DoctorName: isMedicalLeave ? (formData.DoctorName?.trim() || null) : null,
@@ -393,17 +409,20 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
 
       if (record) {
         await EmployeeStatesService.update(record.Id, payload);
-        toast.success('تم تحديث السجل بنجاح.');
+        toast.success(effectiveIsResumed ? 'تم تسجيل استئناف العمل بنجاح.' : 'تم تحديث السجل بنجاح.');
       } else {
         await EmployeeStatesService.create(payload);
-        toast.success('تم حفظ السجل بنجاح.');
+        toast.success(effectiveIsResumed ? 'تم تسجيل استئناف العمل بنجاح.' : 'تم حفظ السجل بنجاح.');
       }
 
       await refreshLeaves(empId);
       await refreshSpecialCases(empId);
+      await refreshEmployees();
       onSuccess();
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'حدث خطأ أثناء الحفظ');
+      const errMsg = err.response?.data?.message || err.message || 'حدث خطأ أثناء الحفظ';
+      setError(errMsg);
+      toast.error(errMsg);
     } finally {
       setLoading(false);
     }
@@ -418,7 +437,11 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
           <h2 className="text-base font-bold text-slate-800">
-            {record ? 'تعديل السجل' : 'إضافة سجل جديد (عطلة / حالة خاصة)'}
+            {record?._openResumption
+              ? 'إدراج استئناف العمل'
+              : record
+              ? 'تعديل السجل'
+              : 'إضافة سجل جديد (عطلة / حالة خاصة)'}
           </h2>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
             <X size={18} />

@@ -6,7 +6,7 @@ const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
 const LeaveBalanceService = require("./LeaveBalanceService");
-const { ROLES } = require("../config/constants");
+const { ROLES, getAllowedProvinces } = require("../config/constants");
 const {
   sanitizePagination,
   buildTokenizedSearch,
@@ -275,7 +275,7 @@ class EmployeeStatesService {
     if (!state) throw ApiError.notFound(`EmployeeState ${id} not found.`);
 
     if (requestingUser.role !== ROLES.ADMIN) {
-      const allowed = getAllowedProvinces(requestingUser.permissions || {});
+      const allowed = getAllowedProvinces(requestingUser);
       if (!allowed.includes(state.Employee.Province)) {
         throw ApiError.forbidden("Geographic access denied for this state record.");
       }
@@ -296,10 +296,47 @@ class EmployeeStatesService {
     if (!employee) throw ApiError.notFound(`Employee ${data.EmployeesId} not found.`);
 
     if (requestingUser.role !== ROLES.ADMIN) {
-      const allowed = getAllowedProvinces(requestingUser.permissions || {});
+      const allowed = getAllowedProvinces(requestingUser);
       if (!allowed.includes(employee.Province)) {
         throw ApiError.forbidden(`Geographic access denied for province: ${employee.Province}`);
       }
+    }
+
+    // Scenario B: If the user selected 'إدراج استئناف' or submitted a resumption in Create mode,
+    // find the employee's active un-resumed leave and resume it directly instead of creating a duplicate entry.
+    const isResumptionEntry =
+      data.RecordCategory === "إدراج استئناف" ||
+      data.StateTypeOrReason === "إدراج استئناف" ||
+      Boolean(data.IsResumed) === true;
+
+    if (isResumptionEntry) {
+      const activeLeave = await prisma.employeeStates.findFirst({
+        where: { EmployeesId: Number(data.EmployeesId), IsResumed: false },
+        orderBy: { Id: "desc" },
+      });
+
+      if (activeLeave) {
+        const resumed = await this.resumeLeaveEarly(
+          activeLeave.Id,
+          {
+            actualReturnDate:
+              data.ActualReturnDate ||
+              data.actualReturnDate ||
+              data.StartDate ||
+              new Date().toISOString().split("T")[0],
+            notes: data.Notes || data.notes,
+          },
+          requestingUser
+        );
+        return resumed.data || resumed;
+      }
+    } else {
+      // Ensure any prior un-resumed leave for this employee is marked as resumed
+      // so the employee never remains stuck with a stale un-resumed leave.
+      await prisma.employeeStates.updateMany({
+        where: { EmployeesId: Number(data.EmployeesId), IsResumed: false },
+        data: { IsResumed: true },
+      });
     }
 
     const reqDays = parseInt(data.RequestedDays || data.DaysCount || 0, 10);
@@ -345,7 +382,11 @@ class EmployeeStatesService {
           EndDate: new Date(data.EndDate),
           AddedDate: new Date(),
           UsersId: requestingUser.userName,
-          IsResumed: false,
+          IsResumed: Boolean(data.IsResumed) || data.RecordCategory === "إدراج استئناف",
+          ActualReturnDate:
+            data.ActualReturnDate && !isNaN(new Date(data.ActualReturnDate).getTime())
+              ? new Date(data.ActualReturnDate)
+              : null,
           RequestedDays: reqDays > 0 ? reqDays : null,
           IsResumedEarly: false,
           RemainingBalanceAfter: remainingBalanceAfter,
@@ -396,16 +437,40 @@ class EmployeeStatesService {
   static async update(id, data, requestingUser) {
     const existing = await this.getById(id, requestingUser);
 
+    // If transitioning from un-resumed to resumed (or category set to 'إدراج استئناف'),
+    // run through resumeLeaveEarly so early-return balance refunds and ActualReturnDate are handled properly.
+    const wantsResume =
+      Boolean(data.IsResumed) === true || data.RecordCategory === "إدراج استئناف";
+
+    if (wantsResume && !existing.IsResumed) {
+      const resumed = await this.resumeLeaveEarly(
+        id,
+        {
+          actualReturnDate:
+            data.ActualReturnDate ||
+            data.actualReturnDate ||
+            existing.EndDate ||
+            new Date().toISOString().split("T")[0],
+          notes: data.Notes !== undefined ? data.Notes : data.notes,
+        },
+        requestingUser
+      );
+      return resumed.data || resumed;
+    }
+
     const state = await prisma.employeeStates.update({
       where: { Id: id },
       data: {
-        RecordCategory: data.RecordCategory ?? existing.RecordCategory,
+        RecordCategory:
+          data.RecordCategory === "إدراج استئناف"
+            ? existing.RecordCategory
+            : data.RecordCategory ?? existing.RecordCategory,
         CurrentJobTitle: data.CurrentJobTitle ?? existing.CurrentJobTitle,
         StateTypeOrReason: data.StateTypeOrReason ?? existing.StateTypeOrReason,
         DaysCount: data.DaysCount ?? existing.DaysCount,
         StartDate: data.StartDate ? new Date(data.StartDate) : existing.StartDate,
         EndDate: data.EndDate ? new Date(data.EndDate) : existing.EndDate,
-        IsResumed: data.IsResumed !== undefined ? data.IsResumed : existing.IsResumed,
+        IsResumed: wantsResume ? true : data.IsResumed !== undefined ? data.IsResumed : existing.IsResumed,
         ActualReturnDate: data.ActualReturnDate ? new Date(data.ActualReturnDate) : existing.ActualReturnDate,
         Notes: data.Notes !== undefined ? data.Notes : existing.Notes,
         DoctorName: (() => {

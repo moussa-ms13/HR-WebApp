@@ -7,6 +7,7 @@ const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
 const { ROLES } = require("../config/constants");
+const { invalidateUserPermissionsCache } = require("../middleware/auth");
 
 class UsersService {
   // ──────────────────────────────────────────────
@@ -92,6 +93,7 @@ class UsersService {
     }
 
     const { Password, ...safe } = user;
+    invalidateUserPermissionsCache(id);
     return safe;
   }
 
@@ -143,6 +145,7 @@ class UsersService {
     });
 
     const { Password, ...safe } = user;
+    invalidateUserPermissionsCache(id);
     return safe;
   }
 
@@ -214,6 +217,7 @@ class UsersService {
     });
 
     const { Password, ...safe } = user;
+    invalidateUserPermissionsCache(id);
     return safe;
   }
 
