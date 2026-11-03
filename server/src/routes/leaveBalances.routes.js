@@ -1,11 +1,31 @@
 const express = require("express");
-const { authenticate, hasPermission } = require("../middleware/auth");
-const { PERMISSIONS } = require("../config/constants");
+const { authenticate, hasPermission, hasAnyPermission } = require("../middleware/auth");
+const { ROLES, PERMISSIONS, getAllowedProvinces } = require("../config/constants");
 const prisma = require("../config/database");
 const LeaveBalanceService = require("../services/LeaveBalanceService");
 
 const router = express.Router();
 router.use(authenticate);
+
+async function assertEmployeeAccess(employeeId, user) {
+  const emp = await prisma.employees.findUnique({
+    where: { Id: employeeId },
+    select: { Id: true, Province: true },
+  });
+  if (!emp) {
+    const err = new Error("الموظف غير موجود");
+    err.statusCode = 404;
+    throw err;
+  }
+  if (user.role !== ROLES.ADMIN) {
+    const allowed = getAllowedProvinces(user);
+    if (!allowed.includes(emp.Province)) {
+      const err = new Error("غير مصرح لك بالوصول إلى بيانات هذا الموظف خارج ولايتك");
+      err.statusCode = 403;
+      throw err;
+    }
+  }
+}
 
 /**
  * GET /api/leave-balances/employee/:id/leave-balances
@@ -27,6 +47,7 @@ router.get("/employee/:id/leave-balances", async (req, res, next) => {
     if (!Number.isInteger(employeeId) || employeeId <= 0) {
       return res.status(400).json({ success: false, message: "معرّف الموظف غير صالح" });
     }
+    await assertEmployeeAccess(employeeId, req.user);
 
     const balances = await prisma.leaveBalance.findMany({
       where: { EmployeeId: employeeId },
@@ -36,7 +57,7 @@ router.get("/employee/:id/leave-balances", async (req, res, next) => {
     res.json({ success: true, data: balances });
   } catch (error) {
     console.error("Leave Balances Error:", error);
-    return res.status(500).json({ success: false, message: error.message, stack: error.stack });
+    return res.status(error.statusCode || 500).json({ success: false, message: error.message });
   }
 });
 
@@ -57,6 +78,7 @@ router.get("/employee/:id/:year(\\d+)", async (req, res, next) => {
     if (!Number.isInteger(employeeId) || employeeId <= 0 || !Number.isInteger(year)) {
       return res.status(400).json({ success: false, message: "معرّف الموظف أو السنة غير صالحة" });
     }
+    await assertEmployeeAccess(employeeId, req.user);
 
     const balance = await prisma.leaveBalance.findFirst({
       where: {
@@ -67,7 +89,7 @@ router.get("/employee/:id/:year(\\d+)", async (req, res, next) => {
     res.json({ success: true, data: balance });
   } catch (error) {
     console.error("Leave Balance Single Year Error:", error);
-    return res.status(500).json({ success: false, message: error.message, stack: error.stack });
+    return res.status(error.statusCode || 500).json({ success: false, message: error.message });
   }
 });
 
@@ -76,9 +98,10 @@ router.get("/employee/:id/:year(\\d+)", async (req, res, next) => {
 // Upsert (create or update) a leave balance record for a specific employee.
 // Body: { year, totalDays, remainingDays, notes? }
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/employee/:id", hasPermission(PERMISSIONS.ADD), async (req, res) => {
+router.post("/employee/:id", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res) => {
   try {
     const employeeId = parseInt(req.params.id, 10);
+    await assertEmployeeAccess(employeeId, req.user);
     const { year, totalDays, remainingDays, notes } = req.body;
 
     const record = await LeaveBalanceService.upsertBalance(employeeId, {
@@ -91,7 +114,7 @@ router.post("/employee/:id", hasPermission(PERMISSIONS.ADD), async (req, res) =>
     res.json({ success: true, data: record, message: `تم حفظ رصيد السنة ${year} بنجاح.` });
   } catch (error) {
     console.error("Leave Balance Upsert Error:", error);
-    const status = error.message.includes("غير") ? 400 : 500;
+    const status = error.statusCode || (error.message.includes("غير") ? 400 : 500);
     return res.status(status).json({ success: false, message: error.message });
   }
 });
@@ -104,12 +127,13 @@ router.delete("/employee/:id/:year", hasPermission(PERMISSIONS.DELETE), async (r
   try {
     const employeeId = parseInt(req.params.id, 10);
     const year = parseInt(req.params.year, 10);
+    await assertEmployeeAccess(employeeId, req.user);
 
     const result = await LeaveBalanceService.deleteBalance(employeeId, year);
     res.json(result);
   } catch (error) {
     console.error("Leave Balance Delete Error:", error);
-    const status = error.message.includes("غير") || error.message.includes("لا يوجد") ? 400 : 500;
+    const status = error.statusCode || (error.message.includes("غير") || error.message.includes("لا يوجد") ? 400 : 500);
     return res.status(status).json({ success: false, message: error.message });
   }
 });

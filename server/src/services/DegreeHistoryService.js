@@ -23,7 +23,7 @@ class DegreeHistoryService {
     if (!employee) throw ApiError.notFound(`Employee ${employeeId} not found.`);
 
     if (requestingUser.role !== ROLES.ADMIN) {
-      const allowed = getAllowedProvinces(requestingUser.permissions || {});
+      const allowed = getAllowedProvinces(requestingUser);
       if (!allowed.includes(employee.Province)) {
         throw ApiError.forbidden("You do not have geographic access to this employee.");
       }
@@ -34,7 +34,7 @@ class DegreeHistoryService {
   static async _syncEmployeeDegree(employeeId) {
     const latest = await prisma.degreeHistory.findFirst({
       where: { EmployeesId: employeeId },
-      orderBy: { EffectiveDate: "desc" },
+      orderBy: [{ EffectiveDate: "desc" }, { DegreeLevel: "desc" }, { Id: "desc" }],
       select: { DegreeLevel: true, EffectiveDate: true },
     });
 
@@ -44,6 +44,15 @@ class DegreeHistoryService {
         data: {
           Degree: latest.DegreeLevel,
           LastDegreeDate: latest.EffectiveDate,
+          UpdateDate: new Date(),
+        },
+      });
+    } else {
+      await prisma.employees.update({
+        where: { Id: employeeId },
+        data: {
+          Degree: 0,
+          UpdateDate: new Date(),
         },
       });
     }

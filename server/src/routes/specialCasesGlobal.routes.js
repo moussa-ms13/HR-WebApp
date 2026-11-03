@@ -4,7 +4,7 @@
 // ============================================================
 const express = require("express");
 const SpecialCasesService = require("../services/SpecialCasesService");
-const { authenticate, hasPermission } = require("../middleware/auth");
+const { authenticate, hasPermission, hasAnyPermission } = require("../middleware/auth");
 const { PERMISSIONS } = require("../config/constants");
 
 const prisma = require("../config/database");
@@ -38,7 +38,7 @@ router.get("/", hasPermission(PERMISSIONS.SPECIAL_CASES), async (req, res) => {
  * PUT /api/special-cases/:caseId/end
  * End / reintegrate a special case from the global list
  */
-router.put("/:caseId/end", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
+router.put("/:caseId/end", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res) => {
   const caseId = Number(req.params.caseId);
   const existing = await prisma.specialCases.findUnique({
     where: { Id: caseId },

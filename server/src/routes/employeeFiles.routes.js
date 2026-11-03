@@ -1,6 +1,6 @@
 const express = require("express");
 const EmployeeFilesService = require("../services/EmployeeFilesService");
-const { authenticate, hasPermission } = require("../middleware/auth");
+const { authenticate, hasPermission, hasAnyPermission } = require("../middleware/auth");
 const upload = require("../middleware/upload");
 const { PERMISSIONS } = require("../config/constants");
 
@@ -30,7 +30,7 @@ router.get("/", async (req, res, next) => {
  * POST /api/employees/:id/files
  * Batch upload up to 15 files under the 'files' form-data key
  */
-router.post("/", hasPermission(PERMISSIONS.EDIT), upload.any(), async (req, res, next) => {
+router.post("/", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), upload.any(), async (req, res, next) => {
   try {
     const files = req.files || [];
 
@@ -54,7 +54,7 @@ router.post("/", hasPermission(PERMISSIONS.EDIT), upload.any(), async (req, res,
  * POST /api/employees/:id/files/batch
  * Alias batch upload endpoint
  */
-router.post("/batch", hasPermission(PERMISSIONS.EDIT), upload.any(), async (req, res, next) => {
+router.post("/batch", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), upload.any(), async (req, res, next) => {
   try {
     const files = req.files || [];
     if (files.length === 0) {
@@ -112,7 +112,7 @@ router.delete("/:fileId", hasPermission(PERMISSIONS.DELETE), async (req, res, ne
  * PUT /api/employees/:id/files/:fileId
  * Update a document's metadata
  */
-router.put("/:fileId", hasPermission(PERMISSIONS.EDIT), upload.single("file"), async (req, res, next) => {
+router.put("/:fileId", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), upload.single("file"), async (req, res, next) => {
   try {
     const result = await EmployeeFilesService.updateFile(
       Number(req.params.fileId),

@@ -4,7 +4,7 @@
 // ============================================================
 const express = require("express");
 const SpecialCasesService = require("../services/SpecialCasesService");
-const { authenticate, hasPermission } = require("../middleware/auth");
+const { authenticate, hasPermission, hasAnyPermission } = require("../middleware/auth");
 const { PERMISSIONS } = require("../config/constants");
 
 const router = express.Router({ mergeParams: true });
@@ -24,7 +24,7 @@ router.get("/", async (req, res) => {
  * POST /api/employees/:id/special-cases
  * Create a new special case + auto-sync employee status
  */
-router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res) => {
+router.post("/", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res) => {
   const record = await SpecialCasesService.create(Number(req.params.id), req.body, req.user);
   res.status(201).json({ success: true, data: record });
 });
@@ -33,7 +33,7 @@ router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res) => {
  * PUT /api/employees/:id/special-cases/:caseId
  * Update a special case + re-sync employee status
  */
-router.put("/:caseId", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
+router.put("/:caseId", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res) => {
   const record = await SpecialCasesService.update(
     Number(req.params.id),
     Number(req.params.caseId),
@@ -47,7 +47,7 @@ router.put("/:caseId", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
  * PUT /api/employees/:id/special-cases/:caseId/end
  * End case and reintegrate employee
  */
-router.put("/:caseId/end", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
+router.put("/:caseId/end", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res) => {
   const record = await SpecialCasesService.endCase(
     Number(req.params.id),
     Number(req.params.caseId),

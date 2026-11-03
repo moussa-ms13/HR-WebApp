@@ -215,7 +215,9 @@ export default function SpecialCaseModal({
       onSuccess?.();
       onClose();
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'حدث خطأ أثناء حفظ الحالة الخاصة');
+      const msg = err.response?.data?.message || err.message || 'حدث خطأ أثناء حفظ الحالة الخاصة';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

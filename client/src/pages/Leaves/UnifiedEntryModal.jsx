@@ -9,6 +9,7 @@ import SpecialCasesService from '../../services/specialCasesService';
 import EmployeeService from '../../services/employeeService';
 import { normalizeGender } from '../../utils/leaveCertificateConfig';
 import { formatEmployeeName } from '../../utils/employeeUtils';
+import { useToast } from '../../components/ui/Toast';
 
 // Minimum characters before the employee search API is triggered
 const MIN_SEARCH_CHARS = 2;
@@ -49,6 +50,7 @@ const UnifiedEntryModal = ({
   hideCategoryTabs = false
 }) => {
   const { user, hasPermission } = useAuth();
+  const toast = useToast();
   const allowedProvinces = getAllowedProvinces(user);
 
   const canLeaves = hasPermission('checkBoxLeaves');
@@ -332,7 +334,9 @@ const UnifiedEntryModal = ({
       onSuccess?.();
       onClose();
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'حدث خطأ أثناء الحفظ');
+      const msg = err.response?.data?.message || err.message || 'حدث خطأ أثناء الحفظ';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

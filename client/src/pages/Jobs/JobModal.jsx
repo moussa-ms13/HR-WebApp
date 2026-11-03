@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import JobTitlesService from '../../services/jobTitlesService';
 import { refreshJobTitles } from '../../utils/cacheManager';
+import { useToast } from '../../components/ui/Toast';
 import { X, Save, Loader2 } from 'lucide-react';
 
 const JobModal = ({ isOpen, onClose, job, onSuccess }) => {
+  const toast = useToast();
   const [formData, setFormData] = useState({
     EmploymentCategory: '',
     RankName: '',
@@ -60,7 +62,9 @@ const JobModal = ({ isOpen, onClose, job, onSuccess }) => {
       await refreshJobTitles();
       onSuccess();
     } catch (err) {
-      setError(err.response?.data?.message || 'فشل في حفظ البيانات. تأكد من عدم تكرار الرتبة.');
+      const msg = err.response?.data?.message || 'فشل في حفظ البيانات. تأكد من عدم تكرار الرتبة.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

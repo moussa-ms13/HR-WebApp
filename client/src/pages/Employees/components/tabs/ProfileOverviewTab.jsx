@@ -254,25 +254,13 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
                 <div className="flex gap-2">
                   <input
                     value={editData.LastName}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      editField('LastName', val);
-                      if (!editData.LastNameFr || editData.LastNameFr === transliterateLastName(editData.LastName)) {
-                        editField('LastNameFr', transliterateLastName(val));
-                      }
-                    }}
+                    onChange={(e) => editField('LastName', e.target.value)}
                     className="w-1/2 px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300"
                     placeholder="اللقب"
                   />
                   <input
                     value={editData.Name}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      editField('Name', val);
-                      if (!editData.NameFr || editData.NameFr === transliterateFirstName(editData.Name)) {
-                        editField('NameFr', transliterateFirstName(val));
-                      }
-                    }}
+                    onChange={(e) => editField('Name', e.target.value)}
                     className="w-1/2 px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300"
                     placeholder="الاسم"
                   />

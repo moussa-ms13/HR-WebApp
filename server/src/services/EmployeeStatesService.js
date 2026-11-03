@@ -123,7 +123,7 @@ class EmployeeStatesService {
 
     const employeeFilter = {
       Province: provinceFilter,
-      ...(employeeId ? { Id: Number(employeeId) } : {}),
+      ...(employeeId && Number.isInteger(Number(employeeId)) ? { Id: Number(employeeId) } : {}),
       ...(directorate ? { Directorate: directorate } : {}),
     };
 

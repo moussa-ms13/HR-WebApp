@@ -345,7 +345,9 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
         await onSuccess(savedEmployeeId);
       }
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'حدث خطأ أثناء حفظ البيانات');
+      const msg = err.response?.data?.message || err.message || 'حدث خطأ أثناء حفظ البيانات';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

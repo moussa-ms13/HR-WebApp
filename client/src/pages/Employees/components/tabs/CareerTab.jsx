@@ -178,7 +178,7 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
       toast.success(editingRankId ? 'تم تعديل الترقية بنجاح' : 'تمت إضافة الترقية بنجاح');
     } catch (err) {
       console.error('Failed to add/edit rank', err);
-      toast.error('حدث خطأ أثناء حفظ الترقية');
+      toast.error(err.response?.data?.message || 'حدث خطأ أثناء حفظ الترقية');
     } finally {
       setIsSubmittingCareer(false);
     }
@@ -208,7 +208,7 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
         toast.success('تم حذف الترقية بنجاح');
       } catch (err) {
         console.error('Failed to delete rank', err);
-        toast.error('حدث خطأ أثناء الحذف');
+        toast.error(err.response?.data?.message || 'حدث خطأ أثناء الحذف');
       }
     });
   };
@@ -233,7 +233,7 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
       toast.success(editingPositionId ? 'تم تعديل المنصب بنجاح' : 'تمت إضافة المنصب بنجاح');
     } catch (err) {
       console.error('Failed to add/edit position', err);
-      toast.error('حدث خطأ أثناء حفظ المنصب');
+      toast.error(err.response?.data?.message || 'حدث خطأ أثناء حفظ المنصب');
     } finally {
       setIsSubmittingCareer(false);
     }
@@ -262,7 +262,7 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
         toast.success('تم حذف المنصب بنجاح');
       } catch (err) {
         console.error('Failed to delete position', err);
-        toast.error('حدث خطأ أثناء الحذف');
+        toast.error(err.response?.data?.message || 'حدث خطأ أثناء الحذف');
       }
     });
   };
@@ -316,7 +316,7 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
         if (onRefresh) onRefresh();
         toast.success('تم حذف الدرجة بنجاح');
       } catch (err) {
-        toast.error('حدث خطأ أثناء الحذف');
+        toast.error(err.response?.data?.message || 'حدث خطأ أثناء الحذف');
       }
     });
   };
@@ -391,7 +391,7 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
         if (onRefresh) onRefresh();
         toast.success('تم حذف تعويض الخبرة المهنية بنجاح');
       } catch (err) {
-        toast.error('حدث خطأ أثناء الحذف');
+        toast.error(err.response?.data?.message || 'حدث خطأ أثناء الحذف');
       }
     });
   };

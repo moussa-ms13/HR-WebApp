@@ -154,7 +154,9 @@ const ManageLeaveDebtModal = ({ isOpen, onClose, employeeId, employeeName }) => 
       resetForm();
     } catch (err) {
       console.error('Save balance error:', err);
-      setError(err.response?.data?.message || err.message || 'حدث خطأ أثناء حفظ رصيد العطلة.');
+      const msg = err.response?.data?.message || err.message || 'حدث خطأ أثناء حفظ رصيد العطلة.';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -185,7 +187,9 @@ const ManageLeaveDebtModal = ({ isOpen, onClose, employeeId, employeeName }) => 
           }
         } catch (err) {
           console.error('Delete balance error:', err);
-          setError(err.response?.data?.message || err.message || 'تعذر حذف سجل رصيد السنة.');
+          const msg = err.response?.data?.message || err.message || 'تعذر حذف سجل رصيد السنة.';
+          setError(msg);
+          toast.error(msg);
         } finally {
           setDeletingYear(null);
         }

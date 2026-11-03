@@ -2,8 +2,15 @@ const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
 const EmployeesService = require("./EmployeesService"); // To verify access
+const CacheService = require("./CacheService");
 const fs = require("fs");
 const path = require("path");
+
+function parseValidDate(val, fallback) {
+  if (!val || val === "null" || val === "undefined") return fallback;
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? fallback : d;
+}
 
 class EmployeeFilesService {
   /**
@@ -33,7 +40,7 @@ class EmployeeFilesService {
     }
 
     const { DocumentName, Category, DocumentDate } = data || {};
-    const docDate = DocumentDate ? new Date(DocumentDate) : new Date();
+    const docDate = parseValidDate(DocumentDate, new Date());
     const category = Category || "ملف التوظيف";
 
     const createdRecords = [];
@@ -77,6 +84,8 @@ class EmployeeFilesService {
       employeesId: employeeId,
       ipAddress: requestingUser.ipAddress,
     });
+
+    CacheService.invalidateEmployeeEcosystem();
 
     return createdRecords;
   }
@@ -196,6 +205,8 @@ class EmployeeFilesService {
       ipAddress: requestingUser.ipAddress,
     });
 
+    CacheService.invalidateEmployeeEcosystem();
+
     return { message: "File deleted successfully" };
   }
 
@@ -258,6 +269,8 @@ class EmployeeFilesService {
       ipAddress: requestingUser.ipAddress,
     });
 
+    CacheService.invalidateEmployeeEcosystem();
+
     return { message: `${documents.length} file(s) deleted successfully.`, count: documents.length };
   }
 
@@ -281,7 +294,7 @@ class EmployeeFilesService {
     const updateData = {
       DocumentName: DocumentName || existingFile.DocumentName,
       Category: Category || existingFile.Category,
-      DocumentDate: DocumentDate ? new Date(DocumentDate) : existingFile.DocumentDate
+      DocumentDate: parseValidDate(DocumentDate, existingFile.DocumentDate)
     };
 
     if (file) {
@@ -318,6 +331,8 @@ class EmployeeFilesService {
       employeesId: existingFile.EmployeesId,
       ipAddress: requestingUser.ipAddress,
     });
+
+    CacheService.invalidateEmployeeEcosystem();
 
     return updatedFile;
   }

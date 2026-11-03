@@ -6,12 +6,62 @@
 const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
+const CacheService = require("./CacheService");
 const { ROLES, getAllowedProvinces } = require("../config/constants");
 
 class CareerHistoryService {
   // ──────────────────────────────────────────────
   // Shared helpers
   // ──────────────────────────────────────────────
+
+  /**
+   * Syncs Employees.JobTitleId with the latest rank promotion record.
+   */
+  static async _syncEmployeeRank(employeeId) {
+    const latestRank = await prisma.rankHistory.findFirst({
+      where: { EmployeesId: employeeId, RankId: { not: null } },
+      orderBy: [{ InstallDate: "desc" }, { Id: "desc" }],
+      select: { RankId: true },
+    });
+
+    if (latestRank && latestRank.RankId) {
+      await prisma.employees.update({
+        where: { Id: employeeId },
+        data: {
+          JobTitleId: latestRank.RankId,
+          UpdateDate: new Date(),
+        },
+      });
+    }
+  }
+
+  /**
+   * Syncs Employees.AssignedPosition & PositionDate with the latest active higher position
+   * (excluding internal secondment archive records containing <!-- ORIGIN:).
+   */
+  static async _syncEmployeePosition(employeeId) {
+    const activePositions = await prisma.positionHistory.findMany({
+      where: {
+        EmployeesId: employeeId,
+        EndDate: null,
+      },
+      orderBy: [{ InstallDate: "desc" }, { Id: "desc" }],
+      select: { PositionName: true, InstallDate: true, Reference: true },
+    });
+
+    const latestActive = activePositions.find(
+      (p) => !p.Reference || !p.Reference.includes("<!-- ORIGIN:")
+    );
+
+    await prisma.employees.update({
+      where: { Id: employeeId },
+      data: {
+        AssignedPosition: latestActive ? latestActive.PositionName : "",
+        PositionDate: latestActive ? latestActive.InstallDate : null,
+        UpdateDate: new Date(),
+      },
+    });
+  }
 
   /**
    * Verifies the employee exists and the requesting user
@@ -25,7 +75,7 @@ class CareerHistoryService {
     if (!employee) throw ApiError.notFound(`Employee ${employeeId} not found.`);
 
     if (requestingUser.role !== ROLES.ADMIN) {
-      const allowedProvinces = getAllowedProvinces(requestingUser.permissions || {});
+      const allowedProvinces = getAllowedProvinces(requestingUser);
       if (!allowedProvinces.includes(employee.Province)) {
         throw ApiError.forbidden("You do not have geographic access to this employee.");
       }
@@ -129,6 +179,9 @@ class CareerHistoryService {
       },
     });
 
+    await this._syncEmployeeRank(employeeId);
+    CacheService.invalidateEmployeeEcosystem();
+
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
       title: "إضافة ترقية في الرتبة",
@@ -166,6 +219,9 @@ class CareerHistoryService {
       },
     });
 
+    await this._syncEmployeeRank(employeeId);
+    CacheService.invalidateEmployeeEcosystem();
+
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
       title: "تعديل سجل الترقية",
@@ -183,6 +239,9 @@ class CareerHistoryService {
     const existing = await this.getRankRecord(employeeId, recordId);
 
     await prisma.rankHistory.delete({ where: { Id: recordId } });
+
+    await this._syncEmployeeRank(employeeId);
+    CacheService.invalidateEmployeeEcosystem();
 
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
@@ -226,6 +285,9 @@ class CareerHistoryService {
       },
     });
 
+    await this._syncEmployeePosition(employeeId);
+    CacheService.invalidateEmployeeEcosystem();
+
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
       title: "إضافة منصب عليا",
@@ -261,6 +323,9 @@ class CareerHistoryService {
       },
     });
 
+    await this._syncEmployeePosition(employeeId);
+    CacheService.invalidateEmployeeEcosystem();
+
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
       title: "تعديل سجل المنصب",
@@ -278,6 +343,9 @@ class CareerHistoryService {
     const existing = await this.getPositionRecord(employeeId, recordId);
 
     await prisma.positionHistory.delete({ where: { Id: recordId } });
+
+    await this._syncEmployeePosition(employeeId);
+    CacheService.invalidateEmployeeEcosystem();
 
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,

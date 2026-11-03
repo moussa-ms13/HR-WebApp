@@ -93,7 +93,6 @@ class UsersService {
     }
 
     const { Password, ...safe } = user;
-    invalidateUserPermissionsCache(id);
     return safe;
   }
 
@@ -145,7 +144,7 @@ class UsersService {
     });
 
     const { Password, ...safe } = user;
-    invalidateUserPermissionsCache(id);
+    invalidateUserPermissionsCache(user.Id);
     return safe;
   }
 
@@ -253,6 +252,7 @@ class UsersService {
       ipAddress: requestingUser.ipAddress,
     });
 
+    invalidateUserPermissionsCache(id);
     return { message: `User '${existing.UserName}' has been deleted.` };
   }
 }

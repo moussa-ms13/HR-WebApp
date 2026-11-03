@@ -413,7 +413,7 @@ class SpecialCasesService {
    */
   static async _verifyAccess(employee, requestingUser) {
     if (requestingUser.role !== ROLES.ADMIN) {
-      const allowed = getAllowedProvinces(requestingUser.permissions || {});
+      const allowed = getAllowedProvinces(requestingUser);
       if (!allowed.includes(employee.Province)) {
         throw ApiError.forbidden(`Geographic access denied for province: ${employee.Province}`);
       }

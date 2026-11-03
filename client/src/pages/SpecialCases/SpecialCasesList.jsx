@@ -258,7 +258,7 @@ export default function SpecialCasesList() {
         searchInput={searchInput}
         handleSearchChange={handleSearchChange}
         setPage={setPage}
-        canAdd={hasPermission('checkBoxAdd')}
+        canAdd={hasPermission('checkBoxAdd') || hasPermission('checkBoxEdit')}
         onAdd={handleAdd}
         addButtonLabel="تسجيل حالة خاصة"
         searchPlaceholder="البحث باسم الموظف أو نوع الحالة..."
@@ -363,7 +363,7 @@ export default function SpecialCasesList() {
                           {menuOpenId === c.Id && (
                             <div className="absolute left-0 mt-2 w-48 rounded-xl shadow-lg bg-white ring-1 ring-black/5 z-50 py-1 font-sans">
                               {/* Reintegrate / End Case Action for Active Temporary Cases */}
-                              {statusInfo.isReintegratable && hasPermission('checkBoxEdit') && (
+                              {statusInfo.isReintegratable && (hasPermission('checkBoxAdd') || hasPermission('checkBoxEdit')) && (
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -376,7 +376,7 @@ export default function SpecialCasesList() {
                                 </button>
                               )}
 
-                              {hasPermission('checkBoxEdit') && (
+                              {(hasPermission('checkBoxAdd') || hasPermission('checkBoxEdit')) && (
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();

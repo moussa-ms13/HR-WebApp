@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import UsersService from '../../services/usersService';
 import { refreshUsers } from '../../utils/cacheManager';
+import { useToast } from '../../components/ui/Toast';
 
 const ALL_PERMISSIONS = [
   // CRUD
@@ -34,6 +35,7 @@ const ALL_PERMISSIONS = [
 ];
 
 const UserModal = ({ isOpen, onClose, user, onSuccess }) => {
+  const toast = useToast();
   const [formData, setFormData] = useState({
     fullName: '',
     userName: '',
@@ -140,7 +142,9 @@ const UserModal = ({ isOpen, onClose, user, onSuccess }) => {
       await refreshUsers();
       onSuccess();
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'حدث خطأ أثناء الحفظ');
+      const msg = err.response?.data?.message || err.message || 'حدث خطأ أثناء الحفظ';
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

@@ -124,7 +124,7 @@ router.get("/:id/career-history", async (req, res) => {
 /**
  * POST /api/employees/:id/rank-history
  */
-router.post("/:id/rank-history", hasPermission(PERMISSIONS.ADD), async (req, res) => {
+router.post("/:id/rank-history", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res) => {
   const record = await CareerHistoryService.createRank(Number(req.params.id), req.body, req.user);
   res.status(201).json({ success: true, data: record });
 });
@@ -132,7 +132,7 @@ router.post("/:id/rank-history", hasPermission(PERMISSIONS.ADD), async (req, res
 /**
  * PUT /api/employees/:id/rank-history/:recordId
  */
-router.put("/:id/rank-history/:recordId", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
+router.put("/:id/rank-history/:recordId", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res) => {
   const record = await CareerHistoryService.updateRank(
     Number(req.params.id),
     Number(req.params.recordId),
@@ -157,7 +157,7 @@ router.delete("/:id/rank-history/:recordId", hasPermission(PERMISSIONS.DELETE), 
 /**
  * POST /api/employees/:id/position-history
  */
-router.post("/:id/position-history", hasPermission(PERMISSIONS.ADD), async (req, res) => {
+router.post("/:id/position-history", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res) => {
   const record = await CareerHistoryService.createPosition(Number(req.params.id), req.body, req.user);
   res.status(201).json({ success: true, data: record });
 });
@@ -165,7 +165,7 @@ router.post("/:id/position-history", hasPermission(PERMISSIONS.ADD), async (req,
 /**
  * PUT /api/employees/:id/position-history/:recordId
  */
-router.put("/:id/position-history/:recordId", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
+router.put("/:id/position-history/:recordId", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res) => {
   const record = await CareerHistoryService.updatePosition(
     Number(req.params.id),
     Number(req.params.recordId),
@@ -199,7 +199,7 @@ router.get("/:id/degrees", async (req, res) => {
 /**
  * POST /api/employees/:id/degrees
  */
-router.post("/:id/degrees", hasPermission(PERMISSIONS.ADD), async (req, res) => {
+router.post("/:id/degrees", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res) => {
   const record = await DegreeHistoryService.create(Number(req.params.id), req.body, req.user);
   res.status(201).json({ success: true, data: record });
 });
@@ -207,7 +207,7 @@ router.post("/:id/degrees", hasPermission(PERMISSIONS.ADD), async (req, res) => 
 /**
  * PUT /api/employees/:id/degrees/:degreeId
  */
-router.put("/:id/degrees/:degreeId", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
+router.put("/:id/degrees/:degreeId", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res) => {
   const record = await DegreeHistoryService.update(
     Number(req.params.id),
     Number(req.params.degreeId),
