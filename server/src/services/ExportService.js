@@ -163,7 +163,22 @@ class ExportService {
       const where = { ...baseWhere };
 
       if (filters.status && String(filters.status).trim()) {
-        where.EmployeeStatus = String(filters.status).trim();
+        const st = String(filters.status).trim();
+        if (st === "متعاقد") {
+          where.AND = [
+            ...(where.AND || []),
+            {
+              OR: [
+                { EmployeeStatus: "متعاقد" },
+                { JobTitle: { EmploymentCategory: { contains: "متعاقد" } } },
+              ],
+            },
+          ];
+        } else if (st === "مرسم" || st === "في الخدمة") {
+          where.EmployeeStatus = { in: ["مرسم", "مثبت", "نشط"] };
+        } else {
+          where.EmployeeStatus = st;
+        }
       }
       if (filters.gender && String(filters.gender).trim()) {
         where.Gender = String(filters.gender).trim();

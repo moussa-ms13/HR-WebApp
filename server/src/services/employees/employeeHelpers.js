@@ -283,7 +283,8 @@ function validateEmployeeCreation(data) {
 /**
  * Enforces statutory status rules:
  * - 'متعاقدون بدوام كلي' & 'متعاقدون بدوام جزئي' -> strictly 'متعاقد'
- * - 'اسلاك مشتركة' & 'أسلاك تقنية (خاصة)' -> strictly 'مرسم' or 'متربص' (defaults to 'مرسم' if 'متعاقد')
+ * - Explicitly requested 'متعاقد' -> preserved as 'متعاقد' (even when JobTitle is 'بدون رتبة' or regular)
+ * - Otherwise 'متربص' or 'مرسم'
  * @param {string} employmentCategory
  * @param {string} [requestedStatus]
  * @returns {string}
@@ -298,8 +299,8 @@ function resolveStatutoryStatus(employmentCategory, requestedStatus = "مرسم"
     return "متعاقد";
   }
 
-  // Regular corps
   const status = (requestedStatus || "").trim();
+  if (status === "متعاقد") return "متعاقد";
   if (status === "متربص") return "متربص";
   return "مرسم";
 }

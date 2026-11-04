@@ -98,9 +98,10 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
   const { data: jobTitlesData } = useSWR(isEditing ? '/job-titles' : null, fetcher, { keepPreviousData: true });
   const jobTitles = jobTitlesData?.data || [];
 
-  const selectedJob = jobTitles.find(j => String(j.Id) === String(editData.JobTitleId || employee?.JobTitleId)) || employee?.JobTitle;
-  const empCat = selectedJob?.EmploymentCategory || employee?.EmploymentCategory || '';
-  const isContractual = empCat.includes('متعاقد') || ['متعاقدون بدوام كلي', 'متعاقدون بدوام جزئي', 'متعاقدين بدوام كلي', 'متعاقدين بدوام جزئي'].includes(empCat.trim()) || employee?.EmployeeStatus === 'متعاقد';
+  const selectedJob = jobTitles.find(j => String(j.Id) === String(isEditing ? editData.JobTitleId : employee?.JobTitleId)) || (!isEditing ? employee?.JobTitle : null);
+  const empCat = selectedJob?.EmploymentCategory || (!isEditing ? employee?.EmploymentCategory : '') || '';
+  const isContractualRank = empCat.includes('متعاقد') || ['متعاقدون بدوام كلي', 'متعاقدون بدوام جزئي', 'متعاقدين بدوام كلي', 'متعاقدين بدوام جزئي'].includes(empCat.trim());
+  const isContractual = isContractualRank || (isEditing ? editData.EmployeeStatus === 'متعاقد' : employee?.EmployeeStatus === 'متعاقد');
 
   const enterEditMode = () => {
     if (!employee) return;
@@ -151,12 +152,25 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
     const updated = { ...prev, [key]: value };
     if (key === 'JobTitleId') {
       const job = jobTitles.find(j => String(j.Id) === String(value));
+      const prevJob = jobTitles.find(j => String(j.Id) === String(prev.JobTitleId));
       const isJobContr = job && (job.EmploymentCategory?.includes('متعاقد') || ['متعاقدون بدوام كلي', 'متعاقدون بدوام جزئي', 'متعاقدين بدوام كلي', 'متعاقدين بدوام جزئي'].includes(job.EmploymentCategory?.trim()));
+      const wasJobContr = prevJob && (prevJob.EmploymentCategory?.includes('متعاقد') || ['متعاقدون بدوام كلي', 'متعاقدون بدوام جزئي', 'متعاقدين بدوام كلي', 'متعاقدين بدوام جزئي'].includes(prevJob.EmploymentCategory?.trim()));
       if (isJobContr) {
         updated.EmployeeStatus = 'متعاقد';
         updated.ConfirmationDate = '';
-      } else if (updated.EmployeeStatus === 'متعاقد') {
+        updated.AssignedPosition = '';
+        updated.PositionDate = '';
+      } else if (job && !isJobContr && wasJobContr && updated.EmployeeStatus === 'متعاقد') {
         updated.EmployeeStatus = 'مرسم';
+      }
+    }
+    if (key === 'EmployeeStatus') {
+      if (value === 'متربص') {
+        updated.ConfirmationDate = '';
+      } else if (value === 'متعاقد') {
+        updated.ConfirmationDate = '';
+        updated.AssignedPosition = '';
+        updated.PositionDate = '';
       }
     }
     return updated;
@@ -606,7 +620,8 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
               <input
                 value={editData.AssignedPosition}
                 onChange={(e) => editField('AssignedPosition', e.target.value)}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300"
+                disabled={isContractual}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
               />
             ) : (
               <span className="block font-semibold text-slate-800">{employee.AssignedPosition || '—'}</span>
@@ -621,8 +636,8 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
                 value={editData.PositionDate}
                 onChange={(e) => editField('PositionDate', e.target.value)}
                 type="date"
-                disabled={!editData.AssignedPosition || editData.AssignedPosition === 'لا شيء'}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100"
+                disabled={isContractual || !editData.AssignedPosition || editData.AssignedPosition === 'لا شيء'}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
               />
             ) : (
               <span className="block font-semibold text-slate-800">
@@ -652,24 +667,15 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
           <div>
             <span className="block text-xs font-medium text-gray-400 mb-1">الحالة الوظيفية</span>
             {isEditing ? (
-              isContractual ? (
-                <select
-                  value="متعاقد"
-                  disabled
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none bg-slate-100 text-slate-700 cursor-not-allowed font-medium"
-                >
-                  <option value="متعاقد">متعاقد</option>
-                </select>
-              ) : (
-                <select
-                  value={editData.EmployeeStatus || 'مرسم'}
-                  onChange={(e) => editField('EmployeeStatus', e.target.value)}
-                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 bg-white"
-                >
-                  <option value="مرسم">مرسم</option>
-                  <option value="متربص">متربص</option>
-                </select>
-              )
+              <select
+                value={editData.EmployeeStatus || 'مرسم'}
+                onChange={(e) => editField('EmployeeStatus', e.target.value)}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 bg-white"
+              >
+                <option value="مرسم">مرسم</option>
+                <option value="متربص">متربص</option>
+                <option value="متعاقد">متعاقد</option>
+              </select>
             ) : (
               <span className="block font-semibold text-emerald-600">{employee.EmployeeStatus || 'مرسم'}</span>
             )}

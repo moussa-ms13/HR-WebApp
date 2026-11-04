@@ -235,10 +235,13 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
       // Cascading Rules
       if (name === 'JobTitleId') {
         const job = jobTitles.find(j => String(j.Id) === String(value));
+        const prevJob = jobTitles.find(j => String(j.Id) === String(prev.JobTitleId));
         if (job && isContractualJob(job)) {
           updated.EmployeeStatus = 'متعاقد';
           updated.ConfirmationDate = '';
-        } else if (updated.EmployeeStatus === 'متعاقد') {
+          updated.AssignedPosition = '';
+          updated.PositionDate = '';
+        } else if (job && !isContractualJob(job) && prevJob && isContractualJob(prevJob) && updated.EmployeeStatus === 'متعاقد') {
           updated.EmployeeStatus = 'مرسم';
         }
       }
@@ -248,8 +251,14 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
       if (name === 'Province') {
         updated.Directorate = '';
       }
-      if (name === 'EmployeeStatus' && (value === 'متربص' || value === 'متعاقد')) {
-        updated.ConfirmationDate = '';
+      if (name === 'EmployeeStatus') {
+        if (value === 'متربص') {
+          updated.ConfirmationDate = '';
+        } else if (value === 'متعاقد') {
+          updated.ConfirmationDate = '';
+          updated.AssignedPosition = '';
+          updated.PositionDate = '';
+        }
       }
       if (name === 'Degree' && Number(value) === 0) {
         updated.LastDegreeDate = updated.InstallationDate;
@@ -616,11 +625,37 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">المنصب العالي </label>
-                      <input type="text" name="AssignedPosition" value={formData.AssignedPosition} onChange={handleChange} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm" />
+                      {(() => {
+                        const curJob = jobTitles.find(j => String(j.Id) === String(formData.JobTitleId));
+                        const isContr = (curJob && isContractualJob(curJob)) || formData.EmployeeStatus === 'متعاقد';
+                        return (
+                          <input
+                            type="text"
+                            name="AssignedPosition"
+                            value={formData.AssignedPosition}
+                            onChange={handleChange}
+                            disabled={isContr}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
+                          />
+                        );
+                      })()}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ المنصب العالي</label>
-                      <input type="date" name="PositionDate" value={formData.PositionDate} onChange={handleChange} disabled={!formData.AssignedPosition || formData.AssignedPosition === 'لا شيء'} className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100" />
+                      {(() => {
+                        const curJob = jobTitles.find(j => String(j.Id) === String(formData.JobTitleId));
+                        const isContr = (curJob && isContractualJob(curJob)) || formData.EmployeeStatus === 'متعاقد';
+                        return (
+                          <input
+                            type="date"
+                            name="PositionDate"
+                            value={formData.PositionDate}
+                            onChange={handleChange}
+                            disabled={isContr || !formData.AssignedPosition || formData.AssignedPosition === 'لا شيء'}
+                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
+                          />
+                        );
+                      })()}
                     </div>
 
                     <div>
@@ -638,33 +673,16 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
 
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">الحالة</label>
-                      {(() => {
-                        const curJob = jobTitles.find(j => String(j.Id) === String(formData.JobTitleId));
-                        const isContr = (curJob && isContractualJob(curJob)) || formData.EmployeeStatus === 'متعاقد';
-                        if (isContr) {
-                          return (
-                            <select
-                              name="EmployeeStatus"
-                              value="متعاقد"
-                              disabled
-                              className="w-full px-3 py-2 border border-slate-300 rounded-lg outline-none text-sm bg-slate-100 text-slate-700 cursor-not-allowed font-medium"
-                            >
-                              <option value="متعاقد">متعاقد</option>
-                            </select>
-                          );
-                        }
-                        return (
-                          <select
-                            name="EmployeeStatus"
-                            value={formData.EmployeeStatus || 'مرسم'}
-                            onChange={handleChange}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
-                          >
-                            <option value="مرسم">مرسم</option>
-                            <option value="متربص">متربص</option>
-                          </select>
-                        );
-                      })()}
+                      <select
+                        name="EmployeeStatus"
+                        value={formData.EmployeeStatus || 'مرسم'}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
+                      >
+                        <option value="مرسم">مرسم</option>
+                        <option value="متربص">متربص</option>
+                        <option value="متعاقد">متعاقد</option>
+                      </select>
                     </div>
                     <div className="sm:col-span-1 lg:col-span-2">
                       <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ التثبيت</label>

@@ -299,6 +299,9 @@ const EmployeesList = () => {
             <option value="">حالة الملف: الكل</option>
             <option value="complete">مكتمل</option>
             <option value="incomplete">ناقص</option>
+            <option value="مرسم">الحالة: مرسم</option>
+            <option value="متربص">الحالة: متربص</option>
+            <option value="متعاقد">الحالة: متعاقد</option>
           </select>
           <ChevronDown size={14} className="-mr-6 text-gray-500 pointer-events-none" />
           

@@ -111,18 +111,20 @@ class EmployeesService {
       ];
     }
 
-    // File Status Filter (اكتمال الملف)
+    // File Status Filter (اكتمال الملف أو الحالة القانونية)
     if (fileStatus === "complete") {
       whereClause.IsProfileComplete = true;
     } else if (fileStatus === "incomplete") {
       whereClause.IsProfileComplete = false;
+    } else if (["مرسم", "متربص", "متعاقد"].includes(String(fileStatus || "").trim())) {
+      whereClause.EmployeeStatus = String(fileStatus).trim();
     }
 
-    // Employee Status Filter (الوضعية القانونية الأساسية: مرسم / متربص)
+    // Employee Status Filter (الوضعية القانونية الأساسية: مرسم / متربص / متعاقد)
     if (statusFilter) {
       const normalizedStatus = (statusFilter === "مثبت" || statusFilter === "نشط") ? "مرسم" : statusFilter;
       whereClause.EmployeeStatus = normalizedStatus;
-    } else if (category && ["مرسم", "متربص"].includes(String(category).trim())) {
+    } else if (category && ["مرسم", "متربص", "متعاقد"].includes(String(category).trim())) {
       whereClause.EmployeeStatus = String(category).trim();
     }
 
@@ -384,7 +386,7 @@ class EmployeesService {
     const isProfileComplete = computeProfileCompleteness(data);
 
     const jobTitleId = Number(data.JobTitleId) || 0;
-    let employeeStatus = data.EmployeeStatus || "مرسم";
+    let employeeStatus = resolveStatutoryStatus("", data.EmployeeStatus || "مرسم");
     if (jobTitleId > 0) {
       const jobTitle = await prisma.jobTitles.findUnique({
         where: { Id: jobTitleId },
@@ -465,7 +467,7 @@ class EmployeesService {
     const isProfileComplete = computeProfileCompleteness(data, existing);
 
     const targetJobTitleId = data.JobTitleId !== undefined ? Number(data.JobTitleId) : existing.JobTitleId;
-    let targetEmployeeStatus = data.EmployeeStatus ?? existing.EmployeeStatus ?? "مرسم";
+    let targetEmployeeStatus = resolveStatutoryStatus("", data.EmployeeStatus ?? existing.EmployeeStatus ?? "مرسم");
     if (targetJobTitleId > 0) {
       const jobTitle = await prisma.jobTitles.findUnique({
         where: { Id: targetJobTitleId },
