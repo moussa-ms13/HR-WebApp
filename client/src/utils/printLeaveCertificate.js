@@ -55,12 +55,18 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
   const warnings = [];
 
   // Leave type & exceptional reason
-  const leaveType = stClean.StateTypeOrReason || stClean.stateTypeOrReason || "عطلة سنوية";
+  const rawStateType = String(stClean.StateTypeOrReason || stClean.stateTypeOrReason || "عطلة سنوية").trim();
+  const inlineParenMatch = rawStateType.match(/عطلة\s+استثنائية\s*\(([^)]+)\)/);
+  const leaveType = inlineParenMatch ? "عطلة استثنائية" : rawStateType;
+  const isExceptionalType = leaveType.includes("استثنائية");
+  const rawNotesForFallback = String(stClean.Notes || stClean.notes || "").trim();
   const exceptionalReason = String(
     stClean.ExceptionalReason ||
     stClean.exceptionalReason ||
     nestedLeave.exceptionalReason ||
     nestedLeave.ExceptionalReason ||
+    (inlineParenMatch ? inlineParenMatch[1] : "") ||
+    (isExceptionalType && rawNotesForFallback && rawNotesForFallback.length <= 40 ? rawNotesForFallback : "") ||
     ""
   )
     .replace(/^[(\s]+|[)\s]+$/g, "")
@@ -266,11 +272,16 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
     ];
   })();
 
-  // Clean notes so any legacy/stale "تبقى ... من العطلة السنوية" string baked into Notes is not duplicated
+  // Clean notes so any legacy/stale "تبقى ... من العطلة السنوية" string baked into Notes is not duplicated,
+  // and if Notes was used as the fallback exceptionalReason, omit it from bottom notes to avoid repeating it.
   const rawNotes = String(stClean.Notes || stClean.notes || "").trim();
-  const cleanedNotes = rawNotes
+  const cleanedNotesRaw = rawNotes
     .replace(/ملاحظة\s*:?\s*تبقى[^.\n]*من العطلة السنوية[^.\n]*\.?/g, "")
     .trim();
+  const cleanedNotes =
+    isExceptionalType && exceptionalReason && cleanedNotesRaw.replace(/^[(\s]+|[)\s]+$/g, "").trim() === exceptionalReason
+      ? ""
+      : cleanedNotesRaw;
 
   // Signature date = today in Algerian administrative format (e.g., 05 أكتوبر 2026)
   const today = new Date();
@@ -658,6 +669,27 @@ export async function printLeaveInIframe(printData) {
  */
 export async function printLeaveCertificate(stateRecord, fallbackEmployee = null) {
   let enrichedState = stateRecord ? { ...stateRecord } : {};
+  const stateId = enrichedState.Id || enrichedState.id;
+
+  // Always fetch fresh state record by ID if available so newly saved fields
+  // (such as ExceptionalReason, live LeaveBalances, or early resumption updates)
+  // are guaranteed to be up to date even if the table row was cached.
+  if (stateId) {
+    try {
+      const stateRes = await apiClient.get(`/employee-states/${stateId}`);
+      const freshState = stateRes?.data?.data || stateRes?.data;
+      if (freshState && typeof freshState === "object") {
+        enrichedState = {
+          ...enrichedState,
+          ...freshState,
+          Employee: freshState.Employee || enrichedState.Employee,
+        };
+      }
+    } catch (_) {
+      // Fallback to passed stateRecord if network call fails
+    }
+  }
+
   const leaveType =
     enrichedState.StateTypeOrReason ||
     enrichedState.stateTypeOrReason ||
