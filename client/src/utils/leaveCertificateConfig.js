@@ -287,9 +287,7 @@ const HUNDREDS = [
  */
 export function numberToArabicWords(n) {
   const num = parseInt(n, 10);
-  if (isNaN(num)) return String(n);
-  if (num === 0) return "صفر";
-  if (num < 0) return String(n);
+  if (isNaN(num) || num <= 0) return String(n);
   if (num === 1000) return "ألف";
   if (num > 1000) return String(n);
 
@@ -314,6 +312,14 @@ export function numberToArabicWords(n) {
 export function arabicDayUnit(n) {
   const num = parseInt(n, 10);
   return num >= 3 && num <= 10 ? "أيام" : "يوم";
+}
+
+/**
+ * True when the leave type is strictly an annual leave ("عطلة سنوية").
+ */
+export function isAnnualLeaveType(leaveType) {
+  const t = String(leaveType || "").trim();
+  return t === "عطلة سنوية" || (t.includes("سنوية") && !t.includes("استثنائية"));
 }
 
 /**

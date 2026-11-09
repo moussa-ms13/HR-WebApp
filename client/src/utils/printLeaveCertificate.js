@@ -178,10 +178,15 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
     secondCertificateDate,
   });
 
-  // Remaining balance — printed ONLY for annual leave ("عطلة سنوية"),
-  // never for decision documents (sick/maternity) or exceptional leave.
+  // Remaining balance — strictly rendered ONLY when isAnnualLeave === true.
+  // When isAnnualLeave is true and all balances are 0, explicitly fallback to 0 (0) for leaveYear.
+  // When isAnnualLeave is false (e.g., عطلة استثنائية, مرضية, أمومة), return [] and never render.
+  const isAnnualLeave =
+    !isDecisionDoc &&
+    (String(leaveType || "").trim() === "عطلة سنوية" || String(leaveType || "").includes("سنوية"));
+
   const remaining = (() => {
-    if (isDecisionDoc || leaveType !== "عطلة سنوية") return [];
+    if (!isAnnualLeave) return [];
 
     // 1. Prefer live per-year breakdown attached by backend or printLeaveCertificate
     if (Array.isArray(stClean._remainingBreakdown) && stClean._remainingBreakdown.length > 0) {
@@ -220,11 +225,17 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
           daysInWords: numberToArabicWords(r.days),
         }));
       }
-      // If all live balances have 0 remaining days, return empty array so we never print a stale "تبقى 0 (0)" note
-      return [];
+      // All live balances for this employee are 0 -> explicitly render 0 (0) for leaveYear
+      return [
+        {
+          year: leaveYear,
+          days: 0,
+          daysInWords: "0",
+        },
+      ];
     }
 
-    // 3. Fallback to scalar RemainingBalanceAfter only when strictly positive (> 0)
+    // 3. Fallback to scalar RemainingBalanceAfter when positive (> 0)
     if (stClean.RemainingBalanceAfter != null && Number(stClean.RemainingBalanceAfter) > 0) {
       const remDays = Number(stClean.RemainingBalanceAfter);
       return [
@@ -236,7 +247,14 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
       ];
     }
 
-    return [];
+    // 4. Annual leave with 0 remaining days -> explicitly render 0 (0) for leaveYear
+    return [
+      {
+        year: leaveYear,
+        days: 0,
+        daysInWords: "0",
+      },
+    ];
   })();
 
   // Clean notes so any legacy/stale "تبقى ... من العطلة السنوية" string baked into Notes is not duplicated
@@ -267,7 +285,12 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
       gender: gender || "male",
       dateOfBirth,
       rank,
-      jobTitle: emp.AssignedPosition || "",
+      jobTitle:
+        emp.AssignedPosition &&
+        String(emp.AssignedPosition).trim() !== "" &&
+        String(emp.AssignedPosition).trim() !== "غير محدد"
+          ? String(emp.AssignedPosition).trim()
+          : "/",
       province: emp.Province || "الشلف",
     },
     decision: {

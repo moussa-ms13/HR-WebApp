@@ -138,12 +138,20 @@ export default function LeavePrintDocument(props) {
   const isDecisionDoc = isSickLeave || isMaternityLeave;
 
   // Exceptional leave reuses the annual template layout with dynamic naming
-  const annualNaming = getAnnualTemplateNaming(
-    propLeaveType || leave?.type || leave?.StateTypeOrReason || props?.StateTypeOrReason
-  );
+  const rawLeaveType =
+    propLeaveType || leave?.type || leave?.StateTypeOrReason || props?.StateTypeOrReason || "";
+  const annualNaming = getAnnualTemplateNaming(rawLeaveType);
   const isExceptionalLeave = annualNaming.isExceptional;
-  const isAnnualLeave = !isDecisionDoc && !isExceptionalLeave;
+  const isAnnualLeave =
+    !isDecisionDoc &&
+    !isExceptionalLeave &&
+    (String(rawLeaveType).trim() === "عطلة سنوية" || String(rawLeaveType).includes("سنوية"));
   const leaveDayUnit = arabicDayUnit(leave.days);
+  const annualRemainingRows = isAnnualLeave
+    ? (Array.isArray(leave.remaining) && leave.remaining.length > 0
+        ? leave.remaining
+        : [{ year: String(leave.year || new Date().getFullYear()), days: 0, daysInWords: "0" }])
+    : [];
   const rawDirectorate = decision.directorateName || "المديرية الجهوية للأملاك الوطنية بالشلف";
   const directorateName = rawDirectorate
     .replace(/المديرية الجهوية للأملاك الوطنية\s+(?:الناحية|ناحية)\s+الشلف/g, "المديرية الجهوية للأملاك الوطنية بالشلف")
@@ -669,7 +677,14 @@ export default function LeavePrintDocument(props) {
             <strong>الرتبة:</strong> <strong>{employee.rank}</strong>
           </div>
           <div className="doc-article-line">
-            <strong>الوظيفة:</strong> <strong>{employee.jobTitle || "غير محدد"}</strong>
+            <strong>الوظيفة:</strong>{" "}
+            <strong>
+              {employee.jobTitle &&
+              String(employee.jobTitle).trim() !== "" &&
+              String(employee.jobTitle).trim() !== "غير محدد"
+                ? employee.jobTitle
+                : "/"}
+            </strong>
           </div>
           <div className="doc-article-line">
             <strong>الفترة :</strong> من <strong><AdminDate dateInput={leave.startDate} /></strong> إلى <strong><AdminDate dateInput={leave.endDate} /></strong>
@@ -686,10 +701,10 @@ export default function LeavePrintDocument(props) {
       )}
 
       {/* ══════════════ REMAINING BALANCE (ANNUAL LEAVE ONLY) ══════════════ */}
-      {isAnnualLeave && leave.remaining?.length > 0 && (
+      {isAnnualLeave && annualRemainingRows.length > 0 && (
         <div className="doc-remark" style={{ marginTop: "6px", marginBottom: "4px", fontWeight: "bold" }}>
           <span className="doc-remark-label">ملاحظة :</span> تبقى{" "}
-          {leave.remaining.map((r, i) => {
+          {annualRemainingRows.map((r, i) => {
             const dayUnit = Number(r.days) >= 3 && Number(r.days) <= 10 ? "أيام" : "يوم";
             return (
               <React.Fragment key={r.year}>
