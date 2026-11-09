@@ -510,6 +510,7 @@ class EmployeeStatesService {
             existing.EndDate ||
             new Date().toISOString().split("T")[0],
           notes: data.Notes !== undefined ? data.Notes : data.notes,
+          ExceptionalReason: data.ExceptionalReason !== undefined ? data.ExceptionalReason : data.exceptionalReason,
         },
         requestingUser
       );
@@ -821,6 +822,14 @@ class EmployeeStatesService {
             RefundedBreakdown: breakdown.length > 0 ? JSON.stringify(breakdown) : null,
             RemainingBalanceAfter: remainingBalanceAfter,
             Notes: updatedNotes,
+            ExceptionalReason: (() => {
+              if (!String(existing.StateTypeOrReason || "").includes("استثنائية")) return null;
+              const hasReason = data.ExceptionalReason !== undefined || data.exceptionalReason !== undefined;
+              if (!hasReason) return existing.ExceptionalReason ?? null;
+              const raw = data.ExceptionalReason !== undefined ? data.ExceptionalReason : data.exceptionalReason;
+              const cleaned = raw ? String(raw).replace(/^[(\s]+|[)\s]+$/g, "").trim() : "";
+              return cleaned || null;
+            })(),
           },
           include: {
             Employee: {

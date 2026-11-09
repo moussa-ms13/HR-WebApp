@@ -363,10 +363,17 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
         record && effectiveIsResumed && !record.IsResumed && effectiveReturnDate
       );
 
+      const isExceptionalLeave = formData.StateTypeOrReason === 'عطلة استثنائية';
+      const cleanedExceptionalReason = isExceptionalLeave
+        ? (formData.ExceptionalReason?.replace(/^[(\s]+|[)\s]+$/g, '').trim() || null)
+        : null;
+
       if (isNewResumption) {
         const resumeRes = await EmployeeStatesService.resume(record.Id, {
           actualReturnDate: effectiveReturnDate,
           notes: formData.Notes,
+          ExceptionalReason: cleanedExceptionalReason,
+          exceptionalReason: cleanedExceptionalReason,
         });
 
         await refreshLeaves(empId);
@@ -383,11 +390,6 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
         onSuccess();
         return;
       }
-
-      const isExceptionalLeave = formData.StateTypeOrReason === 'عطلة استثنائية';
-      const cleanedExceptionalReason = isExceptionalLeave
-        ? (formData.ExceptionalReason?.replace(/^[(\s]+|[)\s]+$/g, '').trim() || null)
-        : null;
 
       const emp = selectedEmployee || employees.find(e => e.Id === empId) || record?.Employee;
       const payload = {
