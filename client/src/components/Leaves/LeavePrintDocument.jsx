@@ -13,6 +13,8 @@ import {
   SICK_LEAVE_ARTICLE_3,
   SICK_LEAVE_SIGNATORY_TITLE,
   ANNUAL_LEAVE_SIGNATORY_TITLE,
+  arabicDayUnit,
+  getAnnualTemplateNaming,
 } from "../../utils/leaveCertificateConfig";
 import { addOneDay } from "../../utils/dateUtils";
 
@@ -135,6 +137,13 @@ export default function LeavePrintDocument(props) {
 
   const isDecisionDoc = isSickLeave || isMaternityLeave;
 
+  // Exceptional leave reuses the annual template layout with dynamic naming
+  const annualNaming = getAnnualTemplateNaming(
+    propLeaveType || leave?.type || leave?.StateTypeOrReason || props?.StateTypeOrReason
+  );
+  const isExceptionalLeave = annualNaming.isExceptional;
+  const isAnnualLeave = !isDecisionDoc && !isExceptionalLeave;
+  const leaveDayUnit = arabicDayUnit(leave.days);
   const rawDirectorate = decision.directorateName || "المديرية الجهوية للأملاك الوطنية بالشلف";
   const directorateName = rawDirectorate
     .replace(/المديرية الجهوية للأملاك الوطنية\s+(?:الناحية|ناحية)\s+الشلف/g, "المديرية الجهوية للأملاك الوطنية بالشلف")
@@ -539,7 +548,7 @@ export default function LeavePrintDocument(props) {
       </div>
 
       {/* ══════════════ TITLE ══════════════ */}
-      <div className="doc-title">{isMaternityLeave ? "مقرر عطلة أمومة" : (isSickLeave ? "مقرر عطلة مرضية" : "سند عطلة سنوية")}</div>
+      <div className="doc-title">{isMaternityLeave ? "مقرر عطلة أمومة" : (isSickLeave ? "مقرر عطلة مرضية" : annualNaming.docTitle)}</div>
 
       {/* ══════════════ OPENING ══════════════ */}
       <div className="doc-intro">إن وزير المالية،</div>
@@ -605,7 +614,7 @@ export default function LeavePrintDocument(props) {
             <strong>{employee.rank}</strong> لدى {directorateName}،
           </p>
           <p className="doc-whereas">
-            - وبعد الإطلاع على الطلب المحرر من طرف {g.maani} المتضمن طلب العطلة السنوية بعنوان سنة{" "}
+            - وبعد الإطلاع على الطلب المحرر من طرف {g.maani} المتضمن {annualNaming.requestPhrase} بعنوان سنة{" "}
             <LTR>{leave.year}</LTR>
           </p>
           <p className="doc-whereas">- وباقتراح من السيد المدير الفرعي للإدارة العامة.</p>
@@ -622,7 +631,7 @@ export default function LeavePrintDocument(props) {
             <strong style={{ color: "#000000", opacity: 1, fontWeight: "bold" }}>المادة الأولى :</strong> تمنح{" "}
             <strong style={{ color: "#000000", opacity: 1, fontWeight: "bold" }}>{isMaternityLeave ? "عطلة أمومة" : "عطلة مرضية"}</strong> مدتها{" "}
             <strong style={{ color: "#000000", opacity: 1, fontWeight: "bold" }}>
-              {leave.daysInWords} (<LTR>{leave.days}</LTR>) يوم
+              {leave.daysInWords} (<LTR>{leave.days}</LTR>) {leaveDayUnit}
             </strong>{" "}
             متتالية لفائدة {g.title}{" "}
             <strong style={{ color: "#000000", opacity: 1, fontWeight: "bold" }}>{formattedEmployeeName}</strong> {g.bisifat}{" "}
@@ -647,8 +656,8 @@ export default function LeavePrintDocument(props) {
       ) : (
         <div className="doc-article">
           <div className="doc-article-line">
-            <strong>المادة الوحيدة :</strong> تمنح عطلة سنوية مدفوعة الأجر مدتها{" "}
-            <strong>{leave.daysInWords}</strong> (<strong><LTR>{leave.days}</LTR></strong>) يوم.
+            <strong>المادة الوحيدة :</strong> تمنح {annualNaming.grantPhrase} مدفوعة الأجر مدتها{" "}
+            <strong>{leave.daysInWords}</strong> (<strong><LTR>{leave.days}</LTR></strong>) {leaveDayUnit}.
           </div>
           <div className="doc-article-line">
             <strong>السنة:</strong> <strong><LTR>{leave.year}</LTR></strong>
@@ -677,7 +686,7 @@ export default function LeavePrintDocument(props) {
       )}
 
       {/* ══════════════ REMAINING BALANCE (ANNUAL LEAVE ONLY) ══════════════ */}
-      {!isDecisionDoc && leave.remaining?.length > 0 && (
+      {isAnnualLeave && leave.remaining?.length > 0 && (
         <div className="doc-remark" style={{ marginTop: "6px", marginBottom: "4px", fontWeight: "bold" }}>
           <span className="doc-remark-label">ملاحظة :</span> تبقى{" "}
           {leave.remaining.map((r, i) => {

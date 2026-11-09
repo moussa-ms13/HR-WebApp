@@ -318,13 +318,13 @@ const LeavesTab = ({ employee, onRefresh }) => {
                             <span>إدراج استئناف</span>
                           </button>
                         )}
-                        {hasPermission('checkBoxPrint') && (leave.StateTypeOrReason === 'عطلة سنوية' || leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة') && (
+                        {hasPermission('checkBoxPrint') && (leave.StateTypeOrReason === 'عطلة سنوية' || leave.StateTypeOrReason === 'عطلة استثنائية' || leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة') && (
                           <button
                             type="button"
                             onClick={() => handlePrintCertificate(leave)}
                             disabled={printingLeaveId === leave.Id}
                             className="px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 transition-colors cursor-pointer inline-flex items-center gap-1.5 text-xs font-bold"
-                            title={leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة' ? 'طباعة المقرر' : 'طباعة سند العطلة السنوية'}
+                            title={leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة' ? 'طباعة المقرر' : (leave.StateTypeOrReason === 'عطلة استثنائية' ? 'طباعة سند العطلة الاستثنائية' : 'طباعة سند العطلة السنوية')}
                           >
                             {printingLeaveId === leave.Id ? (
                               <Loader2 size={13} className="animate-spin text-emerald-600" />
@@ -335,7 +335,7 @@ const LeavesTab = ({ employee, onRefresh }) => {
                           </button>
                         )}
                         {!((hasPermission('checkBoxAdd') || hasPermission('checkBoxEdit')) && !leave.IsResumed) &&
-                          !(hasPermission('checkBoxPrint') && (leave.StateTypeOrReason === 'عطلة سنوية' || leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة')) && (
+                          !(hasPermission('checkBoxPrint') && (leave.StateTypeOrReason === 'عطلة سنوية' || leave.StateTypeOrReason === 'عطلة استثنائية' || leave.StateTypeOrReason === 'عطلة مرضية' || leave.StateTypeOrReason === 'عطلة أمومة')) && (
                             <span className="text-slate-300 text-xs">-</span>
                           )}
                       </div>

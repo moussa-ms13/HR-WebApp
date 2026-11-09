@@ -308,6 +308,35 @@ export function numberToArabicWords(n) {
   return `${hundredText} و${numberToArabicWords(remainder)}`;
 }
 
+/**
+ * Arabic counted-noun unit for days: "أيام" for 3–10, otherwise "يوم".
+ */
+export function arabicDayUnit(n) {
+  const num = parseInt(n, 10);
+  return num >= 3 && num <= 10 ? "أيام" : "يوم";
+}
+
+/**
+ * True when the leave type is an exceptional leave ("عطلة استثنائية").
+ */
+export function isExceptionalLeaveType(leaveType) {
+  return String(leaveType || "").includes("استثنائية");
+}
+
+/**
+ * Returns the dynamic naming for annual-template documents
+ * (annual leave vs exceptional leave) — legal preamble stays identical.
+ */
+export function getAnnualTemplateNaming(leaveType) {
+  const isExceptional = isExceptionalLeaveType(leaveType);
+  return {
+    isExceptional,
+    docTitle: isExceptional ? "سند عطلة استثنائية" : "سند عطلة سنوية",
+    requestPhrase: isExceptional ? "طلب عطلة استثنائية" : "طلب العطلة السنوية",
+    grantPhrase: isExceptional ? "عطلة استثنائية" : "عطلة سنوية",
+  };
+}
+
 // ─── Timezone-Safe Date Formatter (Strict YYYY/MM/DD) ────────
 
 /**

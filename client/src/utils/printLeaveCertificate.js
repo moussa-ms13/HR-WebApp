@@ -13,6 +13,8 @@ import {
   CIVIL_SERVICE_ORDINANCE,
   CONTRACTUAL_STAFF_DECREE,
   SICK_LEAVE_PROPOSAL,
+  arabicDayUnit,
+  getAnnualTemplateNaming,
 } from './leaveCertificateConfig.js';
 import { addOneDay } from './dateUtils.js';
 import apiClient from '../services/apiClient.js';
@@ -176,9 +178,10 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
     secondCertificateDate,
   });
 
-  // Remaining balance (strictly omitted for decision documents like sick and maternity leave)
+  // Remaining balance — printed ONLY for annual leave ("عطلة سنوية"),
+  // never for decision documents (sick/maternity) or exceptional leave.
   const remaining = (() => {
-    if (isDecisionDoc) return [];
+    if (isDecisionDoc || leaveType !== "عطلة سنوية") return [];
 
     // 1. Prefer live per-year breakdown attached by backend or printLeaveCertificate
     if (Array.isArray(stClean._remainingBreakdown) && stClean._remainingBreakdown.length > 0) {
@@ -458,7 +461,7 @@ export function generateSickLeaveHTML(stateRecord, fallbackEmployee = null) {
     <div class="doc-decides">يـقـرر ما يلي :</div>
 
     <div class="doc-sick-article-block">
-      <strong>المادة الأولى :</strong> تمنح <strong>${leaveName}</strong> مدتها <strong>${lv.daysInWords} (<bdi dir="ltr">${lv.days}</bdi>) يوم</strong> متتالية لفائدة ${g.title} <strong>${empFullName}</strong> ${g.bisifat} <strong>${emp.rank}</strong> لدى المديرية الجهوية للأملاك الوطنية بالشلف، إبتداءا من تاريخ <strong><span dir="ltr" class="admin-date">${lv.startDate}</span></strong> إلى غاية <strong><span dir="ltr" class="admin-date">${lv.endDate}</span></strong>.
+      <strong>المادة الأولى :</strong> تمنح <strong>${leaveName}</strong> مدتها <strong>${lv.daysInWords} (<bdi dir="ltr">${lv.days}</bdi>) ${arabicDayUnit(lv.days)}</strong> متتالية لفائدة ${g.title} <strong>${empFullName}</strong> ${g.bisifat} <strong>${emp.rank}</strong> لدى المديرية الجهوية للأملاك الوطنية بالشلف، إبتداءا من تاريخ <strong><span dir="ltr" class="admin-date">${lv.startDate}</span></strong> إلى غاية <strong><span dir="ltr" class="admin-date">${lv.endDate}</span></strong>.
     </div>
 
     <div class="doc-sick-article-block">
@@ -491,7 +494,7 @@ export async function printLeaveInIframe(printData) {
 
   const docTitle = printData?.leaveType === 'عطلة أمومة'
     ? 'مقرر عطلة أمومة'
-    : (printData?.leaveType === 'عطلة مرضية' ? 'مقرر عطلة مرضية' : 'سند عطلة سنوية');
+    : (printData?.leaveType === 'عطلة مرضية' ? 'مقرر عطلة مرضية' : getAnnualTemplateNaming(printData?.leaveType).docTitle);
 
   return new Promise((resolve) => {
     // Create hidden iframe
