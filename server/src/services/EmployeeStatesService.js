@@ -84,6 +84,32 @@ async function getDistinctYears() {
   }
 }
 
+/**
+ * Attaches live remaining annual leave breakdown (`_remainingBreakdown`) and
+ * syncs `RemainingBalanceAfter` from `Employee.LeaveBalances` whenever available.
+ */
+function attachLiveRemainingBreakdown(st) {
+  if (!st || st.StateTypeOrReason !== "عطلة سنوية") return st;
+  const rawBalances = st.Employee?.LeaveBalances;
+  if (!Array.isArray(rawBalances)) return st;
+
+  const positive = rawBalances
+    .filter((b) => Number(b.RemainingDays) > 0)
+    .sort((a, b) => Number(a.Year) - Number(b.Year));
+
+  const breakdown = positive.map((b) => ({
+    year: b.Year,
+    days: Number(b.RemainingDays),
+  }));
+  const liveTotal = breakdown.reduce((sum, r) => sum + r.days, 0);
+
+  return {
+    ...st,
+    RemainingBalanceAfter: liveTotal,
+    _remainingBreakdown: breakdown,
+  };
+}
+
 class EmployeeStatesService {
   /**
    * Fetch all employee states with pagination, geographic RBAC, lifecycle filtering, leave type, and year stepper.
@@ -228,7 +254,16 @@ class EmployeeStatesService {
                 RankName: true,
                 EmploymentCategory: true,
               }
-            }
+            },
+            LeaveBalances: {
+              orderBy: { Year: "asc" },
+              select: {
+                Year: true,
+                TotalDays: true,
+                ConsumedDays: true,
+                RemainingDays: true,
+              },
+            },
           }
         }
       },
@@ -246,8 +281,10 @@ class EmployeeStatesService {
       getDistinctYears(),
     ]);
 
+    const enrichedStates = states.map(attachLiveRemainingBreakdown);
+
     return {
-      data: states,
+      data: enrichedStates,
       meta: {
         total,
         page: safePage,
@@ -269,7 +306,16 @@ class EmployeeStatesService {
   static async getById(id, requestingUser) {
     const state = await prisma.employeeStates.findUnique({
       where: { Id: id },
-      include: { Employee: true },
+      include: {
+        Employee: {
+          include: {
+            JobTitle: true,
+            LeaveBalances: {
+              orderBy: { Year: "asc" },
+            },
+          },
+        },
+      },
     });
 
     if (!state) throw ApiError.notFound(`EmployeeState ${id} not found.`);
@@ -281,7 +327,7 @@ class EmployeeStatesService {
       }
     }
 
-    return state;
+    return attachLiveRemainingBreakdown(state);
   }
 
   /**
@@ -458,47 +504,141 @@ class EmployeeStatesService {
       return resumed.data || resumed;
     }
 
-    const state = await prisma.employeeStates.update({
-      where: { Id: id },
-      data: {
-        RecordCategory:
-          data.RecordCategory === "إدراج استئناف"
-            ? existing.RecordCategory
-            : data.RecordCategory ?? existing.RecordCategory,
-        CurrentJobTitle: data.CurrentJobTitle ?? existing.CurrentJobTitle,
-        StateTypeOrReason: data.StateTypeOrReason ?? existing.StateTypeOrReason,
-        DaysCount: data.DaysCount ?? existing.DaysCount,
-        StartDate: data.StartDate ? new Date(data.StartDate) : existing.StartDate,
-        EndDate: data.EndDate ? new Date(data.EndDate) : existing.EndDate,
-        IsResumed: wantsResume ? true : data.IsResumed !== undefined ? data.IsResumed : existing.IsResumed,
-        ActualReturnDate: data.ActualReturnDate ? new Date(data.ActualReturnDate) : existing.ActualReturnDate,
-        Notes: data.Notes !== undefined ? data.Notes : existing.Notes,
-        DoctorName: (() => {
-          const hasDoc = data.DoctorName !== undefined || data.doctorName !== undefined;
-          if (!hasDoc) return existing.DoctorName;
-          const val = data.DoctorName !== undefined ? data.DoctorName : data.doctorName;
-          return val ? String(val).trim() : null;
-        })(),
-        CertificateDate: (() => {
-          const hasDate = data.CertificateDate !== undefined || data.certificateDate !== undefined;
-          if (!hasDate) return existing.CertificateDate;
-          const val = data.CertificateDate !== undefined ? data.CertificateDate : data.certificateDate;
-          return val && !isNaN(new Date(val).getTime()) ? new Date(val) : null;
-        })(),
-        SecondDoctorName: (() => {
-          const hasSecondDoc = data.SecondDoctorName !== undefined || data.secondDoctorName !== undefined || data.doctorName2 !== undefined;
-          if (!hasSecondDoc) return existing.SecondDoctorName;
-          const val = data.SecondDoctorName !== undefined ? data.SecondDoctorName : (data.secondDoctorName !== undefined ? data.secondDoctorName : data.doctorName2);
-          return val ? String(val).trim() : null;
-        })(),
-        SecondCertificateDate: (() => {
-          const hasSecondDate = data.SecondCertificateDate !== undefined || data.secondCertificateDate !== undefined || data.certificateDate2 !== undefined;
-          if (!hasSecondDate) return existing.SecondCertificateDate;
-          const val = data.SecondCertificateDate !== undefined ? data.SecondCertificateDate : (data.secondCertificateDate !== undefined ? data.secondCertificateDate : data.certificateDate2);
-          return val && !isNaN(new Date(val).getTime()) ? new Date(val) : null;
-        })(),
+    const nextStateType = data.StateTypeOrReason ?? existing.StateTypeOrReason;
+    const isAnnualLeave = nextStateType === "عطلة سنوية";
+    const oldDays = Number(existing.DaysCount || 0);
+    const newDays = data.DaysCount !== undefined ? Number(data.DaysCount) : oldDays;
+
+    const state = await prisma.$transaction(
+      async (tx) => {
+        let remainingBreakdown = [];
+        let remainingBalanceAfter = existing.RemainingBalanceAfter;
+
+        if (isAnnualLeave) {
+          const daysDiff = newDays - oldDays;
+
+          if (daysDiff < 0) {
+            // Duration reduced: refund (-daysDiff) via Reverse-FIFO (newest year first)
+            let remainingToRefund = Math.abs(daysDiff);
+            const balances = await tx.leaveBalance.findMany({
+              where: { EmployeeId: existing.EmployeesId },
+              orderBy: { Year: "desc" },
+            });
+
+            for (const balance of balances) {
+              if (remainingToRefund <= 0) break;
+              const headroom = balance.TotalDays - balance.RemainingDays;
+              if (headroom > 0) {
+                const take = Math.min(remainingToRefund, headroom);
+                await tx.leaveBalance.update({
+                  where: { Id: balance.Id },
+                  data: {
+                    ConsumedDays: balance.ConsumedDays - take,
+                    RemainingDays: balance.RemainingDays + take,
+                  },
+                });
+                remainingToRefund -= take;
+              }
+            }
+          } else if (daysDiff > 0) {
+            // Duration increased: deduct daysDiff via FIFO (oldest year first)
+            let remainingToDeduct = daysDiff;
+            const balances = await tx.leaveBalance.findMany({
+              where: { EmployeeId: existing.EmployeesId, RemainingDays: { gt: 0 } },
+              orderBy: { Year: "asc" },
+            });
+
+            const totalAvailable = balances.reduce((sum, b) => sum + b.RemainingDays, 0);
+            if (totalAvailable < remainingToDeduct) {
+              throw ApiError.badRequest(
+                `الرصيد غير كافٍ لتمديد العطلة (المتاح: ${totalAvailable} يوم، الإضافي المطلوب: ${remainingToDeduct} يوم)`
+              );
+            }
+
+            for (const balance of balances) {
+              if (remainingToDeduct <= 0) break;
+              const deduct = Math.min(balance.RemainingDays, remainingToDeduct);
+              await tx.leaveBalance.update({
+                where: { Id: balance.Id },
+                data: {
+                  ConsumedDays: balance.ConsumedDays + deduct,
+                  RemainingDays: balance.RemainingDays - deduct,
+                },
+              });
+              remainingToDeduct -= deduct;
+            }
+          }
+
+          // Re-query live positive balances to ensure RemainingBalanceAfter is always accurate
+          const positiveAfter = await tx.leaveBalance.findMany({
+            where: { EmployeeId: existing.EmployeesId, RemainingDays: { gt: 0 } },
+            orderBy: { Year: "asc" },
+          });
+          remainingBreakdown = positiveAfter.map((b) => ({
+            year: b.Year,
+            days: b.RemainingDays,
+          }));
+          remainingBalanceAfter = remainingBreakdown.reduce((sum, r) => sum + r.days, 0);
+        }
+
+        const updated = await tx.employeeStates.update({
+          where: { Id: id },
+          data: {
+            RecordCategory:
+              data.RecordCategory === "إدراج استئناف"
+                ? existing.RecordCategory
+                : data.RecordCategory ?? existing.RecordCategory,
+            CurrentJobTitle: data.CurrentJobTitle ?? existing.CurrentJobTitle,
+            StateTypeOrReason: nextStateType,
+            DaysCount: newDays,
+            StartDate: data.StartDate ? new Date(data.StartDate) : existing.StartDate,
+            EndDate: data.EndDate ? new Date(data.EndDate) : existing.EndDate,
+            IsResumed: wantsResume ? true : data.IsResumed !== undefined ? data.IsResumed : existing.IsResumed,
+            ActualReturnDate: data.ActualReturnDate ? new Date(data.ActualReturnDate) : existing.ActualReturnDate,
+            RemainingBalanceAfter: remainingBalanceAfter,
+            Notes: data.Notes !== undefined ? data.Notes : existing.Notes,
+            DoctorName: (() => {
+              const hasDoc = data.DoctorName !== undefined || data.doctorName !== undefined;
+              if (!hasDoc) return existing.DoctorName;
+              const val = data.DoctorName !== undefined ? data.DoctorName : data.doctorName;
+              return val ? String(val).trim() : null;
+            })(),
+            CertificateDate: (() => {
+              const hasDate = data.CertificateDate !== undefined || data.certificateDate !== undefined;
+              if (!hasDate) return existing.CertificateDate;
+              const val = data.CertificateDate !== undefined ? data.CertificateDate : data.certificateDate;
+              return val && !isNaN(new Date(val).getTime()) ? new Date(val) : null;
+            })(),
+            SecondDoctorName: (() => {
+              const hasSecondDoc = data.SecondDoctorName !== undefined || data.secondDoctorName !== undefined || data.doctorName2 !== undefined;
+              if (!hasSecondDoc) return existing.SecondDoctorName;
+              const val = data.SecondDoctorName !== undefined ? data.SecondDoctorName : (data.secondDoctorName !== undefined ? data.secondDoctorName : data.doctorName2);
+              return val ? String(val).trim() : null;
+            })(),
+            SecondCertificateDate: (() => {
+              const hasSecondDate = data.SecondCertificateDate !== undefined || data.secondCertificateDate !== undefined || data.certificateDate2 !== undefined;
+              if (!hasSecondDate) return existing.SecondCertificateDate;
+              const val = data.SecondCertificateDate !== undefined ? data.SecondCertificateDate : (data.secondCertificateDate !== undefined ? data.secondCertificateDate : data.certificateDate2);
+              return val && !isNaN(new Date(val).getTime()) ? new Date(val) : null;
+            })(),
+          },
+          include: {
+            Employee: {
+              include: {
+                JobTitle: true,
+                LeaveBalances: {
+                  orderBy: { Year: "asc" },
+                },
+              },
+            },
+          },
+        });
+
+        updated._remainingBreakdown = remainingBreakdown;
+        return updated;
       },
-    });
+      { maxWait: 15000, timeout: 60000 }
+    );
 
     await SystemRecordService.log({
       userFullName: requestingUser.fullName,
@@ -623,11 +763,30 @@ class EmployeeStatesService {
           }
         }
 
+        let remainingBalanceAfter = existing.RemainingBalanceAfter;
+        let remainingBreakdown = [];
+
+        if (isAnnualLeave) {
+          const positiveAfter = await tx.leaveBalance.findMany({
+            where: { EmployeeId: existing.EmployeesId, RemainingDays: { gt: 0 } },
+            orderBy: { Year: "asc" },
+          });
+          remainingBreakdown = positiveAfter.map((b) => ({
+            year: b.Year,
+            days: b.RemainingDays,
+          }));
+          remainingBalanceAfter = remainingBreakdown.reduce((sum, r) => sum + r.days, 0);
+        }
+
         const inputNotes = (data.notes || data.Notes || "").trim();
         let updatedNotes = existing.Notes;
         if (inputNotes) {
           updatedNotes = existing.Notes ? `${existing.Notes} | ${inputNotes}` : inputNotes;
         }
+
+        const recalculatedEndDate = isEarly
+          ? new Date(startUtc + (newDaysCount - 1) * 86400000)
+          : existing.EndDate;
 
         const updatedState = await tx.employeeStates.update({
           where: { Id: id },
@@ -636,9 +795,11 @@ class EmployeeStatesService {
             IsResumedEarly: isEarly,
             ActualReturnDate: actualReturn,
             DaysCount: isEarly ? newDaysCount : existing.DaysCount,
+            EndDate: recalculatedEndDate,
             RequestedDays: existing.RequestedDays || existing.DaysCount,
             RefundedDays: totalRefunded,
             RefundedBreakdown: breakdown.length > 0 ? JSON.stringify(breakdown) : null,
+            RemainingBalanceAfter: remainingBalanceAfter,
             Notes: updatedNotes,
           },
           include: {
@@ -648,10 +809,32 @@ class EmployeeStatesService {
                 Name: true,
                 LastName: true,
                 Province: true,
+                Gender: true,
+                DateOfBirth: true,
+                Directorate: true,
+                AssignedPosition: true,
+                CorpsType: true,
+                JobTitle: {
+                  select: {
+                    RankName: true,
+                    EmploymentCategory: true,
+                  },
+                },
+                LeaveBalances: {
+                  orderBy: { Year: "asc" },
+                  select: {
+                    Year: true,
+                    TotalDays: true,
+                    ConsumedDays: true,
+                    RemainingDays: true,
+                  },
+                },
               },
             },
           },
         });
+
+        updatedState._remainingBreakdown = remainingBreakdown;
 
         return { updatedState, breakdown };
       },

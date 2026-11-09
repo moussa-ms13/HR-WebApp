@@ -268,12 +268,24 @@ router.post("/", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req
           remaining -= deduction;
         }
 
-        return tx.employeeStates.create({
+        const positiveAfter = await tx.leaveBalance.findMany({
+          where: { EmployeeId: employeesId, RemainingDays: { gt: 0 } },
+          orderBy: { Year: "asc" },
+        });
+        const remainingBreakdown = positiveAfter.map((b) => ({
+          year: b.Year,
+          days: b.RemainingDays,
+        }));
+        const remainingBalanceAfter = remainingBreakdown.reduce((sum, r) => sum + r.days, 0);
+
+        const created = await tx.employeeStates.create({
           data: {
             ...baseData,
-            RemainingBalanceAfter: totalAvailable - daysCount,
+            RemainingBalanceAfter: remainingBalanceAfter,
           },
         });
+        created._remainingBreakdown = remainingBreakdown;
+        return created;
       },
       { maxWait: 15000, timeout: 60000 }
     );

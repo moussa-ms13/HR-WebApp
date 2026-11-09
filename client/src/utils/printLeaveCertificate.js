@@ -15,6 +15,7 @@ import {
   SICK_LEAVE_PROPOSAL,
 } from './leaveCertificateConfig.js';
 import { addOneDay } from './dateUtils.js';
+import apiClient from '../services/apiClient.js';
 
 /**
  * Algerian administrative date formatting helper: strict YYYY/MM/DD.
@@ -176,21 +177,70 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
   });
 
   // Remaining balance (strictly omitted for decision documents like sick and maternity leave)
-  const remaining = isDecisionDoc
-    ? []
-    : (Array.isArray(stClean._remainingBreakdown) && stClean._remainingBreakdown.length > 0)
-      ? stClean._remainingBreakdown.map((r) => ({
+  const remaining = (() => {
+    if (isDecisionDoc) return [];
+
+    // 1. Prefer live per-year breakdown attached by backend or printLeaveCertificate
+    if (Array.isArray(stClean._remainingBreakdown) && stClean._remainingBreakdown.length > 0) {
+      const positiveBreakdown = stClean._remainingBreakdown.filter((r) => Number(r.days) > 0);
+      if (positiveBreakdown.length > 0) {
+        return positiveBreakdown.map((r) => ({
+          year: String(r.year),
+          days: Number(r.days),
+          daysInWords: numberToArabicWords(Number(r.days)),
+        }));
+      }
+    }
+
+    // 2. Next, check live LeaveBalances array on state, state.Employee, or fallbackEmployee
+    const rawBalances =
+      stClean.LeaveBalances ||
+      stClean.leaveBalances ||
+      emp.LeaveBalances ||
+      emp.leaveBalances ||
+      fallbackEmployee?.LeaveBalances ||
+      fallbackEmployee?.leaveBalances;
+
+    if (Array.isArray(rawBalances) && rawBalances.length > 0) {
+      const positiveBalances = rawBalances
+        .map((b) => ({
+          year: b.Year ?? b.year,
+          days: Number(b.RemainingDays ?? b.remainingDays ?? b.days ?? 0),
+        }))
+        .filter((b) => b.year && b.days > 0)
+        .sort((a, b) => Number(a.year) - Number(b.year));
+
+      if (positiveBalances.length > 0) {
+        return positiveBalances.map((r) => ({
           year: String(r.year),
           days: r.days,
           daysInWords: numberToArabicWords(r.days),
-        }))
-      : stClean.RemainingBalanceAfter != null
-        ? [{
-            year: leaveYear,
-            days: stClean.RemainingBalanceAfter,
-            daysInWords: numberToArabicWords(stClean.RemainingBalanceAfter),
-          }]
-        : [];
+        }));
+      }
+      // If all live balances have 0 remaining days, return empty array so we never print a stale "تبقى 0 (0)" note
+      return [];
+    }
+
+    // 3. Fallback to scalar RemainingBalanceAfter only when strictly positive (> 0)
+    if (stClean.RemainingBalanceAfter != null && Number(stClean.RemainingBalanceAfter) > 0) {
+      const remDays = Number(stClean.RemainingBalanceAfter);
+      return [
+        {
+          year: leaveYear,
+          days: remDays,
+          daysInWords: numberToArabicWords(remDays),
+        },
+      ];
+    }
+
+    return [];
+  })();
+
+  // Clean notes so any legacy/stale "تبقى ... من العطلة السنوية" string baked into Notes is not duplicated
+  const rawNotes = String(stClean.Notes || stClean.notes || "").trim();
+  const cleanedNotes = rawNotes
+    .replace(/ملاحظة\s*:?\s*تبقى[^.\n]*من العطلة السنوية[^.\n]*\.?/g, "")
+    .trim();
 
   // Signature date = today in Algerian administrative format (e.g., 05 أكتوبر 2026)
   const today = new Date();
@@ -235,7 +285,7 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
       hasSecondCertificate,
       secondDoctorName,
       secondCertificateDate,
-      notes: stClean.Notes || stClean.notes,
+      notes: cleanedNotes || null,
     },
     hasSecondCertificate,
     doctorName,
@@ -556,9 +606,52 @@ export async function printLeaveInIframe(printData) {
 }
 
 /**
- * Unified helper: builds print payload and triggers iframe print with dynamic chunk loading.
+ * Unified helper: fetches live leave balances for annual leaves, builds print payload,
+ * and triggers iframe print with dynamic chunk loading.
  */
 export async function printLeaveCertificate(stateRecord, fallbackEmployee = null) {
-  const printData = buildPrintDataFromState(stateRecord, fallbackEmployee);
+  let enrichedState = stateRecord ? { ...stateRecord } : {};
+  const leaveType =
+    enrichedState.StateTypeOrReason ||
+    enrichedState.stateTypeOrReason ||
+    enrichedState.leave?.type ||
+    "عطلة سنوية";
+
+  const empId =
+    enrichedState.EmployeesId ||
+    enrichedState.EmployeeId ||
+    enrichedState.Employee?.Id ||
+    fallbackEmployee?.Id ||
+    fallbackEmployee?.id;
+
+  if (leaveType === "عطلة سنوية" && empId) {
+    try {
+      const res = await apiClient.get(`/leave-balances/employee/${empId}/leave-balances`);
+      const liveBalances =
+        res?.data?.data ||
+        res?.data?.balances ||
+        (Array.isArray(res?.data) ? res.data : null);
+
+      if (Array.isArray(liveBalances)) {
+        const positive = liveBalances
+          .filter((b) => Number(b.RemainingDays ?? b.remainingDays ?? 0) > 0)
+          .sort((a, b) => Number(a.Year ?? a.year) - Number(b.Year ?? b.year));
+
+        enrichedState._remainingBreakdown = positive.map((b) => ({
+          year: b.Year ?? b.year,
+          days: Number(b.RemainingDays ?? b.remainingDays),
+        }));
+        enrichedState.RemainingBalanceAfter = enrichedState._remainingBreakdown.reduce(
+          (sum, r) => sum + r.days,
+          0
+        );
+        enrichedState.LeaveBalances = liveBalances;
+      }
+    } catch (_) {
+      // Fallback to breakdown/balances already attached to stateRecord or fallbackEmployee
+    }
+  }
+
+  const printData = buildPrintDataFromState(enrichedState, fallbackEmployee);
   await printLeaveInIframe(printData);
 }

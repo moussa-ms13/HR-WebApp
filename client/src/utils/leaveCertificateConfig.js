@@ -287,7 +287,9 @@ const HUNDREDS = [
  */
 export function numberToArabicWords(n) {
   const num = parseInt(n, 10);
-  if (isNaN(num) || num <= 0) return String(n);
+  if (isNaN(num)) return String(n);
+  if (num === 0) return "صفر";
+  if (num < 0) return String(n);
   if (num === 1000) return "ألف";
   if (num > 1000) return String(n);
 

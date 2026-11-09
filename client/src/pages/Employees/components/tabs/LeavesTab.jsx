@@ -43,7 +43,10 @@ const LeavesTab = ({ employee, onRefresh }) => {
     setPrintingLeaveId(leave.Id);
     try {
       const { printLeaveCertificate } = await import('../../../../utils/printLeaveCertificate');
-      await printLeaveCertificate(leave, employee);
+      await printLeaveCertificate(leave, {
+        ...employee,
+        LeaveBalances: allBalances,
+      });
     } catch (err) {
       console.error('Failed to print leave certificate:', err);
       toast.error(err.response?.data?.message || err.message || 'حدث خطأ أثناء إعداد مستند الطباعة');

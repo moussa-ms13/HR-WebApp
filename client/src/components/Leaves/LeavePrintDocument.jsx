@@ -680,13 +680,16 @@ export default function LeavePrintDocument(props) {
       {!isDecisionDoc && leave.remaining?.length > 0 && (
         <div className="doc-remark" style={{ marginTop: "6px", marginBottom: "4px", fontWeight: "bold" }}>
           <span className="doc-remark-label">ملاحظة :</span> تبقى{" "}
-          {leave.remaining.map((r, i) => (
-            <React.Fragment key={r.year}>
-              {i > 0 && " و "}
-              <strong>{r.daysInWords}</strong> (<strong><LTR>{r.days}</LTR></strong>) يوم من{" "}
-              {i === 0 ? "العطلة السنوية" : "سنة"} (<strong><LTR>{r.year}</LTR></strong>)
-            </React.Fragment>
-          ))}
+          {leave.remaining.map((r, i) => {
+            const dayUnit = Number(r.days) >= 3 && Number(r.days) <= 10 ? "أيام" : "يوم";
+            return (
+              <React.Fragment key={r.year}>
+                {i > 0 && " و "}
+                <strong>{r.daysInWords}</strong> (<strong><LTR>{r.days}</LTR></strong>) {dayUnit} من{" "}
+                {i === 0 ? "العطلة السنوية" : "سنة"} (<strong><LTR>{r.year}</LTR></strong>)
+              </React.Fragment>
+            );
+          })}
           .
         </div>
       )}
