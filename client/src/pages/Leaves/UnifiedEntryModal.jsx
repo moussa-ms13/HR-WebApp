@@ -82,6 +82,7 @@ const UnifiedEntryModal = ({
   // ── Leave Fields ──
   const [leaveForm, setLeaveForm] = useState({
     StateTypeOrReason: LEAVE_TYPES[0],
+    ExceptionalReason: '',
     StartDate: new Date().toISOString().split('T')[0],
     DaysCount: 30,
     EndDate: '',
@@ -215,6 +216,7 @@ const UnifiedEntryModal = ({
       setError('');
       setLeaveForm({
         StateTypeOrReason: LEAVE_TYPES[0],
+        ExceptionalReason: '',
         StartDate: new Date().toISOString().split('T')[0],
         DaysCount: 30,
         EndDate: '',
@@ -283,11 +285,18 @@ const UnifiedEntryModal = ({
           }
         }
 
+        const isExceptionalLeave = leaveForm.StateTypeOrReason === 'عطلة استثنائية';
+        const cleanedExceptionalReason = isExceptionalLeave
+          ? (leaveForm.ExceptionalReason?.replace(/^[(\s]+|[)\s]+$/g, '').trim() || null)
+          : null;
+
         // Route → POST /api/employee-states
         const payload = {
           EmployeesId: employeeId,
           RecordCategory: 'تسجيل عطلة', // or 'عطلة'
           StateTypeOrReason: leaveForm.StateTypeOrReason,
+          ExceptionalReason: cleanedExceptionalReason,
+          exceptionalReason: cleanedExceptionalReason,
           DaysCount: Number(leaveForm.DaysCount) || 0,
           RequestedDays: Number(leaveForm.DaysCount) || 0,
           StartDate: leaveForm.StartDate,
@@ -595,6 +604,7 @@ const UnifiedEntryModal = ({
                         return {
                           ...prev,
                           StateTypeOrReason: newType,
+                          ExceptionalReason: newType === "عطلة استثنائية" ? prev.ExceptionalReason : '',
                           DaysCount: newDaysCount,
                           EndDate: calculatedEndDate,
                           CertificateDate: needsCert && !prev.CertificateDate ? prev.StartDate : prev.CertificateDate,
@@ -606,6 +616,22 @@ const UnifiedEntryModal = ({
                     {availableLeaveTypes.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
+
+                {/* ── Conditional Exceptional Leave Reason Input ── */}
+                {leaveForm.StateTypeOrReason === "عطلة استثنائية" && (
+                  <div className="md:col-span-2 animate-[fadeIn_0.2s_ease-out]">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      سبب العطلة الاستثنائية
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="مثال: ختان، انتخابات، زواج، ازدياد مولود..."
+                      value={leaveForm.ExceptionalReason || ''}
+                      onChange={e => setLeaveForm(prev => ({ ...prev, ExceptionalReason: e.target.value }))}
+                      className="w-full h-10 px-3 border border-slate-200 hover:border-slate-300 rounded-lg outline-none bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm transition-colors"
+                    />
+                  </div>
+                )}
 
                 {/* ── Conditional Medical Certificate Inputs (Sick & Maternity Leave) ── */}
                 {(leaveForm.StateTypeOrReason === "عطلة مرضية" || leaveForm.StateTypeOrReason === "عطلة أمومة") && (

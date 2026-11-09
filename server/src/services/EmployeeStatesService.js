@@ -165,6 +165,7 @@ class EmployeeStatesService {
       { Employee: { Name: { contains: token } } },
       { Employee: { NIN: { contains: token } } },
       { StateTypeOrReason: { contains: token } },
+      { ExceptionalReason: { contains: token } },
       { CurrentJobTitle: { contains: token } },
       { Notes: { contains: token } },
       { Employee: { JobTitle: { RankName: { contains: token } } } },
@@ -239,6 +240,7 @@ class EmployeeStatesService {
         CertificateDate: true,
         SecondDoctorName: true,
         SecondCertificateDate: true,
+        ExceptionalReason: true,
         Employee: {
           select: {
             Name: true,
@@ -450,6 +452,12 @@ class EmployeeStatesService {
             const d = data.SecondCertificateDate !== undefined ? data.SecondCertificateDate : (data.secondCertificateDate !== undefined ? data.secondCertificateDate : data.certificateDate2);
             return d && !isNaN(new Date(d).getTime()) ? new Date(d) : null;
           })(),
+          ExceptionalReason: (() => {
+            if (!String(data.StateTypeOrReason || "").includes("استثنائية")) return null;
+            const raw = data.ExceptionalReason !== undefined ? data.ExceptionalReason : data.exceptionalReason;
+            const cleaned = raw ? String(raw).replace(/^[(\s]+|[)\s]+$/g, "").trim() : "";
+            return cleaned || null;
+          })(),
         },
       });
     } catch (err) {
@@ -620,6 +628,14 @@ class EmployeeStatesService {
               if (!hasSecondDate) return existing.SecondCertificateDate;
               const val = data.SecondCertificateDate !== undefined ? data.SecondCertificateDate : (data.secondCertificateDate !== undefined ? data.secondCertificateDate : data.certificateDate2);
               return val && !isNaN(new Date(val).getTime()) ? new Date(val) : null;
+            })(),
+            ExceptionalReason: (() => {
+              if (!String(nextStateType || "").includes("استثنائية")) return null;
+              const hasReason = data.ExceptionalReason !== undefined || data.exceptionalReason !== undefined;
+              if (!hasReason) return existing.ExceptionalReason ?? null;
+              const raw = data.ExceptionalReason !== undefined ? data.ExceptionalReason : data.exceptionalReason;
+              const cleaned = raw ? String(raw).replace(/^[(\s]+|[)\s]+$/g, "").trim() : "";
+              return cleaned || null;
             })(),
           },
           include: {

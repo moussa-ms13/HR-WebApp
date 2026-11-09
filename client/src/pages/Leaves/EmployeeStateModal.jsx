@@ -48,6 +48,7 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
     EmployeesId: '',
     RecordCategory: defaultCategory,
     StateTypeOrReason: LEAVE_TYPES[0],
+    ExceptionalReason: '',
     DaysCount: 30,
     StartDate: new Date().toISOString().split('T')[0],
     EndDate: '',
@@ -134,6 +135,7 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
           EmployeesId: record.EmployeesId,
           RecordCategory: record.RecordCategory,
           StateTypeOrReason: record.StateTypeOrReason,
+          ExceptionalReason: record.ExceptionalReason || record.exceptionalReason || '',
           DaysCount: record.DaysCount,
           StartDate: record.StartDate ? new Date(record.StartDate).toISOString().split('T')[0] : '',
           EndDate: record.EndDate ? new Date(record.EndDate).toISOString().split('T')[0] : '',
@@ -155,6 +157,7 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
           EmployeesId: '',
           RecordCategory: initialCategory,
           StateTypeOrReason: initialCategory === 'حالة خاصة' ? SPECIAL_CASE_TYPES[0] : LEAVE_TYPES[0],
+          ExceptionalReason: '',
           DaysCount: 30,
           StartDate: new Date().toISOString().split('T')[0],
           EndDate: '',
@@ -206,6 +209,7 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
       ...prev,
       RecordCategory: tab,
       StateTypeOrReason: tab === 'حالة خاصة' ? SPECIAL_CASE_TYPES[0] : LEAVE_TYPES[0],
+      ExceptionalReason: '',
       DaysCount: 30,
       IsResumed: isResumptionTab,
       ActualReturnDate: isResumptionTab ? (prev.ActualReturnDate || new Date().toISOString().split('T')[0]) : prev.ActualReturnDate,
@@ -235,6 +239,9 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
       const updated = { ...prev, [name]: newValue };
 
       if (name === 'StateTypeOrReason') {
+        if (newValue !== 'عطلة استثنائية') {
+          updated.ExceptionalReason = '';
+        }
         if (PERMANENT_STATES.includes(newValue)) {
           updated.DaysCount = 0;
           updated.IsResumed = true;
@@ -377,11 +384,18 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
         return;
       }
 
+      const isExceptionalLeave = formData.StateTypeOrReason === 'عطلة استثنائية';
+      const cleanedExceptionalReason = isExceptionalLeave
+        ? (formData.ExceptionalReason?.replace(/^[(\s]+|[)\s]+$/g, '').trim() || null)
+        : null;
+
       const emp = selectedEmployee || employees.find(e => e.Id === empId) || record?.Employee;
       const payload = {
         EmployeesId: empId,
         RecordCategory: formData.RecordCategory,
         StateTypeOrReason: formData.StateTypeOrReason,
+        ExceptionalReason: cleanedExceptionalReason,
+        exceptionalReason: cleanedExceptionalReason,
         DaysCount: Number(formData.DaysCount),
         StartDate: formData.StartDate,
         EndDate: formData.EndDate,
@@ -596,6 +610,23 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
                   }
                 </select>
               </div>
+
+              {/* ── Conditional Exceptional Leave Reason Input ── */}
+              {activeTab === 'تسجيل عطلة' && formData.StateTypeOrReason === 'عطلة استثنائية' && (
+                <div className="md:col-span-2 animate-[fadeIn_0.2s_ease-out]">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    سبب العطلة الاستثنائية
+                  </label>
+                  <input
+                    type="text"
+                    name="ExceptionalReason"
+                    placeholder="مثال: ختان، انتخابات، زواج، ازدياد مولود..."
+                    value={formData.ExceptionalReason || ''}
+                    onChange={handleChange}
+                    className="w-full h-10 px-3 border border-slate-200 hover:border-slate-300 rounded-lg outline-none bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm transition-colors"
+                  />
+                </div>
+              )}
 
               {/* ── Conditional Medical Certificate Inputs (Sick & Maternity Leave) ── */}
               {(formData.StateTypeOrReason === 'عطلة مرضية' || formData.StateTypeOrReason === 'عطلة أمومة') && (

@@ -366,8 +366,17 @@ const EmployeeStatesList = () => {
                       <td className="py-3 px-4 text-gray-500 font-medium">
                         {st?.RecordCategory || '-'}
                       </td>
-                      <td className="py-3 px-4 text-gray-500 font-medium max-w-[150px] truncate" title={st?.Type || st?.StateTypeOrReason}>
-                        {st?.Type || st?.StateTypeOrReason || '-'}
+                      <td
+                        className="py-3 px-4 text-gray-500 font-medium max-w-[180px] truncate"
+                        title={
+                          (st?.Type || st?.StateTypeOrReason) === 'عطلة استثنائية' && st?.ExceptionalReason
+                            ? `عطلة استثنائية (${st.ExceptionalReason})`
+                            : (st?.Type || st?.StateTypeOrReason)
+                        }
+                      >
+                        {(st?.Type || st?.StateTypeOrReason) === 'عطلة استثنائية' && st?.ExceptionalReason
+                          ? `عطلة استثنائية (${st.ExceptionalReason})`
+                          : (st?.Type || st?.StateTypeOrReason || '-')}
                       </td>
                       <td className="py-3 px-4 font-mono text-gray-600">
                         <DateText value={st?.StartDate} />

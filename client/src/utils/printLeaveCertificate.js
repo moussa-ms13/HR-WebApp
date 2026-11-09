@@ -54,8 +54,17 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
   const emp = stClean.Employee || fallbackEmployee || {};
   const warnings = [];
 
-  // Leave type
+  // Leave type & exceptional reason
   const leaveType = stClean.StateTypeOrReason || stClean.stateTypeOrReason || "عطلة سنوية";
+  const exceptionalReason = String(
+    stClean.ExceptionalReason ||
+    stClean.exceptionalReason ||
+    nestedLeave.exceptionalReason ||
+    nestedLeave.ExceptionalReason ||
+    ""
+  )
+    .replace(/^[(\s]+|[)\s]+$/g, "")
+    .trim();
   const isSickLeave = leaveType === "عطلة مرضية";
   const isMaternityLeave = leaveType === "عطلة أمومة";
   const isDecisionDoc = isSickLeave || isMaternityLeave;
@@ -269,6 +278,7 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
 
   return {
     leaveType,
+    exceptionalReason,
     corpsType: corpsType === "unknown" ? "common" : corpsType,
     genderProfile,
     header: {
@@ -299,6 +309,8 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
     leave: {
       type: leaveType,
       StateTypeOrReason: leaveType,
+      exceptionalReason,
+      ExceptionalReason: exceptionalReason,
       year: leaveYear,
       days,
       daysInWords,
@@ -518,7 +530,15 @@ export async function printLeaveInIframe(printData) {
 
   const docTitle = printData?.leaveType === 'عطلة أمومة'
     ? 'مقرر عطلة أمومة'
-    : (printData?.leaveType === 'عطلة مرضية' ? 'مقرر عطلة مرضية' : getAnnualTemplateNaming(printData?.leaveType).docTitle);
+    : (printData?.leaveType === 'عطلة مرضية'
+        ? 'مقرر عطلة مرضية'
+        : getAnnualTemplateNaming(
+            printData?.leaveType,
+            printData?.exceptionalReason ||
+              printData?.ExceptionalReason ||
+              printData?.leave?.exceptionalReason ||
+              printData?.leave?.ExceptionalReason
+          ).docTitle);
 
   return new Promise((resolve) => {
     // Create hidden iframe

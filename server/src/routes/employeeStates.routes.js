@@ -99,6 +99,8 @@ router.post("/", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req
       CertificateDate,
       SecondDoctorName,
       SecondCertificateDate,
+      ExceptionalReason,
+      exceptionalReason,
     } = req.body;
 
     const employeesId = parseInt(EmployeesId, 10);
@@ -209,6 +211,12 @@ router.post("/", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req
       SecondCertificateDate: (() => {
         const d = SecondCertificateDate !== undefined ? SecondCertificateDate : (req.body.secondCertificateDate !== undefined ? req.body.secondCertificateDate : req.body.certificateDate2);
         return d && !isNaN(new Date(d).getTime()) ? new Date(d) : null;
+      })(),
+      ExceptionalReason: (() => {
+        if (!String(effectiveStateType || "").includes("استثنائية")) return null;
+        const raw = ExceptionalReason !== undefined ? ExceptionalReason : exceptionalReason;
+        const cleaned = raw ? String(raw).replace(/^[(\s]+|[)\s]+$/g, "").trim() : "";
+        return cleaned || null;
       })(),
     };
 

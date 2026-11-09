@@ -333,11 +333,20 @@ export function isExceptionalLeaveType(leaveType) {
  * Returns the dynamic naming for annual-template documents
  * (annual leave vs exceptional leave) — legal preamble stays identical.
  */
-export function getAnnualTemplateNaming(leaveType) {
+export function getAnnualTemplateNaming(leaveType, exceptionalReason = "") {
   const isExceptional = isExceptionalLeaveType(leaveType);
+  const cleanReason = String(exceptionalReason || "")
+    .replace(/^[(\s]+|[)\s]+$/g, "")
+    .trim();
+  const docTitle = isExceptional
+    ? cleanReason
+      ? `سند عطلة استثنائية (${cleanReason})`
+      : "سند عطلة استثنائية"
+    : "سند عطلة سنوية";
   return {
     isExceptional,
-    docTitle: isExceptional ? "سند عطلة استثنائية" : "سند عطلة سنوية",
+    cleanReason,
+    docTitle,
     requestPhrase: isExceptional ? "طلب عطلة استثنائية" : "طلب العطلة السنوية",
     grantPhrase: isExceptional ? "عطلة استثنائية" : "عطلة سنوية",
   };

@@ -140,7 +140,13 @@ export default function LeavePrintDocument(props) {
   // Exceptional leave reuses the annual template layout with dynamic naming
   const rawLeaveType =
     propLeaveType || leave?.type || leave?.StateTypeOrReason || props?.StateTypeOrReason || "";
-  const annualNaming = getAnnualTemplateNaming(rawLeaveType);
+  const rawExceptionalReason =
+    leave?.exceptionalReason ||
+    leave?.ExceptionalReason ||
+    props?.exceptionalReason ||
+    props?.ExceptionalReason ||
+    "";
+  const annualNaming = getAnnualTemplateNaming(rawLeaveType, rawExceptionalReason);
   const isExceptionalLeave = annualNaming.isExceptional;
   const isAnnualLeave =
     !isDecisionDoc &&

@@ -292,7 +292,11 @@ const LeavesTab = ({ employee, onRefresh }) => {
               ) : (
                 leaves.map((leave) => (
                   <tr key={leave.Id} className="hover:bg-gray-50 transition-colors">
-                    <td className="py-4 px-6 font-bold text-slate-800">{leave.StateTypeOrReason}</td>
+                    <td className="py-4 px-6 font-bold text-slate-800">
+                      {leave.StateTypeOrReason === 'عطلة استثنائية' && leave.ExceptionalReason
+                        ? `عطلة استثنائية (${leave.ExceptionalReason})`
+                        : leave.StateTypeOrReason}
+                    </td>
                     <td className="py-4 px-6 text-gray-600"><DateText value={leave.StartDate} /></td>
                     <td className="py-4 px-6 text-gray-600"><DateText value={leave.EndDate} /></td>
                     <td className="py-4 px-6 font-medium text-slate-700">{leave.DaysCount}</td>
