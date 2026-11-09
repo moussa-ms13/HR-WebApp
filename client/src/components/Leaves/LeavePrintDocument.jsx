@@ -252,26 +252,26 @@ export default function LeavePrintDocument(props) {
           font-size: 16.5pt;
           text-decoration: underline;
           text-underline-offset: 3px;
-          margin: 8px 0 10px;
+          margin: 6px 0 8px;
           letter-spacing: 0.5px;
           color: #000;
         }
 
         .doc-intro {
           font-weight: bold;
-          margin-top: 6px;
-          margin-bottom: 4px;
+          margin-top: 4px;
+          margin-bottom: 3px;
           font-size: 13.5pt;
           color: #000;
         }
 
         .doc-whereas {
-          margin: 0 0 3.5px;
+          margin: 0 0 2.5px;
           padding-right: 14px;
           text-indent: -14px;
           text-align: justify;
           font-size: 13.2pt;
-          line-height: 1.50;
+          line-height: 1.45;
           color: #111827;
         }
         .doc-whereas strong {
@@ -283,7 +283,7 @@ export default function LeavePrintDocument(props) {
         .doc-decides {
           text-align: center;
           font-weight: bold;
-          margin: 7px 0 8px;
+          margin: 5px 0 6px;
           letter-spacing: 1.5px;
           font-size: 14pt;
           color: #000;
@@ -337,7 +337,7 @@ export default function LeavePrintDocument(props) {
 
         /* ── Signature & Stamp Block (Annual Leave) ── */
         .doc-signature {
-          margin-top: 8mm;
+          margin-top: 6mm;
           margin-bottom: 4px;
           width: 250px;
           margin-left: 14px;
@@ -564,8 +564,11 @@ export default function LeavePrintDocument(props) {
       {/* ══════════════ LEGAL REFERENCES ══════════════ */}
       {isDecisionDoc ? (
         <>
+          <p className="doc-whereas">- {CIVIL_SERVICE_ORDINANCE}</p>
           <p className="doc-whereas">- {SICK_LEAVE_SOCIAL_SECURITY_LAW}</p>
-          <p className="doc-whereas">- {resolvedCorpsType === "contractual" ? CONTRACTUAL_STAFF_DECREE : CIVIL_SERVICE_ORDINANCE}</p>
+          {resolvedCorpsType === "contractual" && (
+            <p className="doc-whereas">- {CONTRACTUAL_STAFF_DECREE}</p>
+          )}
           <p className="doc-whereas">
             - وبمقتضى مقرر تعيين {g.title}{" "}
             <strong>{formattedEmployeeName}</strong> {g.bisifat}{" "}
@@ -608,8 +611,9 @@ export default function LeavePrintDocument(props) {
         </>
       ) : (
         <>
+          <p className="doc-whereas">- {CIVIL_SERVICE_ORDINANCE}</p>
           <p className="doc-whereas">
-            - بمقتضى القانون رقم 81-08 المؤرخ في 27 جوان سنة 1981 المتعلق بالعطل السنوية،
+            - وبمقتضى القانون رقم 81-08 المؤرخ في 27 جوان سنة 1981 المتعلق بالعطل السنوية،
           </p>
           <p className="doc-whereas">- {legal.decreeText}</p>
           <p className="doc-whereas">

@@ -474,8 +474,9 @@ export function generateSickLeaveHTML(stateRecord, fallbackEmployee = null) {
     <div class="doc-title">${docTitle}</div>
     <div class="doc-intro">إن وزير المالية،</div>
 
+    <p class="doc-whereas">- ${CIVIL_SERVICE_ORDINANCE}</p>
     <p class="doc-whereas">- ${SICK_LEAVE_SOCIAL_SECURITY_LAW}</p>
-    <p class="doc-whereas">- ${isContractual ? CONTRACTUAL_STAFF_DECREE : CIVIL_SERVICE_ORDINANCE}</p>
+    ${isContractual ? `<p class="doc-whereas">- ${CONTRACTUAL_STAFF_DECREE}</p>` : ""}
     <p class="doc-whereas">- وبمقتضى مقرر تعيين ${g.title} <strong>${empFullName}</strong> ${g.bisifat} <strong>${emp.rank}</strong> لدى المديرية الجهوية للأملاك الوطنية بالشلف،</p>
     <p class="doc-whereas">- وبعد الإطلاع على الشهادة الطبية الصادرة عن ${firstDoctorText} والمؤرخة في <span dir="ltr" class="admin-date">${lv.certificateDate || "............."}</span>،</p>
     ${secondCertHtml}
