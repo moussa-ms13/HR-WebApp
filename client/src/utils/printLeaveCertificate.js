@@ -169,9 +169,20 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
   const startYear = stClean.StartDate ? new Date(stClean.StartDate).getFullYear() : new Date().getFullYear();
   const leaveYear = String(startYear);
 
-  // Days in words
-  const days = stClean.DaysCount || 0;
+  // Days in words & open-ended custom text
+  const days = Number(stClean.DaysCount || 0);
   const daysInWords = numberToArabicWords(days);
+  const customEndText = String(
+    stClean.CustomEndText ||
+    stClean.customEndText ||
+    nestedLeave.customEndText ||
+    nestedLeave.CustomEndText ||
+    ""
+  ).trim();
+  const isResumed = Boolean(stClean.IsResumed ?? stClean.isResumed ?? nestedLeave.isResumed ?? false);
+  const actualReturnDate = stClean.ActualReturnDate
+    ? formatAdminDate(stClean.ActualReturnDate)
+    : (nestedLeave.actualReturnDate ? formatAdminDate(nestedLeave.actualReturnDate) : "");
 
   // Dates (strictly formatted as YYYY/MM/DD without timezone shift)
   const startDate = formatAdminDate(stClean.StartDate);
@@ -302,6 +313,10 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
   return {
     leaveType,
     exceptionalReason,
+    customEndText,
+    CustomEndText: customEndText,
+    isResumed,
+    actualReturnDate,
     corpsType: corpsType === "unknown" ? "common" : corpsType,
     genderProfile,
     header: {
@@ -334,6 +349,10 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
       StateTypeOrReason: leaveType,
       exceptionalReason,
       ExceptionalReason: exceptionalReason,
+      customEndText,
+      CustomEndText: customEndText,
+      isResumed,
+      actualReturnDate,
       year: leaveYear,
       days,
       daysInWords,

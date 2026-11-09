@@ -206,8 +206,9 @@ const EmployeeStatesList = () => {
     }
   }, [toast]);
 
-  const getRowStatus = (endDateStr, isResumed) => {
+  const getRowStatus = (endDateStr, isResumed, customEndText) => {
     if (isResumed) return 'resumed';
+    if (customEndText) return 'active';
     if (!endDateStr) return 'permanent';
 
     const endDate = new Date(endDateStr);
@@ -357,7 +358,7 @@ const EmployeeStatesList = () => {
                 </tr>
               ) : (
                 states.map((st) => {
-                  const status = getRowStatus(st.EndDate, st.IsResumed);
+                  const status = getRowStatus(st.EndDate, st.IsResumed, st.CustomEndText);
                   return (
                     <tr key={st.Id} className={`${getRowBgStyles(status)} transition-colors group`}>
                       <td className="py-3 px-4 font-bold text-slate-800">
@@ -382,10 +383,23 @@ const EmployeeStatesList = () => {
                         <DateText value={st?.StartDate} />
                       </td>
                       <td className="py-3 px-4 font-mono text-gray-600">
-                        <DateText value={st?.EndDate} />
+                        {st?.CustomEndText && !st?.IsResumed ? (
+                          <span
+                            className="inline-block max-w-[200px] truncate font-sans text-xs font-medium text-slate-700"
+                            title={st.CustomEndText}
+                          >
+                            {st.CustomEndText}
+                          </span>
+                        ) : (
+                          <DateText value={st?.EndDate} />
+                        )}
                       </td>
                       <td className="py-3 px-4 text-center font-bold text-emerald-600 bg-emerald-50/30">
-                        {st?.DurationDays || st?.DaysCount || 0}
+                        {st?.CustomEndText && (!st?.DaysCount || Number(st.DaysCount) === 0) ? (
+                          <span className="text-xs font-semibold text-amber-700">غير محددة</span>
+                        ) : (
+                          st?.DurationDays || st?.DaysCount || 0
+                        )}
                       </td>
                       <td className="py-3 px-4">
                         <LeaveStatusBadge status={status} />

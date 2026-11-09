@@ -26,13 +26,21 @@ function getLeaveLifecycleCondition(statusFilter) {
 
   const activeCondition = {
     IsResumed: false,
-    EndDate: { gte: today },
+    OR: [
+      { EndDate: { gte: today } },
+      { CustomEndText: { not: null } },
+    ],
   };
 
   const resumedCondition = {
     OR: [
       { IsResumed: true },
-      { EndDate: { lt: today } },
+      {
+        AND: [
+          { EndDate: { lt: today } },
+          { OR: [{ CustomEndText: null }, { CustomEndText: "" }] },
+        ],
+      },
     ],
   };
 
@@ -166,6 +174,7 @@ class EmployeeStatesService {
       { Employee: { NIN: { contains: token } } },
       { StateTypeOrReason: { contains: token } },
       { ExceptionalReason: { contains: token } },
+      { CustomEndText: { contains: token } },
       { CurrentJobTitle: { contains: token } },
       { Notes: { contains: token } },
       { Employee: { JobTitle: { RankName: { contains: token } } } },
@@ -241,6 +250,7 @@ class EmployeeStatesService {
         SecondDoctorName: true,
         SecondCertificateDate: true,
         ExceptionalReason: true,
+        CustomEndText: true,
         Employee: {
           select: {
             Id: true,
@@ -391,13 +401,25 @@ class EmployeeStatesService {
       });
     }
 
-    const reqDays = parseInt(data.RequestedDays || data.DaysCount || 0, 10);
+    const rawCustomEndText =
+      data.CustomEndText !== undefined ? data.CustomEndText : data.customEndText;
+    const cleanedCustomEndText =
+      data.isOpenEnded === false
+        ? null
+        : rawCustomEndText
+        ? String(rawCustomEndText).trim() || null
+        : null;
+
+    const reqDays = cleanedCustomEndText
+      ? 0
+      : parseInt(data.RequestedDays || data.DaysCount || 0, 10);
     let remainingBalanceAfter = null;
     let consumedBreakdown = null;
     let primaryLeaveYear = new Date(data.StartDate).getFullYear();
     let remainingBreakdown = [];
 
     const isAnnualLeave =
+      !cleanedCustomEndText &&
       (data.RecordCategory === "تسجيل عطلة" || !data.RecordCategory) &&
       data.StateTypeOrReason === "عطلة سنوية" &&
       reqDays > 0;
@@ -431,7 +453,10 @@ class EmployeeStatesService {
           StateTypeOrReason: data.StateTypeOrReason,
           DaysCount: reqDays,
           StartDate: new Date(data.StartDate),
-          EndDate: new Date(data.EndDate),
+          EndDate:
+            data.EndDate && !isNaN(new Date(data.EndDate).getTime()) && !cleanedCustomEndText
+              ? new Date(data.EndDate)
+              : new Date(data.StartDate),
           AddedDate: new Date(),
           UsersId: requestingUser.userName,
           IsResumed: Boolean(data.IsResumed) || data.RecordCategory === "إدراج استئناف",
@@ -462,6 +487,7 @@ class EmployeeStatesService {
             const cleaned = raw ? String(raw).replace(/^[(\s]+|[)\s]+$/g, "").trim() : "";
             return cleaned || null;
           })(),
+          CustomEndText: cleanedCustomEndText,
         },
       });
     } catch (err) {
@@ -511,6 +537,8 @@ class EmployeeStatesService {
             new Date().toISOString().split("T")[0],
           notes: data.Notes !== undefined ? data.Notes : data.notes,
           ExceptionalReason: data.ExceptionalReason !== undefined ? data.ExceptionalReason : data.exceptionalReason,
+          CustomEndText: data.CustomEndText !== undefined ? data.CustomEndText : data.customEndText,
+          isOpenEnded: data.isOpenEnded,
         },
         requestingUser
       );
@@ -519,8 +547,20 @@ class EmployeeStatesService {
 
     const nextStateType = data.StateTypeOrReason ?? existing.StateTypeOrReason;
     const isAnnualLeave = nextStateType === "عطلة سنوية";
+    const nextCustomEndText = (() => {
+      if (data.isOpenEnded === false) return null;
+      const hasCustom = data.CustomEndText !== undefined || data.customEndText !== undefined;
+      if (!hasCustom) return existing.CustomEndText ?? null;
+      const raw = data.CustomEndText !== undefined ? data.CustomEndText : data.customEndText;
+      return raw ? String(raw).trim() || null : null;
+    })();
+    const isOpenEndedLeave = Boolean(nextCustomEndText) && !existing.IsResumed;
     const oldDays = Number(existing.DaysCount || 0);
-    const newDays = data.DaysCount !== undefined ? Number(data.DaysCount) : oldDays;
+    const newDays = isOpenEndedLeave
+      ? 0
+      : data.DaysCount !== undefined
+        ? Number(data.DaysCount)
+        : oldDays;
 
     const state = await prisma.$transaction(
       async (tx) => {
@@ -605,11 +645,14 @@ class EmployeeStatesService {
             StateTypeOrReason: nextStateType,
             DaysCount: newDays,
             StartDate: data.StartDate ? new Date(data.StartDate) : existing.StartDate,
-            EndDate: data.EndDate ? new Date(data.EndDate) : existing.EndDate,
+            EndDate: isOpenEndedLeave
+              ? (data.StartDate ? new Date(data.StartDate) : existing.StartDate)
+              : (data.EndDate ? new Date(data.EndDate) : existing.EndDate),
             IsResumed: wantsResume ? true : data.IsResumed !== undefined ? data.IsResumed : existing.IsResumed,
             ActualReturnDate: data.ActualReturnDate ? new Date(data.ActualReturnDate) : existing.ActualReturnDate,
             RemainingBalanceAfter: remainingBalanceAfter,
             Notes: data.Notes !== undefined ? data.Notes : existing.Notes,
+            CustomEndText: nextCustomEndText,
             DoctorName: (() => {
               const hasDoc = data.DoctorName !== undefined || data.doctorName !== undefined;
               if (!hasDoc) return existing.DoctorName;
@@ -742,7 +785,8 @@ class EmployeeStatesService {
     const diffDays = Math.round((actualUtc - startUtc) / (1000 * 60 * 60 * 24));
     const newDaysCount = Math.max(1, diffDays);
     const originalDays = existing.DaysCount || existing.RequestedDays || 0;
-    const refundDaysNeeded = Math.max(0, originalDays - newDaysCount);
+    const wasOpenEnded = Boolean(existing.CustomEndText) || originalDays === 0;
+    const refundDaysNeeded = wasOpenEnded ? 0 : Math.max(0, originalDays - newDaysCount);
     const isEarly = refundDaysNeeded > 0;
 
     const isAnnualLeave = existing.StateTypeOrReason === "عطلة سنوية";
@@ -805,7 +849,7 @@ class EmployeeStatesService {
           updatedNotes = existing.Notes ? `${existing.Notes} | ${inputNotes}` : inputNotes;
         }
 
-        const recalculatedEndDate = isEarly
+        const recalculatedEndDate = (isEarly || wasOpenEnded)
           ? new Date(startUtc + (newDaysCount - 1) * 86400000)
           : existing.EndDate;
 
@@ -815,13 +859,20 @@ class EmployeeStatesService {
             IsResumed: true,
             IsResumedEarly: isEarly,
             ActualReturnDate: actualReturn,
-            DaysCount: isEarly ? newDaysCount : existing.DaysCount,
+            DaysCount: (isEarly || wasOpenEnded) ? newDaysCount : existing.DaysCount,
             EndDate: recalculatedEndDate,
             RequestedDays: existing.RequestedDays || existing.DaysCount,
             RefundedDays: totalRefunded,
             RefundedBreakdown: breakdown.length > 0 ? JSON.stringify(breakdown) : null,
             RemainingBalanceAfter: remainingBalanceAfter,
             Notes: updatedNotes,
+            CustomEndText: (() => {
+              if (data.isOpenEnded === false) return null;
+              const hasCustom = data.CustomEndText !== undefined || data.customEndText !== undefined;
+              if (!hasCustom) return existing.CustomEndText ?? null;
+              const raw = data.CustomEndText !== undefined ? data.CustomEndText : data.customEndText;
+              return raw ? String(raw).trim() || null : null;
+            })(),
             ExceptionalReason: (() => {
               if (!String(existing.StateTypeOrReason || "").includes("استثنائية")) return null;
               const hasReason = data.ExceptionalReason !== undefined || data.exceptionalReason !== undefined;

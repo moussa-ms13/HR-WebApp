@@ -83,6 +83,8 @@ const UnifiedEntryModal = ({
   const [leaveForm, setLeaveForm] = useState({
     StateTypeOrReason: LEAVE_TYPES[0],
     ExceptionalReason: '',
+    isOpenEnded: false,
+    CustomEndText: '',
     StartDate: new Date().toISOString().split('T')[0],
     DaysCount: 30,
     EndDate: '',
@@ -174,14 +176,14 @@ const UnifiedEntryModal = ({
 
   // ── Auto-calc EndDate for leaves ──
   useEffect(() => {
-    if (entryCategory !== 'leave') return;
+    if (entryCategory !== 'leave' || leaveForm.isOpenEnded) return;
     if (leaveForm.StartDate && leaveForm.DaysCount > 0) {
       const start = new Date(leaveForm.StartDate);
       start.setDate(start.getDate() + Number(leaveForm.DaysCount) - 1);
       const calc = start.toISOString().split('T')[0];
       setLeaveForm(prev => prev.EndDate !== calc ? { ...prev, EndDate: calc } : prev);
     }
-  }, [leaveForm.StartDate, leaveForm.DaysCount, entryCategory]);
+  }, [leaveForm.StartDate, leaveForm.DaysCount, leaveForm.isOpenEnded, entryCategory]);
 
   // ── Clear EndDate/Destination when toggling permanent/destination case types ──
   useEffect(() => {
@@ -217,6 +219,8 @@ const UnifiedEntryModal = ({
       setLeaveForm({
         StateTypeOrReason: LEAVE_TYPES[0],
         ExceptionalReason: '',
+        isOpenEnded: false,
+        CustomEndText: '',
         StartDate: new Date().toISOString().split('T')[0],
         DaysCount: 30,
         EndDate: '',
@@ -285,9 +289,18 @@ const UnifiedEntryModal = ({
           }
         }
 
+        if (leaveForm.isOpenEnded && !leaveForm.CustomEndText?.trim()) {
+          setError('الرجاء إدخال نص نهاية الفترة');
+          setLoading(false);
+          return;
+        }
+
         const isExceptionalLeave = leaveForm.StateTypeOrReason === 'عطلة استثنائية';
         const cleanedExceptionalReason = isExceptionalLeave
           ? (leaveForm.ExceptionalReason?.replace(/^[(\s]+|[)\s]+$/g, '').trim() || null)
+          : null;
+        const cleanedCustomEndText = leaveForm.isOpenEnded
+          ? (leaveForm.CustomEndText?.trim() || null)
           : null;
 
         // Route → POST /api/employee-states
@@ -297,10 +310,13 @@ const UnifiedEntryModal = ({
           StateTypeOrReason: leaveForm.StateTypeOrReason,
           ExceptionalReason: cleanedExceptionalReason,
           exceptionalReason: cleanedExceptionalReason,
-          DaysCount: Number(leaveForm.DaysCount) || 0,
-          RequestedDays: Number(leaveForm.DaysCount) || 0,
+          isOpenEnded: Boolean(leaveForm.isOpenEnded),
+          CustomEndText: cleanedCustomEndText,
+          customEndText: cleanedCustomEndText,
+          DaysCount: leaveForm.isOpenEnded ? 0 : (Number(leaveForm.DaysCount) || 0),
+          RequestedDays: leaveForm.isOpenEnded ? 0 : (Number(leaveForm.DaysCount) || 0),
           StartDate: leaveForm.StartDate,
-          EndDate: leaveForm.EndDate,
+          EndDate: leaveForm.isOpenEnded ? leaveForm.StartDate : leaveForm.EndDate,
           Notes: leaveForm.Notes,
           IsResumed: false,
           ActualReturnDate: null,
@@ -719,6 +735,28 @@ const UnifiedEntryModal = ({
                   </div>
                 )}
 
+                <div className="md:col-span-2 bg-slate-50/70 border border-slate-200 rounded-lg px-3.5 py-2.5 flex items-center justify-between">
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(leaveForm.isOpenEnded)}
+                      onChange={e => {
+                        const checked = e.target.checked;
+                        setLeaveForm(prev => ({
+                          ...prev,
+                          isOpenEnded: checked,
+                          DaysCount: checked ? 0 : (prev.DaysCount > 0 ? prev.DaysCount : 30),
+                        }));
+                      }}
+                      className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                      style={{ accentColor: '#105b38' }}
+                    />
+                    <span className="text-xs font-semibold text-slate-700">
+                      عطلة غير محددة المدة (كتابة نهاية الفترة نصاً)
+                    </span>
+                  </label>
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">تاريخ البداية <span className="text-red-500">*</span></label>
                   <input
@@ -731,29 +769,47 @@ const UnifiedEntryModal = ({
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">المدة (أيام) <span className="text-red-500">*</span></label>
-                  <input
-                    required
-                    type="number"
-                    min="1"
-                    value={leaveForm.DaysCount}
-                    onChange={e => setLeaveForm(prev => ({ ...prev, DaysCount: e.target.value }))}
-                    className="w-full h-10 px-3 border border-slate-200 hover:border-slate-300 rounded-lg outline-none bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm transition-colors"
-                  />
-                </div>
+                {!leaveForm.isOpenEnded ? (
+                  <>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1.5">المدة (أيام) <span className="text-red-500">*</span></label>
+                      <input
+                        required
+                        type="number"
+                        min="1"
+                        value={leaveForm.DaysCount}
+                        onChange={e => setLeaveForm(prev => ({ ...prev, DaysCount: e.target.value }))}
+                        className="w-full h-10 px-3 border border-slate-200 hover:border-slate-300 rounded-lg outline-none bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm transition-colors"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">تاريخ النهاية المتوقع</label>
-                  <input
-                    type="date"
-                    value={leaveForm.EndDate}
-                    readOnly
-                    className="w-full h-10 px-3 border border-slate-200 rounded-lg outline-none bg-slate-50 text-slate-500 text-sm cursor-not-allowed"
-                    dir="ltr"
-                  />
-                  <p className="text-[11px] text-slate-400 mt-1">يتم حسابه تلقائياً بناءً على المدة</p>
-                </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1.5">تاريخ النهاية المتوقع</label>
+                      <input
+                        type="date"
+                        value={leaveForm.EndDate}
+                        readOnly
+                        className="w-full h-10 px-3 border border-slate-200 rounded-lg outline-none bg-slate-50 text-slate-500 text-sm cursor-not-allowed"
+                        dir="ltr"
+                      />
+                      <p className="text-[11px] text-slate-400 mt-1">يتم حسابه تلقائياً بناءً على المدة</p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="md:col-span-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      نهاية الفترة (نص السند) <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      required
+                      type="text"
+                      value={leaveForm.CustomEndText || ''}
+                      onChange={e => setLeaveForm(prev => ({ ...prev, CustomEndText: e.target.value }))}
+                      placeholder="مثال: إلى غاية الإعلان النهائي عن النتائج ليوم 28 نوفمبر 2026"
+                      className="w-full h-10 px-3 border border-slate-200 hover:border-slate-300 rounded-lg outline-none bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm transition-colors"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">ملاحظات</label>

@@ -49,6 +49,8 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
     RecordCategory: defaultCategory,
     StateTypeOrReason: LEAVE_TYPES[0],
     ExceptionalReason: '',
+    isOpenEnded: false,
+    CustomEndText: '',
     DaysCount: 30,
     StartDate: new Date().toISOString().split('T')[0],
     EndDate: '',
@@ -131,11 +133,14 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
     if (isOpen) {
       if (record) {
         setActiveTab(record.RecordCategory);
+        const existingCustomEnd = record.CustomEndText || record.customEndText || '';
         setFormData({
           EmployeesId: record.EmployeesId,
           RecordCategory: record.RecordCategory,
           StateTypeOrReason: record.StateTypeOrReason,
           ExceptionalReason: record.ExceptionalReason || record.exceptionalReason || '',
+          isOpenEnded: Boolean(existingCustomEnd),
+          CustomEndText: existingCustomEnd,
           DaysCount: record.DaysCount,
           StartDate: record.StartDate ? new Date(record.StartDate).toISOString().split('T')[0] : '',
           EndDate: record.EndDate ? new Date(record.EndDate).toISOString().split('T')[0] : '',
@@ -158,6 +163,8 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
           RecordCategory: initialCategory,
           StateTypeOrReason: initialCategory === 'حالة خاصة' ? SPECIAL_CASE_TYPES[0] : LEAVE_TYPES[0],
           ExceptionalReason: '',
+          isOpenEnded: false,
+          CustomEndText: '',
           DaysCount: 30,
           StartDate: new Date().toISOString().split('T')[0],
           EndDate: '',
@@ -210,6 +217,8 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
       RecordCategory: tab,
       StateTypeOrReason: tab === 'حالة خاصة' ? SPECIAL_CASE_TYPES[0] : LEAVE_TYPES[0],
       ExceptionalReason: '',
+      isOpenEnded: false,
+      CustomEndText: '',
       DaysCount: 30,
       IsResumed: isResumptionTab,
       ActualReturnDate: isResumptionTab ? (prev.ActualReturnDate || new Date().toISOString().split('T')[0]) : prev.ActualReturnDate,
@@ -217,6 +226,7 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
   };
 
   useEffect(() => {
+    if (formData.isOpenEnded) return;
     if (formData.StartDate && formData.DaysCount > 0) {
       const start = new Date(formData.StartDate);
       start.setDate(start.getDate() + Number(formData.DaysCount) - 1);
@@ -229,7 +239,7 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
         return prev;
       });
     }
-  }, [formData.StartDate, formData.DaysCount]);
+  }, [formData.StartDate, formData.DaysCount, formData.isOpenEnded]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -339,6 +349,11 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
       }
     }
 
+    if (formData.RecordCategory === 'تسجيل عطلة' && formData.isOpenEnded && !formData.CustomEndText?.trim()) {
+      setError('الرجاء إدخال نص نهاية الفترة');
+      return;
+    }
+
     if (earlyPreview?.isInvalid) {
       setError(earlyPreview.message);
       return;
@@ -367,6 +382,10 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
       const cleanedExceptionalReason = isExceptionalLeave
         ? (formData.ExceptionalReason?.replace(/^[(\s]+|[)\s]+$/g, '').trim() || null)
         : null;
+      const isLeaveOpenEnded = formData.RecordCategory === 'تسجيل عطلة' && Boolean(formData.isOpenEnded);
+      const cleanedCustomEndText = isLeaveOpenEnded
+        ? (formData.CustomEndText?.trim() || null)
+        : null;
 
       if (isNewResumption) {
         const resumeRes = await EmployeeStatesService.resume(record.Id, {
@@ -374,6 +393,9 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
           notes: formData.Notes,
           ExceptionalReason: cleanedExceptionalReason,
           exceptionalReason: cleanedExceptionalReason,
+          isOpenEnded: isLeaveOpenEnded,
+          CustomEndText: cleanedCustomEndText,
+          customEndText: cleanedCustomEndText,
         });
 
         await refreshLeaves(empId);
@@ -398,9 +420,12 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
         StateTypeOrReason: formData.StateTypeOrReason,
         ExceptionalReason: cleanedExceptionalReason,
         exceptionalReason: cleanedExceptionalReason,
-        DaysCount: Number(formData.DaysCount),
+        isOpenEnded: isLeaveOpenEnded,
+        CustomEndText: cleanedCustomEndText,
+        customEndText: cleanedCustomEndText,
+        DaysCount: isLeaveOpenEnded ? 0 : Number(formData.DaysCount),
         StartDate: formData.StartDate,
-        EndDate: formData.EndDate,
+        EndDate: isLeaveOpenEnded ? formData.StartDate : formData.EndDate,
         IsResumed: effectiveIsResumed,
         ActualReturnDate: effectiveReturnDate || null,
         CurrentJobTitle: emp?.JobTitle?.RankName || emp?.CurrentJobTitle || "",
@@ -720,6 +745,30 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
                 </div>
               )}
 
+              {activeTab === 'تسجيل عطلة' && (
+                <div className="md:col-span-2 bg-slate-50/70 border border-slate-200 rounded-lg px-3.5 py-2.5 flex items-center justify-between">
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(formData.isOpenEnded)}
+                      onChange={e => {
+                        const checked = e.target.checked;
+                        setFormData(prev => ({
+                          ...prev,
+                          isOpenEnded: checked,
+                          DaysCount: checked ? 0 : (prev.DaysCount > 0 ? prev.DaysCount : 30),
+                        }));
+                      }}
+                      className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                      style={{ accentColor: '#105b38' }}
+                    />
+                    <span className="text-xs font-semibold text-slate-700">
+                      عطلة غير محددة المدة (كتابة نهاية الفترة نصاً)
+                    </span>
+                  </label>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">تاريخ البداية <span className="text-red-500">*</span></label>
                 <input
@@ -733,33 +782,52 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">مدة العطلة/الحالة (أيام) <span className="text-red-500">*</span></label>
-                <input
-                  required
-                  type="number"
-                  min="0"
-                  name="DaysCount"
-                  value={formData.DaysCount}
-                  onChange={handleChange}
-                  disabled={isPermanent}
-                  className="w-full h-10 px-3 border border-slate-200 hover:border-slate-300 rounded-lg outline-none bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm transition-colors disabled:bg-slate-50 disabled:text-slate-400"
-                />
-              </div>
+              {!(activeTab === 'تسجيل عطلة' && formData.isOpenEnded) ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">مدة العطلة/الحالة (أيام) <span className="text-red-500">*</span></label>
+                    <input
+                      required
+                      type="number"
+                      min="0"
+                      name="DaysCount"
+                      value={formData.DaysCount}
+                      onChange={handleChange}
+                      disabled={isPermanent}
+                      className="w-full h-10 px-3 border border-slate-200 hover:border-slate-300 rounded-lg outline-none bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm transition-colors disabled:bg-slate-50 disabled:text-slate-400"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">تاريخ النهاية المتوقع</label>
-                <input
-                  type="date"
-                  name="EndDate"
-                  value={formData.EndDate}
-                  readOnly
-                  disabled={isPermanent}
-                  className="w-full h-10 px-3 border border-slate-200 rounded-lg outline-none bg-slate-50 text-slate-500 text-sm cursor-not-allowed disabled:opacity-50"
-                  dir="ltr"
-                />
-                <p className="text-[11px] text-slate-400 mt-1">يتم حسابه تلقائياً بناءً على المدة</p>
-              </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">تاريخ النهاية المتوقع</label>
+                    <input
+                      type="date"
+                      name="EndDate"
+                      value={formData.EndDate}
+                      readOnly
+                      disabled={isPermanent}
+                      className="w-full h-10 px-3 border border-slate-200 rounded-lg outline-none bg-slate-50 text-slate-500 text-sm cursor-not-allowed disabled:opacity-50"
+                      dir="ltr"
+                    />
+                    <p className="text-[11px] text-slate-400 mt-1">يتم حسابه تلقائياً بناءً على المدة</p>
+                  </div>
+                </>
+              ) : (
+                <div className="md:col-span-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    نهاية الفترة (نص السند) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    required
+                    type="text"
+                    name="CustomEndText"
+                    value={formData.CustomEndText || ''}
+                    onChange={handleChange}
+                    placeholder="مثال: إلى غاية الإعلان النهائي عن النتائج ليوم 28 نوفمبر 2026"
+                    className="w-full h-10 px-3 border border-slate-200 hover:border-slate-300 rounded-lg outline-none bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm transition-colors"
+                  />
+                </div>
+              )}
 
               <div className="border border-slate-200 p-4 rounded-lg bg-white">
                 <label className="flex items-center space-x-3 space-x-reverse cursor-pointer mb-3">

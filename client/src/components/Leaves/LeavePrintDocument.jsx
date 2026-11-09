@@ -201,6 +201,22 @@ export default function LeavePrintDocument(props) {
   const annualResumeDate = addOneDay(leave.endDate || leave.EndDate || props.endDate || props.EndDate);
   const resumeDateToDisplay = !isDecisionDoc ? (annualResumeDate || leave.resumeDate) : leave.resumeDate;
 
+  const customEndText = String(
+    leave?.customEndText ||
+    leave?.CustomEndText ||
+    props?.customEndText ||
+    props?.CustomEndText ||
+    ""
+  ).trim();
+  const isOpenEndedLeave = Boolean(customEndText) || (!leave?.days || Number(leave.days) <= 0);
+  const formattedCustomEndText = customEndText
+    ? (/^إلى\b/.test(customEndText) ? customEndText : `إلى ${customEndText}`)
+    : "";
+  const hasFixedResumption = Boolean(
+    (leave?.isResumed || props?.isResumed || props?.IsResumed) &&
+    (leave?.actualReturnDate || props?.actualReturnDate || props?.ActualReturnDate)
+  );
+
   return (
     <div
       className={`leave-doc-page ${isDecisionDoc ? "sick-leave-doc" : "annual-leave-doc"}`}
@@ -674,8 +690,15 @@ export default function LeavePrintDocument(props) {
       ) : (
         <div className="doc-article">
           <div className="doc-article-line">
-            <strong>المادة الوحيدة :</strong> تمنح {annualNaming.grantPhrase} مدفوعة الأجر مدتها{" "}
-            <strong>{leave.daysInWords}</strong> (<strong><LTR>{leave.days}</LTR></strong>) {leaveDayUnit}.
+            <strong>المادة الوحيدة :</strong>{" "}
+            {isOpenEndedLeave ? (
+              <>تمنح {annualNaming.grantPhrase} مدفوعة الأجر.</>
+            ) : (
+              <>
+                تمنح {annualNaming.grantPhrase} مدفوعة الأجر مدتها{" "}
+                <strong>{leave.daysInWords}</strong> (<strong><LTR>{leave.days}</LTR></strong>) {leaveDayUnit}.
+              </>
+            )}
           </div>
           <div className="doc-article-line">
             <strong>السنة:</strong> <strong><LTR>{leave.year}</LTR></strong>
@@ -697,15 +720,28 @@ export default function LeavePrintDocument(props) {
             </strong>
           </div>
           <div className="doc-article-line">
-            <strong>الفترة :</strong> من <strong><AdminDate dateInput={leave.startDate} /></strong> إلى <strong><AdminDate dateInput={leave.endDate} /></strong>
+            <strong>الفترة :</strong> من <strong><AdminDate dateInput={leave.startDate} /></strong>{" "}
+            {customEndText ? (
+              <strong>{formattedCustomEndText}</strong>
+            ) : (
+              <>إلى <strong><AdminDate dateInput={leave.endDate} /></strong></>
+            )}
           </div>
           <div className="doc-note-line">
             - العنوان الشخصي للمستفيد(ة) ولاية <strong>{employee.province || "الشلف"}</strong>
           </div>
           <div className="doc-note-line">
-            <span>- {g.yastanif} يوم </span>
-            <strong><AdminDate dateInput={resumeDateToDisplay} value={resumeDateToDisplay} /></strong>
-            <span>، لذا {g.alayh} إبلاغنا بتاريخ الالتحاق {g.bimansibihi} في نفس اليوم.</span>
+            {customEndText && !hasFixedResumption ? (
+              <span>
+                - {g.yastanif} فور انتهاء الفترة المحددة أعلاه، لذا {g.alayh} إبلاغنا بتاريخ الالتحاق {g.bimansibihi} في نفس اليوم.
+              </span>
+            ) : (
+              <>
+                <span>- {g.yastanif} يوم </span>
+                <strong><AdminDate dateInput={resumeDateToDisplay} value={resumeDateToDisplay} /></strong>
+                <span>، لذا {g.alayh} إبلاغنا بتاريخ الالتحاق {g.bimansibihi} في نفس اليوم.</span>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -18,6 +18,7 @@ const fetcher = async (url) => {
 
 const getLeaveRowStatus = (leave) => {
   if (leave.IsResumed) return 'resumed';
+  if (leave.CustomEndText) return 'active';
   const end = new Date(leave.EndDate);
   if (isNaN(end.getTime())) return 'active';
   const today = new Date();
@@ -298,8 +299,25 @@ const LeavesTab = ({ employee, onRefresh }) => {
                         : leave.StateTypeOrReason}
                     </td>
                     <td className="py-4 px-6 text-gray-600"><DateText value={leave.StartDate} /></td>
-                    <td className="py-4 px-6 text-gray-600"><DateText value={leave.EndDate} /></td>
-                    <td className="py-4 px-6 font-medium text-slate-700">{leave.DaysCount}</td>
+                    <td className="py-4 px-6 text-gray-600">
+                      {leave.CustomEndText && !leave.IsResumed ? (
+                        <span
+                          className="inline-block max-w-[200px] truncate font-sans text-xs font-medium text-slate-700"
+                          title={leave.CustomEndText}
+                        >
+                          {leave.CustomEndText}
+                        </span>
+                      ) : (
+                        <DateText value={leave.EndDate} />
+                      )}
+                    </td>
+                    <td className="py-4 px-6 font-medium text-slate-700">
+                      {leave.CustomEndText && (!leave.DaysCount || Number(leave.DaysCount) === 0) ? (
+                        <span className="text-xs font-semibold text-amber-700">غير محددة</span>
+                      ) : (
+                        leave.DaysCount
+                      )}
+                    </td>
                     <td className="py-4 px-6"><LeaveStatusBadge status={getLeaveRowStatus(leave)} /></td>
                     <td className="py-4 px-6 text-center">
                       <div className="inline-flex items-center justify-center gap-2">

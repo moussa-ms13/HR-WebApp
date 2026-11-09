@@ -206,6 +206,7 @@ model EmployeeStates {
   SecondDoctorName      String?   @db.NVarChar(200)
   SecondCertificateDate DateTime?
   ExceptionalReason     String?   @db.NVarChar(255)
+  CustomEndText         String?   @db.NVarChar(255)
   RefundedDays          Int?      @default(0)
   RefundedBreakdown     String?   @db.NVarChar(Max)
   Employee              Employees @relation(fields: [EmployeesId], references: [Id], onDelete: Cascade, onUpdate: NoAction, map: "FK_EmployeeStates_Employees_EmployeesId")

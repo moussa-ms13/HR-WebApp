@@ -101,12 +101,22 @@ router.post("/", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req
       SecondCertificateDate,
       ExceptionalReason,
       exceptionalReason,
+      CustomEndText,
+      customEndText,
+      isOpenEnded,
     } = req.body;
+
+    const cleanedCustomEndText = (() => {
+      if (isOpenEnded === false) return null;
+      const raw = CustomEndText !== undefined ? CustomEndText : customEndText;
+      return raw ? String(raw).trim() || null : null;
+    })();
+    const isOpenEndedLeave = Boolean(cleanedCustomEndText);
 
     const employeesId = parseInt(EmployeesId, 10);
     // The frontend modals send either DaysCount, or both
     // DaysCount + RequestedDays — accept whichever is present.
-    const daysCount = parseInt(DaysCount ?? RequestedDays ?? 0, 10);
+    const daysCount = isOpenEndedLeave ? 0 : parseInt(DaysCount ?? RequestedDays ?? 0, 10);
 
     if (isNaN(employeesId) || employeesId <= 0) {
       return res.status(400).json({ success: false, message: "معرّف الموظف غير صالح" });
@@ -192,13 +202,16 @@ router.post("/", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req
       DaysCount: daysCount,
       RequestedDays: daysCount,
       StartDate: parsedStartDate,
-      EndDate: EndDate && !isNaN(new Date(EndDate).getTime()) ? new Date(EndDate) : parsedStartDate,
+      EndDate: isOpenEndedLeave
+        ? parsedStartDate
+        : (EndDate && !isNaN(new Date(EndDate).getTime()) ? new Date(EndDate) : parsedStartDate),
       AddedDate: new Date(),
       UsersId: usersId,
       IsResumed: Boolean(isResumptionRequest),
       ActualReturnDate: ActualReturnDate && !isNaN(new Date(ActualReturnDate).getTime()) ? new Date(ActualReturnDate) : (isResumptionRequest ? parsedStartDate : null),
       IsResumedEarly: false,
       Notes: Notes || null,
+      CustomEndText: cleanedCustomEndText,
       DoctorName: (DoctorName !== undefined ? DoctorName : req.body.doctorName) ? String(DoctorName || req.body.doctorName).trim() : null,
       CertificateDate: (() => {
         const d = CertificateDate !== undefined ? CertificateDate : req.body.certificateDate;
