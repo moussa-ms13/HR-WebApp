@@ -6,6 +6,7 @@ import {
   formatAlgerianAdministrativeDate,
   formatAdminDate,
   isContractualEmployee,
+  normalizeCorpsType,
   SICK_LEAVE_SOCIAL_SECURITY_LAW,
   CIVIL_SERVICE_ORDINANCE,
   CONTRACTUAL_STAFF_DECREE,
@@ -118,9 +119,23 @@ export default function LeavePrintDocument(props) {
       "",
   };
 
-  const resolvedCorpsType = (corpsType === "contractual" || isContractualEmployee(employee))
-    ? "contractual"
-    : (corpsType || "common");
+  const resolvedCorpsType = (() => {
+    if (corpsType === "contractual" || corpsType === "special" || (corpsType === "common" && !employee?.rank && !employee?.JobTitle)) {
+      return corpsType;
+    }
+    const detected = normalizeCorpsType({
+      ...employee,
+      rank: employee?.rank || props?.rank || props?.CurrentJobTitle,
+      EmploymentCategory:
+        employee?.EmploymentCategory ||
+        employee?.JobTitle?.EmploymentCategory ||
+        props?.EmploymentCategory ||
+        props?.Employee?.JobTitle?.EmploymentCategory,
+    });
+    if (detected !== "unknown") return detected;
+    if (isContractualEmployee(employee)) return "contractual";
+    return corpsType && corpsType !== "unknown" ? corpsType : "common";
+  })();
 
   const legal = LEGAL_PROFILES[resolvedCorpsType] ?? LEGAL_PROFILES.common;
   const isSickLeave =
@@ -140,11 +155,16 @@ export default function LeavePrintDocument(props) {
   // Exceptional leave reuses the annual template layout with dynamic naming
   const rawLeaveType =
     propLeaveType || leave?.type || leave?.StateTypeOrReason || props?.StateTypeOrReason || "";
+  const rawNotesCandidate = String(leave?.notes || leave?.Notes || props?.Notes || props?.notes || "").trim();
+  const isSystemBalanceNote = /تبقى.*من العطلة السنوية/.test(rawNotesCandidate);
   const rawExceptionalReason =
     leave?.exceptionalReason ||
     leave?.ExceptionalReason ||
     props?.exceptionalReason ||
     props?.ExceptionalReason ||
+    (String(rawLeaveType).includes("استثنائية") && rawNotesCandidate && !isSystemBalanceNote && rawNotesCandidate.length <= 60
+      ? rawNotesCandidate
+      : "") ||
     "";
   const annualNaming = getAnnualTemplateNaming(rawLeaveType, rawExceptionalReason);
   const isExceptionalLeave = annualNaming.isExceptional;
@@ -438,27 +458,7 @@ export default function LeavePrintDocument(props) {
           font-size: 14pt;
           font-weight: bold;
         }
-
-        .doc-warning {
-          background: #FEF3C7;
-          border: 2px solid #F59E0B;
-          border-radius: 6px;
-          padding: 6px 10px;
-          margin-bottom: 8px;
-          font-size: 12px;
-          color: #92400E;
-          font-family: sans-serif;
-        }
       `}</style>
-
-      {/* ── Validation Warnings ── */}
-      {warnings.length > 0 && (
-        <div>
-          {warnings.map((w, i) => (
-            <div key={i} className="doc-warning">⚠ {w}</div>
-          ))}
-        </div>
-      )}
 
       {/* ══════════════ HEADER ══════════════ */}
       <div style={{ width: "100%", display: "block", marginBottom: "6px" }}>

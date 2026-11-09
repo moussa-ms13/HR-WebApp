@@ -25,6 +25,7 @@ const EMPLOYEE_LIST_SELECT = Object.freeze({
   IsProfileComplete: true,
   ProfileImagePath: true,
   JobTitleId: true,
+  CorpsType: true,
 });
 
 /**
@@ -40,6 +41,9 @@ const EMPLOYEE_SEARCH_SELECT = Object.freeze({
   Province: true,
   Directorate: true,
   EmployeeStatus: true,
+  CorpsType: true,
+  JobTitleId: true,
+  JobTitle: { select: { Id: true, RankName: true, EmploymentCategory: true } },
 });
 
 /**
@@ -61,6 +65,7 @@ const EMPLOYEE_DETAIL_SELECT = Object.freeze({
   NIN: true,
   SIS: true,
   AssignedPosition: true,
+  CorpsType: true,
   ConfirmationDate: true,
   Degree: true,
   EmployeeStatus: true,
@@ -121,6 +126,7 @@ const EMPLOYEE_SUMMARY_SELECT = Object.freeze({
   NIN: true,
   SIS: true,
   AssignedPosition: true,
+  CorpsType: true,
   ConfirmationDate: true,
   Degree: true,
   EmployeeStatus: true,

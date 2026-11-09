@@ -11,8 +11,10 @@ const CORPS_COMMON_VALUES = new Set([
   "سلك_مشترك",
   "سلك مشترك",
   "الأسلاك المشتركة",
+  "اسلاك مشتركة",
   "أسلاك مشتركة",
   "مشترك",
+  "مشتركة",
 ]);
 
 const CORPS_SPECIAL_VALUES = new Set([
@@ -20,8 +22,18 @@ const CORPS_SPECIAL_VALUES = new Set([
   "سلك_خاص",
   "سلك خاص",
   "الأسلاك الخاصة",
+  "اسلاك خاصة",
   "أسلاك خاصة",
+  "الأسلاك التقنية",
+  "اسلاك تقنية",
+  "أسلاك تقنية",
+  "أسلاك تقنية (خاصة)",
+  "اسلاك تقنية (خاصة)",
+  "الأسلاك التقنية (الخاصة)",
   "خاص",
+  "خاصة",
+  "تقني",
+  "تقنية",
 ]);
 
 const CORPS_CONTRACTUAL_VALUES = new Set([
@@ -43,13 +55,67 @@ const CORPS_CONTRACTUAL_VALUES = new Set([
 
 export const CONTRACTUAL_TITLE_KEYWORDS = [
   "حارس",
-  "سائق",
-  "عامل مهني",
-  "عاملة مهنية",
   "عون وقاية",
   "منظفة",
   "منظف",
   "عون خدمة",
+  "رئيس حضيرة",
+  "سائق سيارة من المستوى",
+  "سائق سيارة الوزن الخفيف",
+  "عامل مهني من المستوى",
+];
+
+export const SPECIAL_CORPS_RANK_KEYWORDS = [
+  "مسح الاراضي",
+  "مسح الأراضي",
+  "أملاك الدولة",
+  "املاك الدولة",
+  "املاك دولة",
+  "أملاك دولة",
+  "الحفظ العقاري",
+  "حفظ عقاري",
+  "مفتش",
+  "مراقب",
+  "عون معاينة",
+  "مهندس تطبيقي",
+  "مهندس قسم لمسح",
+  "مهندس رئيسي لمسح",
+  "مهندس لمسح",
+  "رئيس محققين",
+  "محقق",
+];
+
+export const COMMON_CORPS_RANK_KEYWORDS = [
+  "متصرف",
+  "ملحق للإدارة",
+  "ملحق رئيسي للإدارة",
+  "ملحق إدارة",
+  "عون إدارة",
+  "عون ادارة",
+  "كاتب",
+  "محاسب إداري",
+  "محاسب اداري",
+  "محاسب طبوغرافي",
+  "وثائقي",
+  "أمين محفوظات",
+  "امين محفوظات",
+  "الاعلام الالي",
+  "الإعلام الآلي",
+  "الإعلام الالي",
+  "الاحصاء",
+  "الإحصاء",
+  "عون مكتب",
+  "عون حفظ البيانات",
+  "عون مصلحة",
+  "مساعد إداري",
+  "مساعد اداري",
+  "معاون إداري",
+  "معاون اداري",
+  "حاجب",
+  "الراقنة",
+  "أعوان الرقن",
+  "عامل مهني خارج الصنف",
+  "سائق سيارة من الصنف",
 ];
 
 function isContractualString(str) {
@@ -66,10 +132,39 @@ function isContractualString(str) {
   return false;
 }
 
+function isSpecialCorpsString(str) {
+  if (!str || typeof str !== "string") return false;
+  const trimmed = str.trim();
+  if (CORPS_SPECIAL_VALUES.has(trimmed)) return true;
+  if (
+    trimmed.includes("خاص") ||
+    trimmed.includes("أسلاك تقنية") ||
+    trimmed.includes("اسلاك تقنية") ||
+    trimmed.includes("الأسلاك التقنية") ||
+    trimmed.toLowerCase() === "special"
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function isCommonCorpsString(str) {
+  if (!str || typeof str !== "string") return false;
+  const trimmed = str.trim();
+  if (CORPS_COMMON_VALUES.has(trimmed)) return true;
+  if (
+    trimmed.includes("مشترك") ||
+    trimmed.toLowerCase() === "common"
+  ) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Identify whether an employee is a contractual staff member based on:
  * - Contract type / status (e.g. emp.ContractType === 'متعاقد' or category / corps)
- * - OR rank / position (e.g. titles containing "حارس", "سائق", "عامل مهني", "عون وقاية", "منظفة", or "عون خدمة")
+ * - OR rank / position (e.g. titles containing "حارس", "عون وقاية", "منظفة", or "عون خدمة")
  */
 export function isContractualEmployee(employee) {
   if (!employee) return false;
@@ -88,23 +183,40 @@ export function isContractualEmployee(employee) {
   if (isContractualString(employee.EmployeeStatus)) return true;
 
   // 2. Check employment category (on JobTitle or directly)
-  if (isContractualString(employee.JobTitle?.EmploymentCategory)) return true;
-  if (isContractualString(employee.EmploymentCategory)) return true;
+  const category =
+    employee.JobTitle?.EmploymentCategory ||
+    employee.JobTitle?.Category ||
+    employee.EmploymentCategory ||
+    employee.Category ||
+    "";
+  if (isContractualString(category)) return true;
+  // If category explicitly says common or special, do NOT misclassify as contractual based on rank substring
+  if (isSpecialCorpsString(category) || isCommonCorpsString(category)) {
+    return false;
+  }
 
   // 3. Check rank / position title strings
   const textCandidates = [
     employee.rank,
     employee.jobTitle,
     employee.RankName,
-    employee.AssignedPosition,
+    employee.TitleName,
+    employee.JobRank,
     employee.CurrentJobTitle,
     employee.Position,
     employee.JobTitle?.RankName,
+    employee.JobTitle?.TitleName,
   ].filter(Boolean);
 
   for (const text of textCandidates) {
     if (typeof text === "string") {
       if (CONTRACTUAL_TITLE_KEYWORDS.some((kw) => text.includes(kw))) {
+        return true;
+      }
+      if (
+        (text.includes("عامل مهني") && !text.includes("خارج الصنف")) ||
+        (text.includes("سائق") && !text.includes("الصنف الأول") && !text.includes("الصنف الثاني"))
+      ) {
         return true;
       }
       if (text.includes("متعاقد")) {
@@ -124,8 +236,8 @@ export function isContractualEmployee(employee) {
 }
 
 /**
- * Normalize corps type from Employee.CorpsType or JobTitle.EmploymentCategory,
- * or automatic detection for contractual staff.
+ * Normalize corps type from Employee.CorpsType, JobTitle.EmploymentCategory,
+ * or rank/title keywords.
  * Returns "contractual" | "special" | "common" | "unknown"
  */
 export function normalizeCorpsType(employee) {
@@ -134,34 +246,74 @@ export function normalizeCorpsType(employee) {
   if (typeof employee === "string") {
     const s = employee.trim();
     if (s === "contractual" || isContractualString(s)) return "contractual";
-    if (CORPS_SPECIAL_VALUES.has(s) || s.includes("خاص")) return "special";
-    if (CORPS_COMMON_VALUES.has(s) || s.includes("مشترك")) return "common";
+    if (isSpecialCorpsString(s)) return "special";
+    if (isCommonCorpsString(s)) return "common";
     if (CONTRACTUAL_TITLE_KEYWORDS.some((kw) => s.includes(kw))) return "contractual";
+    if (SPECIAL_CORPS_RANK_KEYWORDS.some((kw) => s.includes(kw))) return "special";
+    if (COMMON_CORPS_RANK_KEYWORDS.some((kw) => s.includes(kw))) return "common";
     return "unknown";
   }
 
-  // Priority 1: Check contractual staff detection first
+  // Priority 1: Check explicit EmploymentCategory from JobTitle or employee first if present
+  const category = (
+    employee?.JobTitle?.EmploymentCategory ||
+    employee?.JobTitle?.Category ||
+    employee?.EmploymentCategory ||
+    employee?.Category ||
+    employee?.Employee?.JobTitle?.EmploymentCategory ||
+    employee?.Employee?.JobTitle?.Category ||
+    employee?.Employee?.EmploymentCategory ||
+    ""
+  ).trim();
+
+  if (category) {
+    if (isContractualString(category)) return "contractual";
+    if (isSpecialCorpsString(category)) return "special";
+    if (isCommonCorpsString(category)) return "common";
+  }
+
+  // Priority 2: Check contractual staff detection (status or rank)
   if (isContractualEmployee(employee)) {
     return "contractual";
   }
 
-  // Priority 2: Direct CorpsType field on Employee
-  const corpsRaw = (employee?.CorpsType || "").trim();
+  // Priority 3: Direct CorpsType / corpsType field on Employee
+  const corpsRaw = (
+    employee?.CorpsType ||
+    employee?.corpsType ||
+    employee?.Employee?.CorpsType ||
+    employee?.Employee?.corpsType ||
+    ""
+  ).trim();
   if (corpsRaw) {
-    if (CORPS_COMMON_VALUES.has(corpsRaw)) return "common";
-    if (CORPS_SPECIAL_VALUES.has(corpsRaw)) return "special";
-    // Check partial match for "خاص"
-    if (corpsRaw.includes("خاص")) return "special";
-    if (corpsRaw.includes("مشترك")) return "common";
+    if (isContractualString(corpsRaw)) return "contractual";
+    if (isSpecialCorpsString(corpsRaw)) return "special";
+    if (isCommonCorpsString(corpsRaw)) return "common";
   }
 
-  // Priority 3: EmploymentCategory from related JobTitle
-  const category = (employee?.JobTitle?.EmploymentCategory || employee?.EmploymentCategory || "").trim();
-  if (category) {
-    if (CORPS_COMMON_VALUES.has(category)) return "common";
-    if (CORPS_SPECIAL_VALUES.has(category)) return "special";
-    if (category.includes("خاص")) return "special";
-    if (category.includes("مشترك")) return "common";
+  // Priority 4: Infer from RankName / CurrentJobTitle / AssignedPosition keywords
+  const rankCandidates = [
+    employee?.JobTitle?.RankName,
+    employee?.JobTitle?.TitleName,
+    employee?.RankName,
+    employee?.TitleName,
+    employee?.JobRank,
+    employee?.rank,
+    employee?.CurrentJobTitle,
+    employee?.Employee?.JobTitle?.RankName,
+    employee?.Employee?.CurrentJobTitle,
+    employee?.AssignedPosition,
+    employee?.jobTitle,
+  ].filter((v) => typeof v === "string" && v.trim() !== "");
+
+  for (const r of rankCandidates) {
+    const trimmed = r.trim();
+    if (SPECIAL_CORPS_RANK_KEYWORDS.some((kw) => trimmed.includes(kw))) {
+      return "special";
+    }
+    if (COMMON_CORPS_RANK_KEYWORDS.some((kw) => trimmed.includes(kw))) {
+      return "common";
+    }
   }
 
   return "unknown";

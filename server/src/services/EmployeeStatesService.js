@@ -243,6 +243,7 @@ class EmployeeStatesService {
         ExceptionalReason: true,
         Employee: {
           select: {
+            Id: true,
             Name: true,
             LastName: true,
             Province: true,
@@ -250,9 +251,12 @@ class EmployeeStatesService {
             DateOfBirth: true,
             Directorate: true,
             AssignedPosition: true,
+            EmployeeStatus: true,
             CorpsType: true,
+            JobTitleId: true,
             JobTitle: {
               select: {
+                Id: true,
                 RankName: true,
                 EmploymentCategory: true,
               }

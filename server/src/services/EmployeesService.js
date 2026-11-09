@@ -28,11 +28,14 @@ const getJobTitlesMap = async () => {
   let map = CacheService.get("all_job_titles_map");
   if (!map) {
     const titles = await prisma.jobTitles.findMany({
-      select: { Id: true, RankName: true },
+      select: { Id: true, RankName: true, EmploymentCategory: true },
     });
     map = {};
     for (const t of titles) {
-      map[t.Id] = t.RankName;
+      map[t.Id] = {
+        RankName: t.RankName || "",
+        EmploymentCategory: t.EmploymentCategory || "",
+      };
     }
     CacheService.set("all_job_titles_map", map, 3600);
   }
@@ -237,11 +240,18 @@ class EmployeesService {
     }
 
     const jobMap = await getJobTitlesMap();
-    const formattedEmployees = employees.map((emp) => ({
-      ...emp,
-      JobTitle: emp.JobTitleId ? { Id: emp.JobTitleId, RankName: jobMap[emp.JobTitleId] || "" } : null,
-      SpecialCases: [],
-    }));
+    const formattedEmployees = employees.map((emp) => {
+      const jtEntry = emp.JobTitleId ? jobMap[emp.JobTitleId] : null;
+      const rankName = typeof jtEntry === "string" ? jtEntry : (jtEntry?.RankName || "");
+      const empCategory = typeof jtEntry === "object" && jtEntry ? (jtEntry.EmploymentCategory || "") : "";
+      return {
+        ...emp,
+        JobTitle: emp.JobTitleId
+          ? { Id: emp.JobTitleId, RankName: rankName, EmploymentCategory: empCategory, Category: empCategory }
+          : null,
+        SpecialCases: [],
+      };
+    });
 
     return {
       data: formattedEmployees,

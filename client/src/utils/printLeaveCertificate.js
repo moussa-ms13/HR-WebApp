@@ -60,13 +60,14 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
   const leaveType = inlineParenMatch ? "عطلة استثنائية" : rawStateType;
   const isExceptionalType = leaveType.includes("استثنائية");
   const rawNotesForFallback = String(stClean.Notes || stClean.notes || "").trim();
+  const isSystemBalanceNote = /تبقى.*من العطلة السنوية/.test(rawNotesForFallback);
   const exceptionalReason = String(
     stClean.ExceptionalReason ||
     stClean.exceptionalReason ||
     nestedLeave.exceptionalReason ||
     nestedLeave.ExceptionalReason ||
     (inlineParenMatch ? inlineParenMatch[1] : "") ||
-    (isExceptionalType && rawNotesForFallback && rawNotesForFallback.length <= 40 ? rawNotesForFallback : "") ||
+    (isExceptionalType && rawNotesForFallback && !isSystemBalanceNote && rawNotesForFallback.length <= 60 ? rawNotesForFallback : "") ||
     ""
   )
     .replace(/^[(\s]+|[)\s]+$/g, "")
@@ -126,21 +127,32 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
     (secondDoctorName || secondCertificateDate)
   );
 
-  // Normalize corps type
+  // Normalize corps type (merging state.Employee and fallbackEmployee so JobTitle/EmploymentCategory are never lost)
+  const mergedJobTitle = {
+    ...(fallbackEmployee?.JobTitle || {}),
+    ...(stClean.Employee?.JobTitle || {}),
+  };
   const empWithJob = {
+    ...(fallbackEmployee || {}),
     ...emp,
-    CurrentJobTitle: emp.CurrentJobTitle || stClean.CurrentJobTitle,
+    JobTitle: Object.keys(mergedJobTitle).length > 0 ? mergedJobTitle : emp.JobTitle,
+    EmploymentCategory:
+      emp.JobTitle?.EmploymentCategory ||
+      emp.EmploymentCategory ||
+      fallbackEmployee?.JobTitle?.EmploymentCategory ||
+      fallbackEmployee?.EmploymentCategory ||
+      "",
+    CurrentJobTitle:
+      emp.JobTitle?.RankName ||
+      emp.CurrentJobTitle ||
+      stClean.CurrentJobTitle ||
+      fallbackEmployee?.JobTitle?.RankName ||
+      "",
   };
   const corpsType = normalizeCorpsType(empWithJob);
-  if (!isDecisionDoc && corpsType === "unknown") {
-    warnings.push("لم يتم تحديد نوع السلك (مشترك/خاص/تعاقدي). تم استخدام الأسلاك المشتركة كقيمة افتراضية.");
-  }
 
   // Normalize gender
-  const gender = isMaternityLeave ? "female" : normalizeGender(emp.Gender);
-  if (!gender && !isMaternityLeave) {
-    warnings.push("جنس الموظف غير محدد أو غير صالح. تم استخدام صيغة المذكر كقيمة افتراضية. يرجى تصحيح بيانات الموظف.");
-  }
+  const gender = isMaternityLeave ? "female" : normalizeGender(emp.Gender || fallbackEmployee?.Gender);
   const genderProfile = getGenderProfile(gender || "male");
 
   // Employee name: Strictly "LastName FirstName" (اللقب ثم الاسم) for all printed documents & decisions
