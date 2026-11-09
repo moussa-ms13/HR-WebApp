@@ -18,7 +18,7 @@ const fetcher = async (url) => {
 
 const getLeaveRowStatus = (leave) => {
   if (leave.IsResumed) return 'resumed';
-  if (leave.CustomEndText) return 'active';
+  if (leave.CustomEndText || leave.customEndText) return 'active';
   const end = new Date(leave.EndDate);
   if (isNaN(end.getTime())) return 'active';
   const today = new Date();

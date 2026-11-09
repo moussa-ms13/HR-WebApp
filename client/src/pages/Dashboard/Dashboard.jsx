@@ -97,8 +97,12 @@ const Dashboard = () => {
 
   const { stats } = statsData.data;
   const pieData = provinceData?.data || [];
-  const resumingSoon = resumingData?.data || [];
-  const overdueResumes = overdueData?.data || [];
+  const resumingSoon = (resumingData?.data || []).filter(
+    (s) => !s?.CustomEndText && !s?.customEndText
+  );
+  const overdueResumes = (overdueData?.data || []).filter(
+    (s) => !s?.CustomEndText && !s?.customEndText
+  );
   const userKpis = kpiData?.data || [];
   const maxKpi = userKpis.length > 0 ? Math.max(...userKpis.map(k => k.count)) : 1;
 

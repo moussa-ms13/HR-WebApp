@@ -358,7 +358,7 @@ const EmployeeStatesList = () => {
                 </tr>
               ) : (
                 states.map((st) => {
-                  const status = getRowStatus(st.EndDate, st.IsResumed, st.CustomEndText);
+                  const status = getRowStatus(st.EndDate, st.IsResumed, st.CustomEndText || st.customEndText);
                   return (
                     <tr key={st.Id} className={`${getRowBgStyles(status)} transition-colors group`}>
                       <td className="py-3 px-4 font-bold text-slate-800">

@@ -36,7 +36,10 @@ exports.getDashboardStats = async (req, res, next) => {
       prisma.employeeStates.count({
         where: {
           StartDate: { lte: today },
-          EndDate: { gte: today },
+          OR: [
+            { EndDate: { gte: today } },
+            { IsResumed: false, CustomEndText: { not: null }, NOT: { CustomEndText: "" } },
+          ],
         },
       }),
       prisma.specialCases.count({
@@ -47,7 +50,11 @@ exports.getDashboardStats = async (req, res, next) => {
         },
       }),
       prisma.employeeStates.count({
-        where: { EndDate: { lt: today }, IsResumed: false },
+        where: {
+          EndDate: { lt: today },
+          IsResumed: false,
+          OR: [{ CustomEndText: null }, { CustomEndText: "" }],
+        },
       }),
       prisma.specialCases.count({
         where: { EndDate: { lt: today }, IsActive: true },
@@ -138,10 +145,13 @@ exports.getResumingSoon = async (req, res, next) => {
         where: {
           IsResumed: false,
           EndDate: { gte: today, lte: in14Days },
+          OR: [{ CustomEndText: null }, { CustomEndText: "" }],
         },
         select: {
           Id: true,
           StateTypeOrReason: true,
+          ExceptionalReason: true,
+          CustomEndText: true,
           EndDate: true,
           Employee: {
             select: { Name: true, LastName: true },
@@ -211,10 +221,13 @@ exports.getOverdueResumes = async (req, res, next) => {
         where: {
           IsResumed: false,
           EndDate: { lt: today },
+          OR: [{ CustomEndText: null }, { CustomEndText: "" }],
         },
         select: {
           Id: true,
           StateTypeOrReason: true,
+          ExceptionalReason: true,
+          CustomEndText: true,
           EndDate: true,
           Employee: {
             select: { Name: true, LastName: true },
@@ -248,8 +261,9 @@ exports.getOverdueResumes = async (req, res, next) => {
       Employee: c.Employee,
     }));
 
-    // Calculate overdue days for each record
+    // Calculate overdue days for each record (strictly excluding open-ended leaves)
     const data = [...states, ...mappedCases]
+      .filter((s) => !s.CustomEndText)
       .map((s) => {
         const endDate = new Date(s.EndDate);
         endDate.setHours(0, 0, 0, 0);
