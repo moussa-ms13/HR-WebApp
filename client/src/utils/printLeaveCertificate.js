@@ -172,13 +172,15 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
   // Days in words & open-ended custom text
   const days = Number(stClean.DaysCount || 0);
   const daysInWords = numberToArabicWords(days);
-  const customEndText = String(
+  const rawCustomEnd = String(
     stClean.CustomEndText ||
     stClean.customEndText ||
     nestedLeave.customEndText ||
     nestedLeave.CustomEndText ||
     ""
   ).trim();
+  // Remove any leading "إلى", "الى", "الي", "آلى" and extra spaces so it never duplicates with the template's "إلى"
+  const customEndText = rawCustomEnd.replace(/^(?:[إأاآ]ل[ىي]\s*)+/, "").trim();
   const isResumed = Boolean(stClean.IsResumed ?? stClean.isResumed ?? nestedLeave.isResumed ?? false);
   const actualReturnDate = stClean.ActualReturnDate
     ? formatAdminDate(stClean.ActualReturnDate)

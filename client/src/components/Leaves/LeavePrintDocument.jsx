@@ -201,17 +201,16 @@ export default function LeavePrintDocument(props) {
   const annualResumeDate = addOneDay(leave.endDate || leave.EndDate || props.endDate || props.EndDate);
   const resumeDateToDisplay = !isDecisionDoc ? (annualResumeDate || leave.resumeDate) : leave.resumeDate;
 
-  const customEndText = String(
+  const rawCustomEnd = String(
     leave?.customEndText ||
     leave?.CustomEndText ||
     props?.customEndText ||
     props?.CustomEndText ||
     ""
   ).trim();
-  const isOpenEndedLeave = Boolean(customEndText) || (!leave?.days || Number(leave.days) <= 0);
-  const formattedCustomEndText = customEndText
-    ? (/^إلى\b/.test(customEndText) ? customEndText : `إلى ${customEndText}`)
-    : "";
+  // Remove any leading "إلى", "الى", "الي", "آلى" and extra spaces so it never duplicates with the template's "إلى"
+  const cleanCustomEnd = rawCustomEnd.replace(/^(?:[إأاآ]ل[ىي]\s*)+/, "").trim();
+  const isOpenEndedLeave = Boolean(cleanCustomEnd) || (!leave?.days || Number(leave.days) <= 0);
   const hasFixedResumption = Boolean(
     (leave?.isResumed || props?.isResumed || props?.IsResumed) &&
     (leave?.actualReturnDate || props?.actualReturnDate || props?.ActualReturnDate)
@@ -720,18 +719,18 @@ export default function LeavePrintDocument(props) {
             </strong>
           </div>
           <div className="doc-article-line">
-            <strong>الفترة :</strong> من <strong><AdminDate dateInput={leave.startDate} /></strong>{" "}
-            {customEndText ? (
-              <strong>{formattedCustomEndText}</strong>
+            <strong>الفترة :</strong> من <strong><AdminDate dateInput={leave.startDate} /></strong> إلى{" "}
+            {cleanCustomEnd ? (
+              <strong>{cleanCustomEnd}</strong>
             ) : (
-              <>إلى <strong><AdminDate dateInput={leave.endDate} /></strong></>
+              <strong><AdminDate dateInput={leave.endDate} /></strong>
             )}
           </div>
           <div className="doc-note-line">
             - العنوان الشخصي للمستفيد(ة) ولاية <strong>{employee.province || "الشلف"}</strong>
           </div>
           <div className="doc-note-line">
-            {customEndText && !hasFixedResumption ? (
+            {cleanCustomEnd && !hasFixedResumption ? (
               <span>
                 - {g.yastanif} فور انتهاء الفترة المحددة أعلاه، لذا {g.alayh} إبلاغنا بتاريخ الالتحاق {g.bimansibihi} في نفس اليوم.
               </span>
