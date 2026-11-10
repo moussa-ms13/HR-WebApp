@@ -275,14 +275,14 @@ const EmployeesList = () => {
             className="flex items-center gap-2 text-sm font-medium text-gray-600 px-3 py-2 hover:bg-gray-50 rounded-lg outline-none bg-transparent cursor-pointer appearance-none"
           >
             <option value="">الجهة: الكل</option>
-            {provinceFilter === 'الشلف' && (
+            {(provinceFilter === 'الشلف' || (!provinceFilter && allowedProvinces.includes('الشلف'))) && (
               <option value="المديرية الجهوية للأملاك الوطنية" className="font-bold text-emerald-700 bg-emerald-50">المديرية الجهوية للأملاك الوطنية</option>
             )}
             <option value="مديرية أملاك الدولة" className="font-bold">مديرية أملاك الدولة</option>
             {availableMofatishiyat.map(item => (
               <option key={item} value={item}>-- {item}</option>
             ))}
-            <option value="مديرية مسح الأراضي والحفظ العقاري" className="font-bold">مديرية مسح الأراضي</option>
+            <option value="مديرية مسح الأراضي والحفظ العقاري" className="font-bold">مديرية مسح الأراضي والحفظ العقاري</option>
             {availableMohafathat.map(item => (
               <option key={item} value={item}>-- {item}</option>
             ))}

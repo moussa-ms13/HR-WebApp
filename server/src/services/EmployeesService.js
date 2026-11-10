@@ -11,6 +11,8 @@ const {
   sanitizePagination,
   buildTokenizedSearch,
   resolveGeographicFilter,
+  normalizeWorkplaceValue,
+  buildDirectorateFilter,
 } = require("../utils/queryBuilder");
 const {
   EMPLOYEE_LIST_SELECT,
@@ -95,7 +97,7 @@ class EmployeesService {
 
     // Directorate Filter (الجهة / المصلحة)
     if (directorate && String(directorate).trim()) {
-      whereClause.Directorate = String(directorate).trim();
+      whereClause.Directorate = buildDirectorateFilter(directorate);
     }
 
     // Category Filter (فئة / رتبة / حالة)
@@ -280,7 +282,7 @@ class EmployeesService {
       }
     }
     if (directorate) {
-      whereClause.Directorate = directorate;
+      whereClause.Directorate = buildDirectorateFilter(directorate);
     }
 
     const term = (query || "").trim();
@@ -419,7 +421,7 @@ class EmployeesService {
         MaritalStatus: data.MaritalStatus || data.FamilyStatus || "",
         ProfileImagePath: data.ProfileImagePath || "",
         Province: data.Province,
-        Directorate: data.Directorate || "",
+        Directorate: normalizeWorkplaceValue(data.Directorate || ""),
         AddedDate: now,
         UpdateDate: now,
         UsersId: requestingUser.userName,
@@ -500,7 +502,7 @@ class EmployeesService {
         Gender: data.Gender !== undefined ? data.Gender : existing.Gender,
         MaritalStatus: (data.MaritalStatus !== undefined ? data.MaritalStatus : data.FamilyStatus) ?? existing.MaritalStatus,
         Province: data.Province ?? existing.Province,
-        Directorate: data.Directorate ?? existing.Directorate,
+        Directorate: data.Directorate !== undefined ? normalizeWorkplaceValue(data.Directorate) : existing.Directorate,
         UpdateDate: new Date(),
         UsersId: requestingUser.userName,
         NIN: data.NIN ?? existing.NIN,

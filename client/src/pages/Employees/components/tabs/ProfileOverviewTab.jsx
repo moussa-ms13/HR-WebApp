@@ -29,30 +29,34 @@ const fetcher = async (url) => {
 };
 
 // --- Tree View Node (for Assignment picker) ---
-const TreeNode = ({ label, children, onSelect, isLeaf, dirTag }) => {
+// Non-leaf nodes (isLeaf={false}) are strictly expand/collapse category headers ONLY and can NEVER be selected.
+const TreeNode = ({ label, value, children, onSelect, isLeaf, dirTag }) => {
   const [isOpen, setIsOpen] = useState(true);
-  const handleToggle = (e) => {
+  const handleRowClick = (e) => {
     e.stopPropagation();
-    if (!isLeaf) setIsOpen(!isOpen);
-  };
-  const handleSelect = (e) => {
-    e.stopPropagation();
-    onSelect(label, dirTag);
+    if (isLeaf) {
+      onSelect(value || label, dirTag);
+    } else {
+      setIsOpen((prev) => !prev);
+    }
   };
   return (
     <div className="ml-4 rtl:ml-0 rtl:mr-4 select-none">
       <div
-        className={`flex items-center py-1 transition-colors hover:text-blue-600 hover:bg-blue-50 px-2 rounded ${
-          isLeaf ? 'text-slate-600' : 'font-medium text-slate-800'
+        onClick={handleRowClick}
+        className={`flex items-center py-1.5 px-2 rounded transition-colors cursor-pointer ${
+          isLeaf
+            ? 'text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 font-normal'
+            : 'font-bold text-slate-800 hover:bg-slate-100'
         }`}
       >
         {!isLeaf && (
-          <div onClick={handleToggle} className="cursor-pointer p-0.5 hover:bg-blue-100 rounded">
-            {isOpen ? <ChevronDown size={16} className="text-slate-500" /> : <ChevronLeft size={16} className="text-slate-500" />}
+          <div className="p-0.5 rounded text-slate-500">
+            {isOpen ? <ChevronDown size={16} /> : <ChevronLeft size={16} />}
           </div>
         )}
         {isLeaf && <div className="w-4 h-4 inline-block mr-1 rtl:mr-0 rtl:ml-1" />}
-        <div onClick={handleSelect} className="cursor-pointer flex-1 mr-1 rtl:mr-0 rtl:ml-1">
+        <div className="flex-1 mr-1 rtl:mr-0 rtl:ml-1">
           {label}
         </div>
       </div>
@@ -550,6 +554,7 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
                       {editData.Province === 'الشلف' && (
                         <TreeNode
                           label="المديرية الجهوية للأملاك الوطنية"
+                          value="المديرية الجهوية للأملاك الوطنية"
                           onSelect={handleTreeSelect}
                           isLeaf={true}
                           dirTag="المديرية الجهوية للأملاك الوطنية"
@@ -557,27 +562,29 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
                       )}
                       <TreeNode label={dirAmlak} onSelect={handleTreeSelect} isLeaf={false}>
                         <TreeNode
-                          label={`المديرية الولائية (${editData.Province})`}
+                          label={dirAmlak}
+                          value={dirAmlak}
                           onSelect={handleTreeSelect}
                           isLeaf={true}
                           dirTag={dirAmlak}
                         />
                         <TreeNode label="مفتشيات أملاك الدولة" onSelect={handleTreeSelect} isLeaf={false}>
                           {getMofatishiyat(editData.Province).map((m) => (
-                            <TreeNode key={m} label={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirAmlak} />
+                            <TreeNode key={m} label={m} value={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirAmlak} />
                           ))}
                         </TreeNode>
                       </TreeNode>
                       <TreeNode label={dirMash} onSelect={handleTreeSelect} isLeaf={false}>
                         <TreeNode
-                          label={`المديرية الولائية (${editData.Province})`}
+                          label={dirMash}
+                          value={dirMash}
                           onSelect={handleTreeSelect}
                           isLeaf={true}
                           dirTag={dirMash}
                         />
                         <TreeNode label="المحافظات العقارية" onSelect={handleTreeSelect} isLeaf={false}>
                           {getMohafathat(editData.Province).map((m) => (
-                            <TreeNode key={m} label={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirMash} />
+                            <TreeNode key={m} label={m} value={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirMash} />
                           ))}
                         </TreeNode>
                       </TreeNode>

@@ -11,6 +11,7 @@ const {
   sanitizePagination,
   buildTokenizedSearch,
   resolveGeographicFilter,
+  buildDirectorateFilter,
 } = require("../utils/queryBuilder");
 const CacheService = require("./CacheService");
 const { PERMANENT_EXIT_TYPES } = require("../utils/specialCasesConstants");
@@ -147,7 +148,7 @@ class SpecialCasesService {
 
     const employeeFilter = {
       Province: provinceFilter,
-      ...(directorate ? { Directorate: directorate } : {}),
+      ...(directorate ? { Directorate: buildDirectorateFilter(directorate) } : {}),
     };
 
     const baseWhere = {

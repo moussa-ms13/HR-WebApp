@@ -9,6 +9,7 @@ const CacheService = require("./CacheService");
 const {
   resolveGeographicFilter,
   buildTokenizedSearch,
+  buildDirectorateFilter,
 } = require("../utils/queryBuilder");
 const {
   STANDARD_LEAVE_TYPES,
@@ -153,7 +154,7 @@ class ExportService {
     const baseWhere = { Province: provinceFilter };
 
     if (filters.directorate && String(filters.directorate).trim()) {
-      baseWhere.Directorate = String(filters.directorate).trim();
+      baseWhere.Directorate = buildDirectorateFilter(filters.directorate);
     }
 
     // ──────────────────────────────────────────────

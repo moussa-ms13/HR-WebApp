@@ -98,10 +98,62 @@ function resolveEmployeeWorkplace(emp) {
   return { resolvedDirectorate, workplace: resolvedDirectorate };
 }
 
+/**
+ * Normalizes a workplace/directorate string on input/save.
+ * Rejects bare category headers ("مفتشيات أملاك الدولة", "المحافظات العقارية")
+ * or normalizes legacy variations ("المديرية الجهوية للاملاك الوطنية", "مديرية مسح الأراضي").
+ * @param {string} rawDirectorate
+ * @returns {string}
+ */
+function normalizeWorkplaceValue(rawDirectorate) {
+  const dir = String(rawDirectorate || "").trim();
+  if (!dir) return "";
+
+  if (dir === "مفتشيات أملاك الدولة") {
+    return "مديرية أملاك الدولة";
+  }
+  if (dir === "المحافظات العقارية") {
+    return "مديرية مسح الأراضي والحفظ العقاري";
+  }
+  if (dir === "المديرية الجهوية للاملاك الوطنية") {
+    return "المديرية الجهوية للأملاك الوطنية";
+  }
+  if (dir === "مديرية مسح الأراضي") {
+    return "مديرية مسح الأراضي والحفظ العقاري";
+  }
+  return dir;
+}
+
+/**
+ * Builds a Prisma filter condition for Directorate that matches canonical and legacy aliases.
+ * @param {string} requestedDirectorate
+ * @returns {object|string|undefined}
+ */
+function buildDirectorateFilter(requestedDirectorate) {
+  const dir = String(requestedDirectorate || "").trim();
+  if (!dir) return undefined;
+
+  if (
+    dir === "مديرية مسح الأراضي والحفظ العقاري" ||
+    dir === "مديرية مسح الأراضي"
+  ) {
+    return { in: ["مديرية مسح الأراضي والحفظ العقاري", "مديرية مسح الأراضي"] };
+  }
+  if (
+    dir === "المديرية الجهوية للأملاك الوطنية" ||
+    dir === "المديرية الجهوية للاملاك الوطنية"
+  ) {
+    return { in: ["المديرية الجهوية للأملاك الوطنية", "المديرية الجهوية للاملاك الوطنية"] };
+  }
+  return dir;
+}
+
 module.exports = {
   sanitizePagination,
   buildTokenizedSearch,
   resolveGeographicFilter,
   buildGeographicWhere,
   resolveEmployeeWorkplace,
+  normalizeWorkplaceValue,
+  buildDirectorateFilter,
 };

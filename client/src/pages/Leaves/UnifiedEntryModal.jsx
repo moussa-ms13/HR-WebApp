@@ -499,7 +499,7 @@ const UnifiedEntryModal = ({
                     {availableMofatishiyat.map(item => (
                       <option key={item} value={item}>-- {item}</option>
                     ))}
-                    <option value="مديرية مسح الأراضي والحفظ العقاري" className="font-bold">مديرية مسح الأراضي</option>
+                    <option value="مديرية مسح الأراضي والحفظ العقاري" className="font-bold">مديرية مسح الأراضي والحفظ العقاري</option>
                     {availableMohafathat.map(item => (
                       <option key={item} value={item}>-- {item}</option>
                     ))}

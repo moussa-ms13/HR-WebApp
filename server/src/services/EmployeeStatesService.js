@@ -11,6 +11,7 @@ const {
   sanitizePagination,
   buildTokenizedSearch,
   resolveGeographicFilter,
+  buildDirectorateFilter,
 } = require("../utils/queryBuilder");
 const CacheService = require("./CacheService");
 
@@ -158,7 +159,7 @@ class EmployeeStatesService {
     const employeeFilter = {
       Province: provinceFilter,
       ...(employeeId && Number.isInteger(Number(employeeId)) ? { Id: Number(employeeId) } : {}),
-      ...(directorate ? { Directorate: directorate } : {}),
+      ...(directorate ? { Directorate: buildDirectorateFilter(directorate) } : {}),
     };
 
     const baseWhere = {
