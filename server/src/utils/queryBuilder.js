@@ -163,7 +163,17 @@ function buildDirectorateFilter(requestedDirectorate) {
   const dir = String(requestedDirectorate || "").trim();
   if (!dir) return undefined;
 
-  if (dir === "مديرية أملاك الدولة") {
+  const amlakMatch = dir.match(/^مديرية\s+أملاك\s+الدولة(?:\s*\(([^)]+)\))?$/);
+  if (amlakMatch) {
+    const prov = amlakMatch[1]?.trim();
+    if (prov) {
+      return {
+        in: [
+          `مديرية أملاك الدولة (${prov})`,
+          "مديرية أملاك الدولة",
+        ],
+      };
+    }
     return {
       in: [
         "مديرية أملاك الدولة",
@@ -171,10 +181,20 @@ function buildDirectorateFilter(requestedDirectorate) {
       ],
     };
   }
-  if (
-    dir === "مديرية مسح الأراضي والحفظ العقاري" ||
-    dir === "مديرية مسح الأراضي"
-  ) {
+
+  const mashMatch = dir.match(/^مديرية\s+مسح\s+الأراضي(?:\s+والحفظ\s+العقاري)?(?:\s*\(([^)]+)\))?$/);
+  if (mashMatch) {
+    const prov = mashMatch[1]?.trim();
+    if (prov) {
+      return {
+        in: [
+          `مديرية مسح الأراضي والحفظ العقاري (${prov})`,
+          `مديرية مسح الأراضي (${prov})`,
+          "مديرية مسح الأراضي والحفظ العقاري",
+          "مديرية مسح الأراضي",
+        ],
+      };
+    }
     return {
       in: [
         "مديرية مسح الأراضي والحفظ العقاري",
@@ -184,12 +204,22 @@ function buildDirectorateFilter(requestedDirectorate) {
       ],
     };
   }
+
   if (
     dir === "المديرية الجهوية للأملاك الوطنية" ||
     dir === "المديرية الجهوية للاملاك الوطنية"
   ) {
     return { in: ["المديرية الجهوية للأملاك الوطنية", "المديرية الجهوية للاملاك الوطنية"] };
   }
+
+  if (dir === "المحافظة العقارية الرحوية" || dir === "المحافظة العقارية رحوية") {
+    return { in: ["المحافظة العقارية الرحوية", "المحافظة العقارية رحوية"] };
+  }
+
+  if (dir === "مفتشية أملاك الدولة الرحوية" || dir === "مفتشية أملاك الدولة رحوية") {
+    return { in: ["مفتشية أملاك الدولة الرحوية", "مفتشية أملاك الدولة رحوية"] };
+  }
+
   return dir;
 }
 
@@ -203,7 +233,18 @@ function buildDirectorateCondition(requestedDirectorate) {
   const dir = String(requestedDirectorate || "").trim();
   if (!dir) return undefined;
 
-  if (dir === "مديرية أملاك الدولة") {
+  const amlakMatch = dir.match(/^مديرية\s+أملاك\s+الدولة(?:\s*\(([^)]+)\))?$/);
+  if (amlakMatch) {
+    const prov = amlakMatch[1]?.trim();
+    if (prov) {
+      return {
+        OR: [
+          { Directorate: `مديرية أملاك الدولة (${prov})` },
+          { AND: [{ Directorate: "مديرية أملاك الدولة" }, { Province: prov }] },
+          { Directorate: "مديرية أملاك الدولة" },
+        ],
+      };
+    }
     return {
       OR: [
         { Directorate: "مديرية أملاك الدولة" },
@@ -211,10 +252,21 @@ function buildDirectorateCondition(requestedDirectorate) {
       ],
     };
   }
-  if (
-    dir === "مديرية مسح الأراضي والحفظ العقاري" ||
-    dir === "مديرية مسح الأراضي"
-  ) {
+
+  const mashMatch = dir.match(/^مديرية\s+مسح\s+الأراضي(?:\s+والحفظ\s+العقاري)?(?:\s*\(([^)]+)\))?$/);
+  if (mashMatch) {
+    const prov = mashMatch[1]?.trim();
+    if (prov) {
+      return {
+        OR: [
+          { Directorate: `مديرية مسح الأراضي والحفظ العقاري (${prov})` },
+          { Directorate: `مديرية مسح الأراضي (${prov})` },
+          { AND: [{ Directorate: { in: ["مديرية مسح الأراضي والحفظ العقاري", "مديرية مسح الأراضي"] } }, { Province: prov }] },
+          { Directorate: "مديرية مسح الأراضي والحفظ العقاري" },
+          { Directorate: "مديرية مسح الأراضي" },
+        ],
+      };
+    }
     return {
       OR: [
         { Directorate: "مديرية مسح الأراضي والحفظ العقاري" },
@@ -224,6 +276,7 @@ function buildDirectorateCondition(requestedDirectorate) {
       ],
     };
   }
+
   if (
     dir === "المديرية الجهوية للأملاك الوطنية" ||
     dir === "المديرية الجهوية للاملاك الوطنية"
@@ -234,6 +287,23 @@ function buildDirectorateCondition(requestedDirectorate) {
       },
     };
   }
+
+  if (dir === "المحافظة العقارية الرحوية" || dir === "المحافظة العقارية رحوية") {
+    return {
+      Directorate: {
+        in: ["المحافظة العقارية الرحوية", "المحافظة العقارية رحوية"],
+      },
+    };
+  }
+
+  if (dir === "مفتشية أملاك الدولة الرحوية" || dir === "مفتشية أملاك الدولة رحوية") {
+    return {
+      Directorate: {
+        in: ["مفتشية أملاك الدولة الرحوية", "مفتشية أملاك الدولة رحوية"],
+      },
+    };
+  }
+
   return { Directorate: dir };
 }
 
