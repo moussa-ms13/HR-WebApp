@@ -404,12 +404,18 @@ class EmployeeStatesService {
 
     const rawCustomEndText =
       data.CustomEndText !== undefined ? data.CustomEndText : data.customEndText;
+    // Annual leave always has a fixed numeric duration: never allow open-ended mode
+    const isAnnualType = String(data.StateTypeOrReason || "").includes("سنوية");
     const cleanedCustomEndText =
-      data.isOpenEnded === false
+      data.isOpenEnded === false || isAnnualType
         ? null
         : rawCustomEndText
         ? String(rawCustomEndText).trim() || null
         : null;
+
+    if (isAnnualType && !(parseInt(data.RequestedDays || data.DaysCount || 0, 10) >= 1)) {
+      throw ApiError.badRequest("مدة العطلة السنوية يجب أن تكون يوماً واحداً على الأقل.");
+    }
 
     const reqDays = cleanedCustomEndText
       ? 0
@@ -548,8 +554,10 @@ class EmployeeStatesService {
 
     const nextStateType = data.StateTypeOrReason ?? existing.StateTypeOrReason;
     const isAnnualLeave = nextStateType === "عطلة سنوية";
+    // Annual leave always has a fixed numeric duration: never allow open-ended mode
+    const isAnnualType = String(nextStateType || "").includes("سنوية");
     const nextCustomEndText = (() => {
-      if (data.isOpenEnded === false) return null;
+      if (data.isOpenEnded === false || isAnnualType) return null;
       const hasCustom = data.CustomEndText !== undefined || data.customEndText !== undefined;
       if (!hasCustom) return existing.CustomEndText ?? null;
       const raw = data.CustomEndText !== undefined ? data.CustomEndText : data.customEndText;
@@ -562,6 +570,10 @@ class EmployeeStatesService {
       : data.DaysCount !== undefined
         ? Number(data.DaysCount)
         : oldDays;
+
+    if (isAnnualType && !(newDays >= 1)) {
+      throw ApiError.badRequest("مدة العطلة السنوية يجب أن تكون يوماً واحداً على الأقل.");
+    }
 
     const state = await prisma.$transaction(
       async (tx) => {

@@ -174,6 +174,11 @@ const UnifiedEntryModal = ({
     return () => controller.abort();
   }, [isOpen, searchQuery, provinceFilter, directorateFilter, preSelectedEmployee]);
 
+  // Annual leave always has a fixed numeric day count: open-ended mode is never allowed
+  const isAnnualLeave =
+    String(leaveForm.StateTypeOrReason || '').trim() === 'عطلة سنوية' ||
+    String(leaveForm.StateTypeOrReason || '').includes('سنوية');
+
   // ── Auto-calc EndDate for leaves ──
   useEffect(() => {
     if (entryCategory !== 'leave' || leaveForm.isOpenEnded) return;
@@ -289,7 +294,9 @@ const UnifiedEntryModal = ({
           }
         }
 
-        if (leaveForm.isOpenEnded && !leaveForm.CustomEndText?.trim()) {
+        const effectiveOpenEnded = Boolean(leaveForm.isOpenEnded) && !isAnnualLeave;
+
+        if (effectiveOpenEnded && !leaveForm.CustomEndText?.trim()) {
           setError('الرجاء إدخال نص نهاية الفترة');
           setLoading(false);
           return;
@@ -299,7 +306,7 @@ const UnifiedEntryModal = ({
         const cleanedExceptionalReason = isExceptionalLeave
           ? (leaveForm.ExceptionalReason?.replace(/^[(\s]+|[)\s]+$/g, '').trim() || null)
           : null;
-        const cleanedCustomEndText = leaveForm.isOpenEnded
+        const cleanedCustomEndText = effectiveOpenEnded
           ? (leaveForm.CustomEndText?.trim() || null)
           : null;
 
@@ -310,13 +317,13 @@ const UnifiedEntryModal = ({
           StateTypeOrReason: leaveForm.StateTypeOrReason,
           ExceptionalReason: cleanedExceptionalReason,
           exceptionalReason: cleanedExceptionalReason,
-          isOpenEnded: Boolean(leaveForm.isOpenEnded),
+          isOpenEnded: effectiveOpenEnded,
           CustomEndText: cleanedCustomEndText,
           customEndText: cleanedCustomEndText,
-          DaysCount: leaveForm.isOpenEnded ? 0 : (Number(leaveForm.DaysCount) || 0),
-          RequestedDays: leaveForm.isOpenEnded ? 0 : (Number(leaveForm.DaysCount) || 0),
+          DaysCount: effectiveOpenEnded ? 0 : (Number(leaveForm.DaysCount) || 0),
+          RequestedDays: effectiveOpenEnded ? 0 : (Number(leaveForm.DaysCount) || 0),
           StartDate: leaveForm.StartDate,
-          EndDate: leaveForm.isOpenEnded ? leaveForm.StartDate : leaveForm.EndDate,
+          EndDate: effectiveOpenEnded ? leaveForm.StartDate : leaveForm.EndDate,
           Notes: leaveForm.Notes,
           IsResumed: false,
           ActualReturnDate: null,
@@ -621,7 +628,14 @@ const UnifiedEntryModal = ({
                           ...prev,
                           StateTypeOrReason: newType,
                           ExceptionalReason: newType === "عطلة استثنائية" ? prev.ExceptionalReason : '',
-                          DaysCount: newDaysCount,
+                          // Annual leave always has a fixed numeric duration: reset open-ended mode
+                          ...(newType.includes("سنوية")
+                            ? {
+                                isOpenEnded: false,
+                                CustomEndText: '',
+                                DaysCount: Number(newDaysCount) > 0 ? newDaysCount : 30,
+                              }
+                            : { DaysCount: newDaysCount }),
                           EndDate: calculatedEndDate,
                           CertificateDate: needsCert && !prev.CertificateDate ? prev.StartDate : prev.CertificateDate,
                         };
@@ -735,6 +749,7 @@ const UnifiedEntryModal = ({
                   </div>
                 )}
 
+                {!isAnnualLeave && (
                 <div className="md:col-span-2 bg-slate-50/70 border border-slate-200 rounded-lg px-3.5 py-2.5 flex items-center justify-between">
                   <label className="flex items-center gap-2.5 cursor-pointer select-none">
                     <input
@@ -752,10 +767,11 @@ const UnifiedEntryModal = ({
                       style={{ accentColor: '#105b38' }}
                     />
                     <span className="text-xs font-semibold text-slate-700">
-                      عطلة غير محددة المدة (كتابة نهاية الفترة نصاً)
+                      عطلة غير محددة المدة
                     </span>
                   </label>
                 </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">تاريخ البداية <span className="text-red-500">*</span></label>
@@ -769,7 +785,7 @@ const UnifiedEntryModal = ({
                   />
                 </div>
 
-                {!leaveForm.isOpenEnded ? (
+                {!(leaveForm.isOpenEnded && !isAnnualLeave) ? (
                   <>
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1.5">المدة (أيام) <span className="text-red-500">*</span></label>

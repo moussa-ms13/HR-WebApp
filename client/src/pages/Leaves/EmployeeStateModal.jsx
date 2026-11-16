@@ -241,6 +241,11 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
     }
   }, [formData.StartDate, formData.DaysCount, formData.isOpenEnded]);
 
+  // Annual leave always has a fixed numeric day count: open-ended mode is never allowed
+  const isAnnualLeave =
+    String(formData.StateTypeOrReason || '').trim() === 'عطلة سنوية' ||
+    String(formData.StateTypeOrReason || '').includes('سنوية');
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     let newValue = type === 'checkbox' ? checked : value;
@@ -251,6 +256,14 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
       if (name === 'StateTypeOrReason') {
         if (newValue !== 'عطلة استثنائية') {
           updated.ExceptionalReason = '';
+        }
+        // Annual leave always has a fixed numeric duration: reset open-ended mode
+        if (String(newValue || '').includes('سنوية')) {
+          updated.isOpenEnded = false;
+          updated.CustomEndText = '';
+          if (!(Number(prev.DaysCount) > 0)) {
+            updated.DaysCount = 30;
+          }
         }
         if (PERMANENT_STATES.includes(newValue)) {
           updated.DaysCount = 0;
@@ -349,7 +362,7 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
       }
     }
 
-    if (formData.RecordCategory === 'تسجيل عطلة' && formData.isOpenEnded && !formData.CustomEndText?.trim()) {
+    if (formData.RecordCategory === 'تسجيل عطلة' && formData.isOpenEnded && !isAnnualLeave && !formData.CustomEndText?.trim()) {
       setError('الرجاء إدخال نص نهاية الفترة');
       return;
     }
@@ -382,7 +395,7 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
       const cleanedExceptionalReason = isExceptionalLeave
         ? (formData.ExceptionalReason?.replace(/^[(\s]+|[)\s]+$/g, '').trim() || null)
         : null;
-      const isLeaveOpenEnded = formData.RecordCategory === 'تسجيل عطلة' && Boolean(formData.isOpenEnded);
+      const isLeaveOpenEnded = formData.RecordCategory === 'تسجيل عطلة' && Boolean(formData.isOpenEnded) && !isAnnualLeave;
       const cleanedCustomEndText = isLeaveOpenEnded
         ? (formData.CustomEndText?.trim() || null)
         : null;
@@ -745,7 +758,7 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
                 </div>
               )}
 
-              {activeTab === 'تسجيل عطلة' && (
+              {activeTab === 'تسجيل عطلة' && !isAnnualLeave && (
                 <div className="md:col-span-2 bg-slate-50/70 border border-slate-200 rounded-lg px-3.5 py-2.5 flex items-center justify-between">
                   <label className="flex items-center gap-2.5 cursor-pointer select-none">
                     <input
@@ -763,7 +776,7 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
                       style={{ accentColor: '#105b38' }}
                     />
                     <span className="text-xs font-semibold text-slate-700">
-                      عطلة غير محددة المدة (كتابة نهاية الفترة نصاً)
+                      عطلة غير محددة المدة
                     </span>
                   </label>
                 </div>
@@ -782,7 +795,7 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
                 />
               </div>
 
-              {!(activeTab === 'تسجيل عطلة' && formData.isOpenEnded) ? (
+              {!(activeTab === 'تسجيل عطلة' && formData.isOpenEnded && !isAnnualLeave) ? (
                 <>
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1.5">مدة العطلة/الحالة (أيام) <span className="text-red-500">*</span></label>
