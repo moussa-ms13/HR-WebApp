@@ -16,6 +16,7 @@ import {
   ANNUAL_LEAVE_SIGNATORY_TITLE,
   arabicDayUnit,
   getAnnualTemplateNaming,
+  formatPrintDirectorate,
 } from "../../utils/leaveCertificateConfig";
 import { addOneDay } from "../../utils/dateUtils";
 
@@ -179,9 +180,10 @@ export default function LeavePrintDocument(props) {
         : [{ year: String(leave.year || new Date().getFullYear()), days: 0, daysInWords: "0" }])
     : [];
   const rawDirectorate = decision.directorateName || "المديرية الجهوية للأملاك الوطنية بالشلف";
-  const directorateName = rawDirectorate
-    .replace(/المديرية الجهوية للأملاك الوطنية\s+(?:الناحية|ناحية)\s+الشلف/g, "المديرية الجهوية للأملاك الوطنية بالشلف")
-    .replace(/(?:الناحية|ناحية)\s+الشلف/g, "بالشلف");
+  const directorateName = formatPrintDirectorate(
+    rawDirectorate,
+    employee?.province || header?.wilaya || "الشلف"
+  );
 
   const g = isMaternityLeave
     ? getGenderProfile("female")

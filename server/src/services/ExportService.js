@@ -1,7 +1,4 @@
-// ============================================================
-// ExportService — Custom Data Export & Nominal Lists Studio
-// Modular, clean service orchestrating query builders, formatters, and ExcelJS
-// ============================================================
+
 const excel = require("exceljs");
 const prisma = require("../config/database");
 const { ROLES } = require("../config/constants");
@@ -9,7 +6,7 @@ const CacheService = require("./CacheService");
 const {
   resolveGeographicFilter,
   buildTokenizedSearch,
-  buildDirectorateFilter,
+  buildDirectorateCondition,
 } = require("../utils/queryBuilder");
 const {
   STANDARD_LEAVE_TYPES,
@@ -30,23 +27,16 @@ const {
 const RAW_FILTER_OPTIONS_CACHE_KEY = "RAW_FILTER_OPTIONS";
 
 class ExportService {
-  /**
-   * Invalidates the in-memory lookup cache when records change.
-   */
+
   static invalidateExportCache() {
     CacheService.del(RAW_FILTER_OPTIONS_CACHE_KEY);
   }
 
-  /**
-   * Helper: format date safely as YYYY/MM/DD (backwards-compatible export)
-   */
   static formatDate(d) {
     return formatDate(d);
   }
 
-  /**
-   * Fetches raw distinct filter options from database or centralized cache (TTL 10m).
-   */
+
   static async _getRawFilterOptions() {
     let raw = CacheService.get(RAW_FILTER_OPTIONS_CACHE_KEY);
     if (raw) return raw;
@@ -153,8 +143,9 @@ class ExportService {
     const { provinceFilter } = resolveGeographicFilter(requestingUser, filters.province);
     const baseWhere = { Province: provinceFilter };
 
-    if (filters.directorate && String(filters.directorate).trim()) {
-      baseWhere.Directorate = buildDirectorateFilter(filters.directorate);
+    const dirCondition = buildDirectorateCondition(filters.directorate);
+    if (dirCondition) {
+      baseWhere.AND = [...(baseWhere.AND || []), dirCondition];
     }
 
     // ──────────────────────────────────────────────

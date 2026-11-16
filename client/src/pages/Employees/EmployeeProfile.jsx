@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { ArrowRight, User, Loader2, Building2, Calendar, FileText } from 'lucide-react';
 import { DateText } from '../../utils/formatDate';
 import { formatEmployeeName, getAssetUrl } from '../../utils/employeeUtils';
+import { formatProvincialDirectorate } from '../../utils/constants';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { StatutoryStatusBadge } from '../../components/common/UnifiedBadge';
 
@@ -140,7 +141,7 @@ const EmployeeProfile = () => {
         <p className="text-sm font-medium text-gray-500 mt-2 flex items-center justify-center gap-1.5 flex-wrap">
           <span>{employee.JobTitle?.RankName || 'موظف'}</span>
           <span>•</span>
-          <span>{employee.Directorate || 'الإدارة العامة'}</span>
+          <span>{formatProvincialDirectorate(employee.Directorate, employee.Province) || 'الإدارة العامة'}</span>
         </p>
       </div>
 

@@ -6,7 +6,16 @@ import { useAuth } from '../../../../context/AuthContext';
 import { useToast } from '../../../../components/ui/Toast';
 import { DateText } from '../../../../utils/formatDate';
 import { formatEmployeeName } from '../../../../utils/employeeUtils';
-import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../../../utils/constants';
+import {
+  getAllowedProvinces,
+  getMofatishiyat,
+  getMohafathat,
+  PROVINCIAL_AMLAK_BASE,
+  PROVINCIAL_MASH_BASE,
+  REGIONAL_DIRECTORATE,
+  formatProvincialDirectorate,
+  resolveDirectorateOnProvinceChange,
+} from '../../../../utils/constants';
 import { refreshEmployees, refreshEmployeeCareer } from '../../../../utils/cacheManager';
 import { ProfileCompletenessBadge } from '../../../../components/common/UnifiedBadge';
 import {
@@ -131,7 +140,7 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
       NIN: employee.NIN || '',
       SIS: employee.SIS || '',
       Province: employee.Province || '',
-      Directorate: employee.Directorate || '',
+      Directorate: formatProvincialDirectorate(employee.Directorate, employee.Province),
       JobTitleId: employee.JobTitleId ?? '',
       AssignedPosition: employee.AssignedPosition || '',
       EmployeeStatus: initialIsContr ? 'متعاقد' : (employee.EmployeeStatus || 'مرسم'),
@@ -154,6 +163,12 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
 
   const editField = (key, value) => setEditData((prev) => {
     const updated = { ...prev, [key]: value };
+    if (key === 'Province') {
+      updated.Directorate =
+        value === prev.Province
+          ? prev.Directorate
+          : resolveDirectorateOnProvinceChange(prev.Directorate, value);
+    }
     if (key === 'JobTitleId') {
       const job = jobTitles.find(j => String(j.Id) === String(value));
       const prevJob = jobTitles.find(j => String(j.Id) === String(prev.JobTitleId));
@@ -218,8 +233,8 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
     }
   };
 
-  const dirAmlak = 'مديرية أملاك الدولة';
-  const dirMash = 'مديرية مسح الأراضي والحفظ العقاري';
+  const dirAmlak = PROVINCIAL_AMLAK_BASE;
+  const dirMash = PROVINCIAL_MASH_BASE;
 
   return (
     <div className="space-y-6">
@@ -499,7 +514,6 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
                 value={editData.Province}
                 onChange={(e) => {
                   editField('Province', e.target.value);
-                  editField('Directorate', '');
                 }}
                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 bg-white"
               >
@@ -550,20 +564,20 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
                 </div>
                 {showTree && editData.Province && (
                   <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-4 z-10 max-h-64 overflow-y-auto">
-                    <TreeNode label="المديرية الجهوية للأملاك الوطنية" onSelect={handleTreeSelect} isLeaf={false}>
+                    <TreeNode label={REGIONAL_DIRECTORATE} onSelect={handleTreeSelect} isLeaf={false}>
                       {editData.Province === 'الشلف' && (
                         <TreeNode
-                          label="المديرية الجهوية للأملاك الوطنية"
-                          value="المديرية الجهوية للأملاك الوطنية"
+                          label={REGIONAL_DIRECTORATE}
+                          value={REGIONAL_DIRECTORATE}
                           onSelect={handleTreeSelect}
                           isLeaf={true}
-                          dirTag="المديرية الجهوية للأملاك الوطنية"
+                          dirTag={REGIONAL_DIRECTORATE}
                         />
                       )}
                       <TreeNode label={dirAmlak} onSelect={handleTreeSelect} isLeaf={false}>
                         <TreeNode
-                          label={dirAmlak}
-                          value={dirAmlak}
+                          label={`${dirAmlak} (${editData.Province})`}
+                          value={`${dirAmlak} (${editData.Province})`}
                           onSelect={handleTreeSelect}
                           isLeaf={true}
                           dirTag={dirAmlak}
@@ -576,8 +590,8 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
                       </TreeNode>
                       <TreeNode label={dirMash} onSelect={handleTreeSelect} isLeaf={false}>
                         <TreeNode
-                          label={dirMash}
-                          value={dirMash}
+                          label={`${dirMash} (${editData.Province})`}
+                          value={`${dirMash} (${editData.Province})`}
                           onSelect={handleTreeSelect}
                           isLeaf={true}
                           dirTag={dirMash}
@@ -594,7 +608,7 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
               </>
             ) : (
               <span className="block font-semibold text-slate-800">
-                {employee.Directorate || '—'}
+                {formatProvincialDirectorate(employee.Directorate, employee.Province) || '—'}
               </span>
             )}
           </div>

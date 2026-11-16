@@ -337,7 +337,7 @@ export default function SpecialCaseModal({
                       </option>
                     ))}
                     <option value="مديرية مسح الأراضي والحفظ العقاري" className="font-bold">
-                      مديرية مسح الأراضي
+                      مديرية مسح الأراضي والحفظ العقاري
                     </option>
                     {availableMohafathat.map((item) => (
                       <option key={item} value={item}>

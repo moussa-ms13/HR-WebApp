@@ -615,6 +615,28 @@ export function formatDateCompact(isoString) {
 
 export const OFFICIAL_REGIONAL_DIRECTORATE = "المديرية الجهوية للأملاك الوطنية بالشلف";
 
+/**
+ * Formats a directorate name for official leave recitals ("لدى ...") without duplicating
+ * the province suffix when the stored Directorate already contains `(Province)` or `بـProvince`.
+ */
+export function formatPrintDirectorate(rawDirectorate, province = "") {
+  const cleaned = String(rawDirectorate || "")
+    .replace(/المديرية الجهوية للأملاك الوطنية\s+(?:الناحية|ناحية)\s+الشلف/g, OFFICIAL_REGIONAL_DIRECTORATE)
+    .replace(/(?:الناحية|ناحية)\s+الشلف/g, "بالشلف")
+    .trim();
+
+  if (!cleaned) {
+    return OFFICIAL_REGIONAL_DIRECTORATE;
+  }
+
+  // Already specifies a province in parentheses, e.g. "مديرية أملاك الدولة (الشلف)"
+  if (/\([^)]+\)\s*$/.test(cleaned)) {
+    return cleaned;
+  }
+
+  return cleaned;
+}
+
 // ─── QR Payload Builder ─────────────────────────────────────
 
 /**

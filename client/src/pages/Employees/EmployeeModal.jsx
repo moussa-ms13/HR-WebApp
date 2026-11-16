@@ -2,7 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { refreshEmployees } from '../../utils/cacheManager';
 import { X, Save, Loader2, Upload, Image as ImageIcon, ChevronDown, ChevronLeft } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
+import {
+  getAllowedProvinces,
+  getMofatishiyat,
+  getMohafathat,
+  PROVINCIAL_AMLAK_BASE,
+  PROVINCIAL_MASH_BASE,
+  REGIONAL_DIRECTORATE,
+  formatProvincialDirectorate,
+  resolveDirectorateOnProvinceChange,
+} from '../../utils/constants';
 import EmployeeService from '../../services/employeeService';
 import { getAssetUrl } from '../../utils/employeeUtils';
 import apiClient from '../../services/apiClient';
@@ -125,6 +134,7 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
       ...emp,
       LastNameFr: emp.LastNameFr || '',
       NameFr: emp.NameFr || '',
+      Directorate: formatProvincialDirectorate(emp.Directorate, emp.Province),
       Gender: emp.Gender && emp.Gender !== 'غير محدد' ? emp.Gender : '',
       MaritalStatus: emp.MaritalStatus && emp.MaritalStatus !== 'غير محدد' ? emp.MaritalStatus : (emp.FamilyStatus && emp.FamilyStatus !== 'غير محدد' ? emp.FamilyStatus : ''),
       isProfileComplete: emp.IsProfileComplete || emp.isProfileComplete || false,
@@ -252,7 +262,10 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
         updated.NumberOfChildren = 0;
       }
       if (name === 'Province') {
-        updated.Directorate = '';
+        updated.Directorate =
+          value === prev.Province
+            ? prev.Directorate
+            : resolveDirectorateOnProvinceChange(prev.Directorate, value);
       }
       if (name === 'EmployeeStatus') {
         if (value === 'متربص') {
@@ -377,8 +390,8 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
     return baseOptions;
   };
 
-  const dirAmlak = "مديرية أملاك الدولة";
-  const dirMash = "مديرية مسح الأراضي والحفظ العقاري";
+  const dirAmlak = PROVINCIAL_AMLAK_BASE;
+  const dirMash = PROVINCIAL_MASH_BASE;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 font-sans" dir="rtl">
@@ -588,14 +601,20 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
                       {/* Tree Popup */}
                       {showTree && formData.Province && (
                         <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-4 z-10 max-h-64 overflow-y-auto">
-                          <TreeNode label="المديرية الجهوية للأملاك الوطنية" onSelect={handleTreeSelect} isLeaf={false}>
+                          <TreeNode label={REGIONAL_DIRECTORATE} onSelect={handleTreeSelect} isLeaf={false}>
 
                             {formData.Province === 'الشلف' && (
-                              <TreeNode label="المديرية الجهوية للأملاك الوطنية" value="المديرية الجهوية للأملاك الوطنية" onSelect={handleTreeSelect} isLeaf={true} dirTag="المديرية الجهوية للأملاك الوطنية" />
+                              <TreeNode label={REGIONAL_DIRECTORATE} value={REGIONAL_DIRECTORATE} onSelect={handleTreeSelect} isLeaf={true} dirTag={REGIONAL_DIRECTORATE} />
                             )}
 
                             <TreeNode label={dirAmlak} onSelect={handleTreeSelect} isLeaf={false}>
-                              <TreeNode label={dirAmlak} value={dirAmlak} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirAmlak} />
+                              <TreeNode
+                                label={`${dirAmlak} (${formData.Province})`}
+                                value={`${dirAmlak} (${formData.Province})`}
+                                onSelect={handleTreeSelect}
+                                isLeaf={true}
+                                dirTag={dirAmlak}
+                              />
                               <TreeNode label="مفتشيات أملاك الدولة" onSelect={handleTreeSelect} isLeaf={false}>
                                 {getMofatishiyat(formData.Province).map(m => (
                                   <TreeNode key={m} label={m} value={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirAmlak} />
@@ -604,7 +623,13 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
                             </TreeNode>
 
                             <TreeNode label={dirMash} onSelect={handleTreeSelect} isLeaf={false}>
-                              <TreeNode label={dirMash} value={dirMash} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirMash} />
+                              <TreeNode
+                                label={`${dirMash} (${formData.Province})`}
+                                value={`${dirMash} (${formData.Province})`}
+                                onSelect={handleTreeSelect}
+                                isLeaf={true}
+                                dirTag={dirMash}
+                              />
                               <TreeNode label="المحافظات العقارية" onSelect={handleTreeSelect} isLeaf={false}>
                                 {getMohafathat(formData.Province).map(m => (
                                   <TreeNode key={m} label={m} value={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirMash} />

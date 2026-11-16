@@ -30,6 +30,76 @@ export function getAllowedProvinces(user) {
   return allowed;
 }
 
+export const PROVINCIAL_AMLAK_BASE = "مديرية أملاك الدولة";
+export const PROVINCIAL_MASH_BASE = "مديرية مسح الأراضي والحفظ العقاري";
+export const REGIONAL_DIRECTORATE = "المديرية الجهوية للأملاك الوطنية";
+
+/**
+ * If `directorate` refers to one of the two provincial headquarters directorates
+ * (either bare or with a `(Province)` suffix, or legacy short name), returns its canonical base name;
+ * otherwise returns null.
+ */
+export function getProvincialDirectorateBase(directorate) {
+  const dir = String(directorate || "").trim();
+  if (!dir) return null;
+
+  if (
+    dir === PROVINCIAL_AMLAK_BASE ||
+    /^مديرية\s+أملاك\s+الدولة\s*(?:\([^)]*\))?$/.test(dir)
+  ) {
+    return PROVINCIAL_AMLAK_BASE;
+  }
+
+  if (
+    dir === PROVINCIAL_MASH_BASE ||
+    dir === "مديرية مسح الأراضي" ||
+    /^مديرية\s+مسح\s+الأراضي(?:\s+والحفظ\s+العقاري)?\s*(?:\([^)]*\))?$/.test(dir)
+  ) {
+    return PROVINCIAL_MASH_BASE;
+  }
+
+  return null;
+}
+
+/**
+ * Formats a provincial headquarters directorate to always display ` (${province})`
+ * while keeping municipality inspectorates, land registries, and regional directorate unchanged.
+ */
+export function formatProvincialDirectorate(directorate, province) {
+  const dir = String(directorate || "").trim();
+  if (!dir) return "";
+  if (dir === "المديرية الجهوية للاملاك الوطنية") return REGIONAL_DIRECTORATE;
+
+  const prov = String(province || "").trim();
+  const base = getProvincialDirectorateBase(dir);
+  if (base) {
+    return prov ? `${base} (${prov})` : base;
+  }
+  return dir;
+}
+
+/**
+ * Computes the updated Directorate value when the user changes Province in the form:
+ * updates the `(Province)` suffix for provincial HQ choices, keeps Regional Directorate if switching to Chlef,
+ * and clears province-specific inspectorates/conservations.
+ */
+export function resolveDirectorateOnProvinceChange(currentDirectorate, newProvince) {
+  const dir = String(currentDirectorate || "").trim();
+  const nextProv = String(newProvince || "").trim();
+  if (!dir) return "";
+
+  const base = getProvincialDirectorateBase(dir);
+  if (base) {
+    return nextProv ? `${base} (${nextProv})` : base;
+  }
+
+  if (dir === REGIONAL_DIRECTORATE || dir === "المديرية الجهوية للاملاك الوطنية") {
+    return nextProv === "الشلف" ? REGIONAL_DIRECTORATE : "";
+  }
+
+  return "";
+}
+
 export const getMofatishiyat = (province) => {
   if (province === "الشلف") return ["مفتشية أملاك الدولة الشلف", "مفتشية أملاك الدولة بوقادير", "مفتشية أملاك الدولة أولاد فارس", "مفتشية أملاك الدولة تنس"];
   if (province === "عين الدفلى") return ["مفتشية أملاك الدولة عين الدفلى", "مفتشية أملاك الدولة العطاف", "مفتشية أملاك الدولة جليدة", "مفتشية أملاك الدولة خميس مليانة", "مفتشية أملاك الدولة جندل", "مفتشية أملاك الدولة الروينة", "مفتشية أملاك الدولة مليانة"];

@@ -12,7 +12,7 @@ const {
   buildTokenizedSearch,
   resolveGeographicFilter,
   normalizeWorkplaceValue,
-  buildDirectorateFilter,
+  buildDirectorateCondition,
 } = require("../utils/queryBuilder");
 const {
   EMPLOYEE_LIST_SELECT,
@@ -96,8 +96,9 @@ class EmployeesService {
     let whereClause = { Province: provinceFilter };
 
     // Directorate Filter (الجهة / المصلحة)
-    if (directorate && String(directorate).trim()) {
-      whereClause.Directorate = buildDirectorateFilter(directorate);
+    const dirCondition = buildDirectorateCondition(directorate);
+    if (dirCondition) {
+      whereClause.AND = [...(whereClause.AND || []), dirCondition];
     }
 
     // Category Filter (فئة / رتبة / حالة)
@@ -281,8 +282,9 @@ class EmployeesService {
         whereClause.Province = trimmedProv;
       }
     }
-    if (directorate) {
-      whereClause.Directorate = buildDirectorateFilter(directorate);
+    const dirCondition = buildDirectorateCondition(directorate);
+    if (dirCondition) {
+      whereClause.AND = [...(whereClause.AND || []), dirCondition];
     }
 
     const term = (query || "").trim();
@@ -421,7 +423,7 @@ class EmployeesService {
         MaritalStatus: data.MaritalStatus || data.FamilyStatus || "",
         ProfileImagePath: data.ProfileImagePath || "",
         Province: data.Province,
-        Directorate: normalizeWorkplaceValue(data.Directorate || ""),
+        Directorate: normalizeWorkplaceValue(data.Directorate || "", data.Province || ""),
         AddedDate: now,
         UpdateDate: now,
         UsersId: requestingUser.userName,
@@ -490,6 +492,14 @@ class EmployeesService {
       }
     }
 
+    const nextProvince = data.Province ?? existing.Province;
+    const nextDirectorate =
+      data.Directorate !== undefined
+        ? normalizeWorkplaceValue(data.Directorate, nextProvince)
+        : data.Province !== undefined && data.Province !== existing.Province
+        ? normalizeWorkplaceValue(existing.Directorate, nextProvince)
+        : existing.Directorate;
+
     const employee = await prisma.employees.update({
       where: { Id: id },
       data: {
@@ -501,8 +511,8 @@ class EmployeesService {
         PlaceOfBirth: data.PlaceOfBirth ?? existing.PlaceOfBirth,
         Gender: data.Gender !== undefined ? data.Gender : existing.Gender,
         MaritalStatus: (data.MaritalStatus !== undefined ? data.MaritalStatus : data.FamilyStatus) ?? existing.MaritalStatus,
-        Province: data.Province ?? existing.Province,
-        Directorate: data.Directorate !== undefined ? normalizeWorkplaceValue(data.Directorate) : existing.Directorate,
+        Province: nextProvince,
+        Directorate: nextDirectorate,
         UpdateDate: new Date(),
         UsersId: requestingUser.userName,
         NIN: data.NIN ?? existing.NIN,

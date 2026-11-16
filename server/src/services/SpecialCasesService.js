@@ -11,7 +11,8 @@ const {
   sanitizePagination,
   buildTokenizedSearch,
   resolveGeographicFilter,
-  buildDirectorateFilter,
+  normalizeWorkplaceValue,
+  buildDirectorateCondition,
 } = require("../utils/queryBuilder");
 const CacheService = require("./CacheService");
 const { PERMANENT_EXIT_TYPES } = require("../utils/specialCasesConstants");
@@ -146,9 +147,10 @@ class SpecialCasesService {
       };
     }
 
+    const dirCondition = buildDirectorateCondition(directorate);
     const employeeFilter = {
       Province: provinceFilter,
-      ...(directorate ? { Directorate: buildDirectorateFilter(directorate) } : {}),
+      ...(dirCondition ? { AND: [dirCondition] } : {}),
     };
 
     const baseWhere = {
@@ -323,7 +325,12 @@ class SpecialCasesService {
 
     if (origin) {
       if (origin.Province) restoreData.Province = origin.Province;
-      if (origin.Directorate !== undefined) restoreData.Directorate = origin.Directorate || "";
+      if (origin.Directorate !== undefined) {
+        restoreData.Directorate = normalizeWorkplaceValue(
+          origin.Directorate || "",
+          restoreData.Province || origin.Province || ""
+        );
+      }
     } else if (archivedRecord) {
       const posName =
         archivedRecord.PositionName && archivedRecord.PositionName !== "المقر الأصلي"

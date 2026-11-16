@@ -98,34 +98,64 @@ function resolveEmployeeWorkplace(emp) {
   return { resolvedDirectorate, workplace: resolvedDirectorate };
 }
 
+const KNOWN_PROVINCES = ["الشلف", "تيارت", "تيسمسيلت", "عين الدفلى", "غليزان", "قصر الشلالة"];
+
 /**
  * Normalizes a workplace/directorate string on input/save.
- * Rejects bare category headers ("مفتشيات أملاك الدولة", "المحافظات العقارية")
- * or normalizes legacy variations ("المديرية الجهوية للاملاك الوطنية", "مديرية مسح الأراضي").
+ * - Rejects bare category headers ("مفتشيات أملاك الدولة", "المحافظات العقارية")
+ * - Normalizes legacy variations ("المديرية الجهوية للاملاك الوطنية", "مديرية مسح الأراضي")
+ * - Ensures provincial headquarters include ` (${province})` when `province` is provided,
+ *   while leaving municipality inspectorates, land registries, and the regional directorate untouched.
  * @param {string} rawDirectorate
+ * @param {string} [province]
  * @returns {string}
  */
-function normalizeWorkplaceValue(rawDirectorate) {
+function normalizeWorkplaceValue(rawDirectorate, province = "") {
   const dir = String(rawDirectorate || "").trim();
   if (!dir) return "";
 
+  const prov = String(province || "").trim();
+
   if (dir === "مفتشيات أملاك الدولة") {
-    return "مديرية أملاك الدولة";
+    return prov ? `مديرية أملاك الدولة (${prov})` : "مديرية أملاك الدولة";
   }
   if (dir === "المحافظات العقارية") {
-    return "مديرية مسح الأراضي والحفظ العقاري";
+    return prov
+      ? `مديرية مسح الأراضي والحفظ العقاري (${prov})`
+      : "مديرية مسح الأراضي والحفظ العقاري";
   }
   if (dir === "المديرية الجهوية للاملاك الوطنية") {
     return "المديرية الجهوية للأملاك الوطنية";
   }
-  if (dir === "مديرية مسح الأراضي") {
-    return "مديرية مسح الأراضي والحفظ العقاري";
+
+  // Canonicalize "مديرية أملاك الدولة" or "مديرية أملاك الدولة (...)"
+  if (
+    dir === "مديرية أملاك الدولة" ||
+    /^مديرية\s+أملاك\s+الدولة\s*(?:\([^)]*\))?$/.test(dir)
+  ) {
+    return prov ? `مديرية أملاك الدولة (${prov})` : dir;
   }
+
+  // Canonicalize short "مديرية مسح الأراضي" or "مديرية مسح الأراضي (...)"
+  const shortMashMatch = dir.match(/^مديرية\s+مسح\s+الأراضي\s*\(([^)]+)\)$/);
+  if (dir === "مديرية مسح الأراضي" || shortMashMatch) {
+    const effectiveProv = prov || (shortMashMatch ? shortMashMatch[1].trim() : "");
+    return effectiveProv
+      ? `مديرية مسح الأراضي والحفظ العقاري (${effectiveProv})`
+      : "مديرية مسح الأراضي والحفظ العقاري";
+  }
+
+  // Canonicalize "مديرية مسح الأراضي والحفظ العقاري" or "مديرية مسح الأراضي والحفظ العقاري (...)"
+  if (/^مديرية\s+مسح\s+الأراضي\s+والحفظ\s+العقاري\s*(?:\([^)]*\))?$/.test(dir)) {
+    return prov ? `مديرية مسح الأراضي والحفظ العقاري (${prov})` : dir;
+  }
+
   return dir;
 }
 
 /**
- * Builds a Prisma filter condition for Directorate that matches canonical and legacy aliases.
+ * Builds a Prisma field-level filter condition for Directorate that matches
+ * bare canonical names, legacy aliases, AND `(Province)` suffixed variants.
  * @param {string} requestedDirectorate
  * @returns {object|string|undefined}
  */
@@ -133,11 +163,26 @@ function buildDirectorateFilter(requestedDirectorate) {
   const dir = String(requestedDirectorate || "").trim();
   if (!dir) return undefined;
 
+  if (dir === "مديرية أملاك الدولة") {
+    return {
+      in: [
+        "مديرية أملاك الدولة",
+        ...KNOWN_PROVINCES.map((p) => `مديرية أملاك الدولة (${p})`),
+      ],
+    };
+  }
   if (
     dir === "مديرية مسح الأراضي والحفظ العقاري" ||
     dir === "مديرية مسح الأراضي"
   ) {
-    return { in: ["مديرية مسح الأراضي والحفظ العقاري", "مديرية مسح الأراضي"] };
+    return {
+      in: [
+        "مديرية مسح الأراضي والحفظ العقاري",
+        "مديرية مسح الأراضي",
+        ...KNOWN_PROVINCES.map((p) => `مديرية مسح الأراضي والحفظ العقاري (${p})`),
+        ...KNOWN_PROVINCES.map((p) => `مديرية مسح الأراضي (${p})`),
+      ],
+    };
   }
   if (
     dir === "المديرية الجهوية للأملاك الوطنية" ||
@@ -148,6 +193,50 @@ function buildDirectorateFilter(requestedDirectorate) {
   return dir;
 }
 
+/**
+ * Builds an Employee-level Prisma WHERE condition for Directorate.
+ * Matches BOTH bare canonical names AND any `Directorate (Province)` variant via OR + startsWith.
+ * @param {string} requestedDirectorate
+ * @returns {object|undefined}
+ */
+function buildDirectorateCondition(requestedDirectorate) {
+  const dir = String(requestedDirectorate || "").trim();
+  if (!dir) return undefined;
+
+  if (dir === "مديرية أملاك الدولة") {
+    return {
+      OR: [
+        { Directorate: "مديرية أملاك الدولة" },
+        { Directorate: { startsWith: "مديرية أملاك الدولة (" } },
+      ],
+    };
+  }
+  if (
+    dir === "مديرية مسح الأراضي والحفظ العقاري" ||
+    dir === "مديرية مسح الأراضي"
+  ) {
+    return {
+      OR: [
+        { Directorate: "مديرية مسح الأراضي والحفظ العقاري" },
+        { Directorate: "مديرية مسح الأراضي" },
+        { Directorate: { startsWith: "مديرية مسح الأراضي والحفظ العقاري (" } },
+        { Directorate: { startsWith: "مديرية مسح الأراضي (" } },
+      ],
+    };
+  }
+  if (
+    dir === "المديرية الجهوية للأملاك الوطنية" ||
+    dir === "المديرية الجهوية للاملاك الوطنية"
+  ) {
+    return {
+      Directorate: {
+        in: ["المديرية الجهوية للأملاك الوطنية", "المديرية الجهوية للاملاك الوطنية"],
+      },
+    };
+  }
+  return { Directorate: dir };
+}
+
 module.exports = {
   sanitizePagination,
   buildTokenizedSearch,
@@ -156,4 +245,5 @@ module.exports = {
   resolveEmployeeWorkplace,
   normalizeWorkplaceValue,
   buildDirectorateFilter,
+  buildDirectorateCondition,
 };

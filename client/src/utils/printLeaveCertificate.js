@@ -15,6 +15,8 @@ import {
   SICK_LEAVE_PROPOSAL,
   arabicDayUnit,
   getAnnualTemplateNaming,
+  OFFICIAL_REGIONAL_DIRECTORATE,
+  formatPrintDirectorate,
 } from './leaveCertificateConfig.js';
 import { addOneDay } from './dateUtils.js';
 import apiClient from '../services/apiClient.js';
@@ -344,7 +346,7 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
       province: emp.Province || "الشلف",
     },
     decision: {
-      directorateName: "المديرية الجهوية للأملاك الوطنية بالشلف",
+      directorateName: formatPrintDirectorate(OFFICIAL_REGIONAL_DIRECTORATE, emp.Province || "الشلف"),
     },
     leave: {
       type: leaveType,
