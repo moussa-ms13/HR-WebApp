@@ -9,6 +9,7 @@ import { formatEmployeeName, getAssetUrl } from '../../utils/employeeUtils';
 import { formatProvincialDirectorate } from '../../utils/constants';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { StatutoryStatusBadge } from '../../components/common/UnifiedBadge';
+import OfficialDocumentsMenu from '../../components/OfficialDocuments/OfficialDocumentsMenu';
 
 // Primary overview tab loaded immediately; heavy secondary tabs code-split on demand
 import ProfileOverviewTab from './components/tabs/ProfileOverviewTab';
@@ -96,6 +97,8 @@ const EmployeeProfile = () => {
             <ArrowRight size={20} className="text-gray-500" />
           </button>
         </div>
+
+        <OfficialDocumentsMenu employee={employee} />
       </div>
 
       {/* Tabs */}

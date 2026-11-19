@@ -1,16 +1,19 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import useSWR from 'swr';
 import { useAuth } from '../../context/AuthContext';
 import EmployeeService from '../../services/employeeService';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import EmployeeModal from './EmployeeModal';
-import { Search, MoreVertical, Loader2, Users, ArrowUpDown, ChevronDown, ChevronRight, ChevronLeft, Download } from 'lucide-react';
+import { Search, MoreVertical, Loader2, Users, ArrowUpDown, ChevronDown, ChevronRight, ChevronLeft, Download, FileText, Award } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { refreshEmployees } from '../../utils/cacheManager';
 import { formatEmployeeName } from '../../utils/employeeUtils';
 import { StatutoryStatusBadge, ProfileCompletenessBadge } from '../../components/common/UnifiedBadge';
+
+const WorkCertificateModal = lazy(() => import('../../components/OfficialDocuments/WorkCertificateModal'));
+const ExperienceDecisionModal = lazy(() => import('../../components/OfficialDocuments/ExperienceDecisionModal'));
 
 const fetcher = async (
   [_url, page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder]
@@ -124,6 +127,7 @@ const EmployeesList = () => {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [officialDocState, setOfficialDocState] = useState({ type: null, employee: null });
   
   // Dropdown State
   const [openDropdownId, setOpenDropdownId] = useState(null);
@@ -432,29 +436,58 @@ const EmployeesList = () => {
                         </button>
                         
                         {openDropdownId === emp.Id && (
-                          <div className="absolute left-0 mt-2 w-48 rounded-xl shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                          <div className="absolute left-0 mt-2 w-52 rounded-xl shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
                             <div className="py-1" role="menu">
                               <button
                                 onClick={(e) => { e.stopPropagation(); navigate(`/employees/${emp.Id}`); setOpenDropdownId(null); }}
-                                className="w-full text-right px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                className="w-full text-right px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 cursor-pointer"
                               >
                                 عرض الملف الشخصي
                               </button>
                               {hasPermission('checkBoxEdit') && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); setSelectedEmployee(emp); setIsModalOpen(true); setOpenDropdownId(null); }}
-                                  className="w-full text-right px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2"
+                                  className="w-full text-right px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 cursor-pointer"
                                 >
                                   تعديل
                                 </button>
                               )}
+
+                              <div className="my-1 border-t border-slate-100" />
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOfficialDocState({ type: 'work-certificate', employee: emp });
+                                  setOpenDropdownId(null);
+                                }}
+                                className="w-full text-right px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 cursor-pointer"
+                              >
+                                <FileText size={15} />
+                                <span>شهادة عمل</span>
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOfficialDocState({ type: 'experience-decision', employee: emp });
+                                  setOpenDropdownId(null);
+                                }}
+                                className="w-full text-right px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 flex items-center gap-2 cursor-pointer"
+                              >
+                                <Award size={15} />
+                                <span>مقرر تعويض الخبرة</span>
+                              </button>
+
                               {hasPermission('checkBoxDelete') && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleDelete(emp); setOpenDropdownId(null); }}
-                                  className="w-full text-right px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
-                                >
-                                  حذف
-                                </button>
+                                <>
+                                  <div className="my-1 border-t border-slate-100" />
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleDelete(emp); setOpenDropdownId(null); }}
+                                    className="w-full text-right px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2 cursor-pointer"
+                                  >
+                                    حذف
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
@@ -530,6 +563,23 @@ const EmployeesList = () => {
         onConfirm={confirmState.onConfirm}
         onCancel={closeConfirm}
       />
+
+      <Suspense fallback={null}>
+        {officialDocState.type === 'work-certificate' && (
+          <WorkCertificateModal
+            isOpen={true}
+            onClose={() => setOfficialDocState({ type: null, employee: null })}
+            employee={officialDocState.employee}
+          />
+        )}
+        {officialDocState.type === 'experience-decision' && (
+          <ExperienceDecisionModal
+            isOpen={true}
+            onClose={() => setOfficialDocState({ type: null, employee: null })}
+            employee={officialDocState.employee}
+          />
+        )}
+      </Suspense>
     </div>
   );
 };
