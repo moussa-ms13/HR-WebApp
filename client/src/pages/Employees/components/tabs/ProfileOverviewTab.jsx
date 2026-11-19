@@ -8,16 +8,12 @@ import { DateText } from '../../../../utils/formatDate';
 import { formatEmployeeName } from '../../../../utils/employeeUtils';
 import {
   getAllowedProvinces,
-  getMofatishiyat,
-  getMohafathat,
-  PROVINCIAL_AMLAK_BASE,
-  PROVINCIAL_MASH_BASE,
-  REGIONAL_DIRECTORATE,
   formatProvincialDirectorate,
   resolveDirectorateOnProvinceChange,
 } from '../../../../utils/constants';
 import { refreshEmployees, refreshEmployeeCareer } from '../../../../utils/cacheManager';
 import { ProfileCompletenessBadge } from '../../../../components/common/UnifiedBadge';
+import WorkplaceTreePicker from '../../../../components/common/WorkplaceTreePicker';
 import {
   User,
   Briefcase,
@@ -28,50 +24,11 @@ import {
   XCircle,
   Save,
   Loader2,
-  ChevronDown,
-  ChevronLeft,
 } from 'lucide-react';
 
 const fetcher = async (url) => {
   const res = await apiClient.get(url);
   return res.data;
-};
-
-// --- Tree View Node (for Assignment picker) ---
-// Non-leaf nodes (isLeaf={false}) are strictly expand/collapse category headers ONLY and can NEVER be selected.
-const TreeNode = ({ label, value, children, onSelect, isLeaf, dirTag }) => {
-  const [isOpen, setIsOpen] = useState(true);
-  const handleRowClick = (e) => {
-    e.stopPropagation();
-    if (isLeaf) {
-      onSelect(value || label, dirTag);
-    } else {
-      setIsOpen((prev) => !prev);
-    }
-  };
-  return (
-    <div className="ml-4 rtl:ml-0 rtl:mr-4 select-none">
-      <div
-        onClick={handleRowClick}
-        className={`flex items-center py-1.5 px-2 rounded transition-colors cursor-pointer ${
-          isLeaf
-            ? 'text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 font-normal'
-            : 'font-bold text-slate-800 hover:bg-slate-100'
-        }`}
-      >
-        {!isLeaf && (
-          <div className="p-0.5 rounded text-slate-500">
-            {isOpen ? <ChevronDown size={16} /> : <ChevronLeft size={16} />}
-          </div>
-        )}
-        {isLeaf && <div className="w-4 h-4 inline-block mr-1 rtl:mr-0 rtl:ml-1" />}
-        <div className="flex-1 mr-1 rtl:mr-0 rtl:ml-1">
-          {label}
-        </div>
-      </div>
-      {isOpen && children && <div className="border-r-2 border-slate-100 pr-2 rtl:pr-4">{children}</div>}
-    </div>
-  );
 };
 
 const sanitizeDate = (d) => {
@@ -103,7 +60,6 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({});
   const [isSaving, setIsSaving] = useState(false);
-  const [showTree, setShowTree] = useState(false);
 
   const allowedProvinces = getAllowedProvinces(user);
 
@@ -151,14 +107,12 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
       PositionDate: sanitizeDate(employee.PositionDate),
       IsProfileComplete: employee.IsProfileComplete || false,
     });
-    setShowTree(false);
     setIsEditing(true);
   };
 
   const cancelEdit = () => {
     setIsEditing(false);
     setEditData({});
-    setShowTree(false);
   };
 
   const editField = (key, value) => setEditData((prev) => {
@@ -195,14 +149,6 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
     return updated;
   });
 
-  const handleTreeSelect = (selectedPlace) => {
-    setEditData((prev) => ({
-      ...prev,
-      Directorate: selectedPlace,
-    }));
-    setShowTree(false);
-  };
-
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -232,9 +178,6 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
       setIsSaving(false);
     }
   };
-
-  const dirAmlak = PROVINCIAL_AMLAK_BASE;
-  const dirMash = PROVINCIAL_MASH_BASE;
 
   return (
     <div className="space-y-6">
@@ -532,80 +475,18 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
           </div>
 
           {/* Directorate — Tree Picker */}
-          <div className="md:col-span-2 relative">
+          <div className="md:col-span-2">
             <span className="block text-xs font-medium text-gray-400 mb-1">
               <MapPin size={14} className="inline ml-1 text-emerald-500" />
               مكان التعيين (المديرية / الدائرة)
             </span>
             {isEditing ? (
-              <>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    readOnly
-                    value={editData.Directorate || ''}
-                    placeholder="اضغط لاختيار مكان التعيين..."
-                    className="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-white outline-none text-sm cursor-pointer"
-                    onClick={() => {
-                      if (editData.Province) setShowTree(!showTree);
-                      else toast.warning('يرجى اختيار الولاية أولاً.');
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (editData.Province) setShowTree(!showTree);
-                      else toast.warning('يرجى اختيار الولاية أولاً.');
-                    }}
-                    className="px-4 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-sm font-medium transition-colors cursor-pointer"
-                  >
-                    {showTree ? 'إغلاق' : 'اختيار'}
-                  </button>
-                </div>
-                {showTree && editData.Province && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-4 z-10 max-h-64 overflow-y-auto">
-                    <TreeNode label={REGIONAL_DIRECTORATE} onSelect={handleTreeSelect} isLeaf={false}>
-                      {editData.Province === 'الشلف' && (
-                        <TreeNode
-                          label={REGIONAL_DIRECTORATE}
-                          value={REGIONAL_DIRECTORATE}
-                          onSelect={handleTreeSelect}
-                          isLeaf={true}
-                          dirTag={REGIONAL_DIRECTORATE}
-                        />
-                      )}
-                      <TreeNode label={dirAmlak} onSelect={handleTreeSelect} isLeaf={false}>
-                        <TreeNode
-                          label={`${dirAmlak} (${editData.Province})`}
-                          value={`${dirAmlak} (${editData.Province})`}
-                          onSelect={handleTreeSelect}
-                          isLeaf={true}
-                          dirTag={dirAmlak}
-                        />
-                        <TreeNode label="مفتشيات أملاك الدولة" onSelect={handleTreeSelect} isLeaf={false}>
-                          {getMofatishiyat(editData.Province).map((m) => (
-                            <TreeNode key={m} label={m} value={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirAmlak} />
-                          ))}
-                        </TreeNode>
-                      </TreeNode>
-                      <TreeNode label={dirMash} onSelect={handleTreeSelect} isLeaf={false}>
-                        <TreeNode
-                          label={`${dirMash} (${editData.Province})`}
-                          value={`${dirMash} (${editData.Province})`}
-                          onSelect={handleTreeSelect}
-                          isLeaf={true}
-                          dirTag={dirMash}
-                        />
-                        <TreeNode label="المحافظات العقارية" onSelect={handleTreeSelect} isLeaf={false}>
-                          {getMohafathat(editData.Province).map((m) => (
-                            <TreeNode key={m} label={m} value={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirMash} />
-                          ))}
-                        </TreeNode>
-                      </TreeNode>
-                    </TreeNode>
-                  </div>
-                )}
-              </>
+              <WorkplaceTreePicker
+                province={editData.Province}
+                value={editData.Directorate}
+                inputClassName="w-full px-3 py-1.5 border border-slate-300 rounded-lg bg-white outline-none text-sm cursor-pointer"
+                onChange={(place) => editField('Directorate', place)}
+              />
             ) : (
               <span className="block font-semibold text-slate-800">
                 {formatProvincialDirectorate(employee.Directorate, employee.Province) || '—'}

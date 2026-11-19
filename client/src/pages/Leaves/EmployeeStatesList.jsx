@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import useSWR from 'swr';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -96,8 +96,12 @@ const EmployeeStatesList = () => {
   const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
 
   // SWR keys are bound ONLY to the debounced value; API search fires from 2+ chars
-  const debouncedSearch = useDebounce(searchInput, 500);
+  const debouncedSearch = useDebounce(searchInput, 300);
   const search = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : '';
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   const currentYear = new Date().getFullYear();
   const isPastYear = Boolean(yearFilter) && Number(yearFilter) < currentYear;
@@ -117,7 +121,6 @@ const EmployeeStatesList = () => {
 
   const handleSearchChange = (e) => {
     setSearchInput(e.target.value);
-    setPage(1);
   };
 
   const states = Array.isArray(data) ? data : (data?.records || data?.data || []);

@@ -4,15 +4,35 @@
 // ============================================================
 const prisma = require("../config/database");
 const CacheService = require("../services/CacheService");
+const { ROLES, getAllowedProvinces } = require("../config/constants");
+
+/**
+ * Resolves Geographic RBAC scope for dashboard queries & cache keys.
+ */
+function getDashboardScope(user) {
+  if (user && user.role === ROLES.ADMIN) {
+    return { isAdmin: true, allowedProvinces: null, scopeKey: "admin", empWhere: {}, relEmpWhere: {} };
+  }
+  const allowedProvinces = getAllowedProvinces(user);
+  const scopeKey = allowedProvinces.length > 0 ? [...allowedProvinces].sort().join("|") : "none";
+  const empWhere = allowedProvinces.length > 0 ? { Province: { in: allowedProvinces } } : { Id: -1 };
+  return {
+    isAdmin: false,
+    allowedProvinces,
+    scopeKey,
+    empWhere,
+    relEmpWhere: { Employee: empWhere },
+  };
+}
 
 /**
  * GET /api/dashboard/stats
- * All counts are DB-level aggregations (COUNT).
- * Results are cached for 5 minutes to prevent redundant DB hits.
+ * All counts are DB-level aggregations (COUNT) scoped to the user's allowed provinces.
  */
 exports.getDashboardStats = async (req, res, next) => {
   try {
-    const cacheKey = "dashboard_stats";
+    const scope = getDashboardScope(req.user);
+    const cacheKey = `dashboard_stats_${scope.scopeKey}`;
     const cached = CacheService.get(cacheKey);
     if (cached) {
       return res.json({ success: true, data: cached });
@@ -21,8 +41,6 @@ exports.getDashboardStats = async (req, res, next) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Active: CURRENT_DATE >= StartDate AND (CURRENT_DATE <= EndDate OR EndDate IS NULL)
-    // Late: EndDate < CURRENT_DATE AND not resumed
     const [
       totalEmployees,
       activeLeaves,
@@ -32,9 +50,10 @@ exports.getDashboardStats = async (req, res, next) => {
       totalJobTitles,
       totalDocuments,
     ] = await Promise.all([
-      prisma.employees.count(),
+      prisma.employees.count({ where: scope.empWhere }),
       prisma.employeeStates.count({
         where: {
+          ...scope.relEmpWhere,
           StartDate: { lte: today },
           OR: [
             { EndDate: { gte: today } },
@@ -44,6 +63,7 @@ exports.getDashboardStats = async (req, res, next) => {
       }),
       prisma.specialCases.count({
         where: {
+          ...scope.relEmpWhere,
           IsActive: true,
           StartDate: { lte: today },
           OR: [{ EndDate: { gte: today } }, { EndDate: null }],
@@ -51,16 +71,17 @@ exports.getDashboardStats = async (req, res, next) => {
       }),
       prisma.employeeStates.count({
         where: {
+          ...scope.relEmpWhere,
           EndDate: { lt: today },
           IsResumed: false,
           OR: [{ CustomEndText: null }, { CustomEndText: "" }],
         },
       }),
       prisma.specialCases.count({
-        where: { EndDate: { lt: today }, IsActive: true },
+        where: { ...scope.relEmpWhere, EndDate: { lt: today }, IsActive: true },
       }),
       prisma.jobTitles.count(),
-      prisma.employeeFiles.count(),
+      prisma.employeeFiles.count({ where: scope.relEmpWhere }),
     ]);
 
     const activeLeavesCases = activeLeaves + activeCases;
@@ -85,12 +106,12 @@ exports.getDashboardStats = async (req, res, next) => {
 
 /**
  * GET /api/dashboard/employees-by-province
- * DB-level groupBy aggregation — counts per Province.
- * Cached separately for 5 minutes.
+ * DB-level groupBy aggregation — counts per allowed Province.
  */
 exports.getEmployeesByProvince = async (req, res, next) => {
   try {
-    const cacheKey = "dashboard_by_province";
+    const scope = getDashboardScope(req.user);
+    const cacheKey = `dashboard_by_province_${scope.scopeKey}`;
     const cached = CacheService.get(cacheKey);
     if (cached) {
       return res.json({ success: true, data: cached });
@@ -99,6 +120,7 @@ exports.getEmployeesByProvince = async (req, res, next) => {
     const groups = await prisma.employees.groupBy({
       by: ["Province"],
       where: {
+        ...scope.empWhere,
         SpecialCases: {
           none: {
             IsActive: true,
@@ -124,13 +146,12 @@ exports.getEmployeesByProvince = async (req, res, next) => {
 
 /**
  * GET /api/dashboard/resuming-soon
- * Top 5 employees resuming work soon.
- * Uses covering index on (IsResumed, EndDate) with INCLUDE columns.
- * Cached for 5 minutes.
+ * Top 5 employees resuming work soon within user's allowed provinces.
  */
 exports.getResumingSoon = async (req, res, next) => {
   try {
-    const cacheKey = "dashboard_resuming_soon";
+    const scope = getDashboardScope(req.user);
+    const cacheKey = `dashboard_resuming_soon_${scope.scopeKey}`;
     const cached = CacheService.get(cacheKey);
     if (cached) {
       return res.json({ success: true, data: cached });
@@ -143,6 +164,7 @@ exports.getResumingSoon = async (req, res, next) => {
     const [states, cases] = await Promise.all([
       prisma.employeeStates.findMany({
         where: {
+          ...scope.relEmpWhere,
           IsResumed: false,
           EndDate: { gte: today, lte: in14Days },
           OR: [{ CustomEndText: null }, { CustomEndText: "" }],
@@ -162,6 +184,7 @@ exports.getResumingSoon = async (req, res, next) => {
       }),
       prisma.specialCases.findMany({
         where: {
+          ...scope.relEmpWhere,
           IsActive: true,
           EndDate: { not: null, gte: today, lte: in14Days },
         },
@@ -202,12 +225,12 @@ exports.getResumingSoon = async (req, res, next) => {
 
 /**
  * GET /api/dashboard/overdue-resumes
- * Employees whose EndDate has passed but have NOT resumed work.
- * Sorted by most overdue first. Cached for 5 minutes.
+ * Employees whose EndDate has passed without resumption within user's allowed provinces.
  */
 exports.getOverdueResumes = async (req, res, next) => {
   try {
-    const cacheKey = "dashboard_overdue_resumes";
+    const scope = getDashboardScope(req.user);
+    const cacheKey = `dashboard_overdue_resumes_${scope.scopeKey}`;
     const cached = CacheService.get(cacheKey);
     if (cached) {
       return res.json({ success: true, data: cached });
@@ -219,6 +242,7 @@ exports.getOverdueResumes = async (req, res, next) => {
     const [states, cases] = await Promise.all([
       prisma.employeeStates.findMany({
         where: {
+          ...scope.relEmpWhere,
           IsResumed: false,
           EndDate: { lt: today },
           OR: [{ CustomEndText: null }, { CustomEndText: "" }],
@@ -238,6 +262,7 @@ exports.getOverdueResumes = async (req, res, next) => {
       }),
       prisma.specialCases.findMany({
         where: {
+          ...scope.relEmpWhere,
           IsActive: true,
           EndDate: { lt: today },
         },
@@ -261,9 +286,7 @@ exports.getOverdueResumes = async (req, res, next) => {
       Employee: c.Employee,
     }));
 
-    // Calculate overdue days for each record (strictly excluding open-ended leaves)
     const data = [...states, ...mappedCases]
-      .filter((s) => !s.CustomEndText)
       .map((s) => {
         const endDate = new Date(s.EndDate);
         endDate.setHours(0, 0, 0, 0);
@@ -432,9 +455,9 @@ exports.getUserKpis = async (req, res, next) => {
  * Invalidate all dashboard caches — call after any leave/case write.
  */
 exports.clearDashboardCache = () => {
-  CacheService.del("dashboard_stats");
-  CacheService.del("dashboard_by_province");
-  CacheService.del("dashboard_resuming_soon");
-  CacheService.del("dashboard_overdue_resumes");
+  CacheService.delByPrefix("dashboard_stats_");
+  CacheService.delByPrefix("dashboard_by_province_");
+  CacheService.delByPrefix("dashboard_resuming_soon_");
+  CacheService.delByPrefix("dashboard_overdue_resumes_");
   CacheService.delByPrefix("dashboard_user_kpis_");
 };

@@ -1,474 +1,68 @@
 // ============================================================
 // SpecialCasesService — CRUD with Geographic RBAC
-// Handles structural cases: انتداب, تحويل, استيداع, استقالة
-// Auto-syncs Employee.EmployeeStatus on create/update.
+// Handles structural cases: انتداب, تحويل, استيداع, استقالة, تقاعد
 // ============================================================
 const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
-const { ROLES, getAllowedProvinces } = require("../config/constants");
-const {
-  sanitizePagination,
-  buildTokenizedSearch,
-  resolveGeographicFilter,
-  normalizeWorkplaceValue,
-  buildDirectorateCondition,
-} = require("../utils/queryBuilder");
 const CacheService = require("./CacheService");
-const { PERMANENT_EXIT_TYPES } = require("../utils/specialCasesConstants");
+const {
+  assertProvinceAccess,
+  archiveOriginatingPost,
+  restoreOriginatingPost,
+  syncEmployeeStatus,
+  reinstateEmployeeStatus,
+} = require("./specialCases/specialCasesHelpers");
+const {
+  getAllSpecialCases,
+  getSpecialCasesByEmployee,
+} = require("./specialCases/specialCasesQueries");
 
-// Maps case_type -> employee status value
-const CASE_TYPE_STATUS_MAP = Object.freeze({
-  "نقل": "منقول",
-  "انتداب": "منتدب",
-  "تحويل": "محوّل",
-  "استيداع": "مستودع",
-  "في استيداع": "مستودع",
-  "استقالة": "مستقيل",
-  "تقاعد": "متقاعد",
-});
-
-/**
- * Builds Prisma where condition for lifecycle filtering.
- */
-function getLifecycleCondition(statusFilter) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const tempActiveCondition = {
-    CaseType: { notIn: [...PERMANENT_EXIT_TYPES] },
-    IsActive: true,
-    OR: [{ EndDate: null }, { EndDate: { gte: today } }],
-  };
-
-  const permExitCondition = {
-    CaseType: { in: [...PERMANENT_EXIT_TYPES] },
-    IsActive: true,
-  };
-
-  const archivedCondition = {
-    OR: [
-      { IsActive: false },
-      {
-        CaseType: { notIn: [...PERMANENT_EXIT_TYPES] },
-        EndDate: { not: null, lt: today },
-      },
-    ],
-  };
-
-  switch (statusFilter) {
-    case "temporary_active":
-      return tempActiveCondition;
-    case "permanent_exit":
-      return permExitCondition;
-    case "archived":
-      return archivedCondition;
-    case "all":
-      return null;
-    case "active":
-      // Legacy combined view (kept for backward compatibility)
-      return {
-        OR: [tempActiveCondition, permExitCondition],
-      };
-    default:
-      return tempActiveCondition;
-  }
-}
-
-/**
- * Builds a StartDate or EndDate range condition for a given calendar year.
- * Returns null when the year is empty/invalid.
- */
-function getYearCondition(year) {
-  const y = Number(year);
-  if (!Number.isInteger(y) || y < 1900 || y > 2200) return null;
-  const startOfYear = new Date(y, 0, 1);
-  const endOfYear = new Date(y + 1, 0, 1);
-  return {
-    OR: [
-      { StartDate: { gte: startOfYear, lt: endOfYear } },
-      { EndDate: { gte: startOfYear, lt: endOfYear } },
-    ],
-  };
-}
-
-/**
- * Returns distinct StartDate/EndDate years present in SpecialCases (desc).
- * Used to populate distinct years; fails soft to [].
- */
-async function getDistinctYears() {
-  try {
-    const rows = await prisma.$queryRaw`
-      SELECT DISTINCT YEAR(StartDate) AS y
-      FROM SpecialCases
-      WHERE StartDate IS NOT NULL
-      UNION
-      SELECT DISTINCT YEAR(EndDate) AS y
-      FROM SpecialCases
-      WHERE EndDate IS NOT NULL
-      ORDER BY y DESC`;
-    return rows.map((r) => Number(r.y)).filter((y) => Number.isInteger(y) && y > 0);
-  } catch (_) {
-    return [];
-  }
-}
+const EMPLOYEE_ACCESS_SELECT = { Id: true, Name: true, LastName: true, Province: true, Directorate: true };
 
 class SpecialCasesService {
-  /**
-   * GET /api/special-cases — global paginated list with RBAC + search + lifecycle + caseType.
-   */
-  static async getAll(
-    requestingUser,
-    page = 1,
-    limit = 25,
-    search = "",
-    province = "",
-    directorate = "",
-    statusFilter = "temporary_active",
-    caseType = "",
-    year = "",
-    sortBy = "Id",
-    sortOrder = "desc"
-  ) {
-    const { safePage, safeLimit, skip } = sanitizePagination(page, limit, 100);
-
-    const { provinceFilter, isForbidden } = resolveGeographicFilter(requestingUser, province);
-    if (isForbidden) {
-      return {
-        data: [],
-        meta: {
-          total: 0,
-          page: safePage,
-          limit: safeLimit,
-          totalPages: 0,
-          counts: { temporary_active: 0, permanent_exit: 0, archived: 0, all: 0 },
-          years: [],
-        },
-      };
-    }
-
-    const dirCondition = buildDirectorateCondition(directorate);
-    const employeeFilter = {
-      Province: provinceFilter,
-      ...(dirCondition ? { AND: [dirCondition] } : {}),
-    };
-
-    const baseWhere = {
-      Employee: employeeFilter,
-      ...(caseType && String(caseType).trim() ? { CaseType: String(caseType).trim() } : {}),
-    };
-
-    const tokenSearch = buildTokenizedSearch(search, (token) => [
-      { Employee: { LastName: { contains: token } } },
-      { Employee: { Name: { contains: token } } },
-      { Employee: { NIN: { contains: token } } },
-      { CaseType: { contains: token } },
-      { Destination: { contains: token } },
-      { ReferenceDoc: { contains: token } },
-      { Employee: { JobTitle: { RankName: { contains: token } } } },
-    ]);
-    if (tokenSearch) {
-      baseWhere.AND = [...(baseWhere.AND || []), ...tokenSearch.AND];
-    }
-
-    const yearCondition = getYearCondition(year);
-    if (yearCondition) {
-      baseWhere.AND = [...(baseWhere.AND || []), yearCondition];
-    }
-
-    const buildWhereForStatus = (status) => {
-      const cond = getLifecycleCondition(status);
-      if (!cond) return baseWhere;
-      return {
-        ...baseWhere,
-        AND: [...(baseWhere.AND || []), cond],
-      };
-    };
-
-    const currentYear = new Date().getFullYear();
-    const effectiveStatus =
-      statusFilter === "temporary_active" && year && Number(year) < currentYear
-        ? "all"
-        : statusFilter;
-
-    const whereClause = buildWhereForStatus(effectiveStatus);
-
-    let orderBy = { Id: "desc" };
-    const safeOrder = String(sortOrder || "").toLowerCase() === "asc" ? "asc" : "desc";
-    if (sortBy === "Employee" || sortBy === "employee" || sortBy === "Name") {
-      orderBy = { Employee: { LastName: safeOrder } };
-    } else if (sortBy === "CaseType" || sortBy === "caseType") {
-      orderBy = { CaseType: safeOrder };
-    } else if (sortBy === "Destination" || sortBy === "destination") {
-      orderBy = { Destination: safeOrder };
-    } else if (sortBy === "ReferenceDoc" || sortBy === "referenceDoc") {
-      orderBy = { ReferenceDoc: safeOrder };
-    } else if (sortBy === "StartDate" || sortBy === "startDate") {
-      orderBy = { StartDate: safeOrder };
-    } else if (sortBy === "Status" || sortBy === "status" || sortBy === "IsActive") {
-      orderBy = { IsActive: safeOrder };
-    } else if (sortBy === "Id" || sortBy === "id") {
-      orderBy = { Id: safeOrder };
-    }
-
-    const [total, cases, tempActiveCount, permExitCount, archivedCount, allCount, years] =
-      await Promise.all([
-        prisma.specialCases.count({ where: whereClause }),
-        prisma.specialCases.findMany({
-          where: whereClause,
-          select: {
-            Id: true,
-            EmployeesId: true,
-            CaseType: true,
-            StartDate: true,
-            EndDate: true,
-            Destination: true,
-            ReferenceDoc: true,
-            IsActive: true,
-            CreatedAt: true,
-            Employee: { select: { Name: true, LastName: true, Province: true } },
-          },
-          skip,
-          take: safeLimit,
-          orderBy,
-        }),
-        prisma.specialCases.count({ where: buildWhereForStatus("temporary_active") }),
-        prisma.specialCases.count({ where: buildWhereForStatus("permanent_exit") }),
-        prisma.specialCases.count({ where: buildWhereForStatus("archived") }),
-        prisma.specialCases.count({ where: buildWhereForStatus("all") }),
-        getDistinctYears(),
-      ]);
-
-    return {
-      data: cases,
-      meta: {
-        total,
-        page: safePage,
-        limit: safeLimit,
-        totalPages: Math.ceil(total / safeLimit),
-        counts: {
-          temporary_active: tempActiveCount,
-          permanent_exit: permExitCount,
-          archived: archivedCount,
-          all: allCount,
-        },
-        years,
-      },
-    };
+  static async getAll(...args) {
+    return getAllSpecialCases(...args);
   }
 
-  /**
-   * Archive employee's current originating post into PositionHistory before secondment.
-   * Runs within an existing transaction context `tx`.
-   */
-  static async _archiveOriginatingPost(tx, employeesId, data) {
-    const employee = await tx.employees.findUnique({
-      where: { Id: employeesId },
-      select: { Province: true, Directorate: true },
-    });
-    if (!employee) return;
-
-    const originMeta = JSON.stringify({
-      Province: employee.Province,
-      Directorate: employee.Directorate,
-    });
-
-    const userRef = `انتداب إلى ${data.Destination || ""} بموجب ${data.ReferenceDoc || ""}`.trim();
-    const reference = `${userRef} <!-- ORIGIN:${originMeta} -->`;
-
-    await tx.positionHistory.create({
-      data: {
-        EmployeesId: employeesId,
-        PositionName: employee.Directorate || "المقر الأصلي",
-        InstallDate: new Date(),
-        Reference: reference,
-      },
-    });
-  }
-
-  /**
-   * Retrieve the latest archived original post from PositionHistory and restore
-   * the employee's original Directorate (and Province).
-   * Never touches AssignedPosition (المنصب العالي).
-   * Runs within an existing transaction context `tx`.
-   */
-  static async _restoreOriginatingPost(tx, employeesId) {
-    let archivedRecord = await tx.positionHistory.findFirst({
-      where: {
-        EmployeesId: employeesId,
-        Reference: { contains: "انتداب إلى" },
-      },
-      orderBy: { Id: "desc" },
-    });
-
-    if (!archivedRecord) {
-      archivedRecord = await tx.positionHistory.findFirst({
-        where: { EmployeesId: employeesId },
-        orderBy: { Id: "desc" },
-      });
-    }
-
-    let origin = null;
-    if (archivedRecord?.Reference) {
-      const match = archivedRecord.Reference.match(/<!--\s*ORIGIN:([\s\S]*?)-->/);
-      if (match) {
-        try {
-          origin = JSON.parse(match[1]);
-        } catch (_) { }
-      }
-    }
-
-    const restoreData = {
-      StatusDate: new Date(),
-      UpdateDate: new Date(),
-    };
-
-    if (origin) {
-      if (origin.Province) restoreData.Province = origin.Province;
-      if (origin.Directorate !== undefined) {
-        restoreData.Directorate = normalizeWorkplaceValue(
-          origin.Directorate || "",
-          restoreData.Province || origin.Province || ""
-        );
-      }
-    } else if (archivedRecord) {
-      const posName =
-        archivedRecord.PositionName && archivedRecord.PositionName !== "المقر الأصلي"
-          ? archivedRecord.PositionName
-          : "";
-      if (posName) {
-        restoreData.Directorate = posName;
-      }
-    }
-
-    await tx.employees.update({
-      where: { Id: employeesId },
-      data: restoreData,
-    });
-
-    if (archivedRecord && !archivedRecord.EndDate) {
-      await tx.positionHistory.update({
-        where: { Id: archivedRecord.Id },
-        data: { EndDate: new Date() },
-      });
-    }
-  }
-
-
-  static async _syncEmployeeStatus(
-    tx,
-    employeesId,
-    caseType,
-    {
-      destination = null,
-      previousCaseType = null,
-      startDate = null,
-      province = null,
-      directorate = null,
-    } = {}
-  ) {
-    const empUpdateData = {
-      StatusDate: startDate ? new Date(startDate) : new Date(),
-      UpdateDate: new Date(),
-    };
-
-    if (caseType === "انتداب") {
-      if (province && String(province).trim()) {
-        empUpdateData.Province = String(province).trim();
-      }
-      if (directorate && String(directorate).trim()) {
-        empUpdateData.Directorate = String(directorate).trim();
-      } else if (destination && String(destination).trim()) {
-        empUpdateData.Directorate = String(destination).trim();
-      }
-    }
-
-    await tx.employees.update({
-      where: { Id: employeesId },
-      data: empUpdateData,
-    });
-  }
-
-  /**
-   * Re-evaluate employee assignments based on remaining active cases.
-   * Runs within an existing transaction context `tx`.
-   */
-  static async _reinstateEmployeeStatus(tx, employeesId, previousCase = null) {
-    // If terminating/deactivating or deleting a Secondment, restore original post from PositionHistory
-    if (previousCase?.CaseType === "انتداب") {
-      await this._restoreOriginatingPost(tx, employeesId);
-    }
-
-    const remainingCase = await tx.specialCases.findFirst({
-      where: {
-        EmployeesId: employeesId,
-        IsActive: true,
-      },
-      orderBy: { Id: "desc" },
-    });
-
-    if (remainingCase) {
-      await this._syncEmployeeStatus(tx, employeesId, remainingCase.CaseType, {
-        destination: remainingCase.Destination,
-        previousCaseType: previousCase?.CaseType,
-        startDate: remainingCase.StartDate,
-      });
-    }
-  }
-
-  /**
-   * RBAC helper: verify the requesting user can access a given employee.
-   */
-  static async _verifyAccess(employee, requestingUser) {
-    if (requestingUser.role !== ROLES.ADMIN) {
-      const allowed = getAllowedProvinces(requestingUser);
-      if (!allowed.includes(employee.Province)) {
-        throw ApiError.forbidden(`Geographic access denied for province: ${employee.Province}`);
-      }
-    }
-  }
-
-  /**
-   * GET /api/employees/:id/special-cases
-   * List all special cases for a given employee.
-   */
   static async getByEmployee(employeeId, requestingUser) {
+    return getSpecialCasesByEmployee(employeeId, requestingUser);
+  }
+
+  static async _archiveOriginatingPost(tx, employeesId, data, employee) {
+    return archiveOriginatingPost(tx, employeesId, data, employee);
+  }
+
+  static async _restoreOriginatingPost(tx, employeesId) {
+    return restoreOriginatingPost(tx, employeesId);
+  }
+
+  static async _syncEmployeeStatus(tx, employeesId, caseType, opts) {
+    return syncEmployeeStatus(tx, employeesId, caseType, opts);
+  }
+
+  static async _reinstateEmployeeStatus(tx, employeesId, previousCase) {
+    return reinstateEmployeeStatus(tx, employeesId, previousCase);
+  }
+
+  static async _verifyAccess(employee, requestingUser) {
+    assertProvinceAccess(employee.Province, requestingUser);
+  }
+
+  static async create(employeeId, data, requestingUser) {
     const employee = await prisma.employees.findUnique({
       where: { Id: employeeId },
-      select: { Id: true, Province: true }
+      select: EMPLOYEE_ACCESS_SELECT,
     });
     if (!employee) throw ApiError.notFound(`Employee ${employeeId} not found.`);
-    await this._verifyAccess(employee, requestingUser);
-
-    const cases = await prisma.specialCases.findMany({
-      where: { EmployeesId: employeeId },
-      select: {
-        Id: true,
-        EmployeesId: true,
-        CaseType: true,
-        StartDate: true,
-        EndDate: true,
-        Destination: true,
-        ReferenceDoc: true,
-        IsActive: true,
-        CreatedAt: true,
-      },
-      orderBy: { Id: "desc" },
-    });
-
-    return cases;
-  }
-
-  /**
-   * POST /api/employees/:id/special-cases
-   * Create + auto-sync employee status atomically.
-   */
-  static async create(employeeId, data, requestingUser) {
-    const employee = await prisma.employees.findUnique({ where: { Id: employeeId } });
-    if (!employee) throw ApiError.notFound(`Employee ${employeeId} not found.`);
-    await this._verifyAccess(employee, requestingUser);
+    assertProvinceAccess(employee.Province, requestingUser);
 
     const isActive = data.IsActive !== undefined ? Boolean(data.IsActive) : true;
+    // Prevent non-Admin province override on active secondment ("انتداب")
+    if (data.CaseType === "انتداب" && isActive && data.Province) {
+      assertProvinceAccess(data.Province, requestingUser);
+    }
+
     const startDate = data.StartDate ? new Date(data.StartDate) : new Date();
     const endDate = data.EndDate ? new Date(data.EndDate) : null;
     const destination = data.Destination || null;
@@ -476,12 +70,8 @@ class SpecialCasesService {
 
     const record = await prisma.$transaction(
       async (tx) => {
-        // When creating an active Secondment ("انتداب"), archive originating post before updating
         if (data.CaseType === "انتداب" && isActive) {
-          await this._archiveOriginatingPost(tx, employeeId, {
-            Destination: destination,
-            ReferenceDoc: referenceDoc,
-          });
+          await archiveOriginatingPost(tx, employeeId, { Destination: destination, ReferenceDoc: referenceDoc }, employee);
         }
 
         const createdCase = await tx.specialCases.create({
@@ -496,9 +86,8 @@ class SpecialCasesService {
           },
         });
 
-        // Auto-sync employee status if case is active
         if (isActive) {
-          await this._syncEmployeeStatus(tx, employeeId, data.CaseType, {
+          await syncEmployeeStatus(tx, employeeId, data.CaseType, {
             destination,
             startDate,
             province: data.Province,
@@ -521,18 +110,16 @@ class SpecialCasesService {
     });
 
     CacheService.invalidateEmployeeEcosystem();
-
     return record;
   }
 
-  /**
-   * PUT /api/employees/:id/special-cases/:caseId
-   * Update + re-sync / reinstate employee status atomically.
-   */
   static async update(employeeId, caseId, data, requestingUser) {
-    const employee = await prisma.employees.findUnique({ where: { Id: employeeId } });
+    const employee = await prisma.employees.findUnique({
+      where: { Id: employeeId },
+      select: EMPLOYEE_ACCESS_SELECT,
+    });
     if (!employee) throw ApiError.notFound(`Employee ${employeeId} not found.`);
-    await this._verifyAccess(employee, requestingUser);
+    assertProvinceAccess(employee.Province, requestingUser);
 
     const existing = await prisma.specialCases.findUnique({ where: { Id: caseId } });
     if (!existing || existing.EmployeesId !== employeeId) {
@@ -541,10 +128,16 @@ class SpecialCasesService {
 
     const newCaseType = data.CaseType ?? existing.CaseType;
     const newStartDate = data.StartDate ? new Date(data.StartDate) : existing.StartDate;
-    const newEndDate = data.EndDate !== undefined ? (data.EndDate ? new Date(data.EndDate) : null) : existing.EndDate;
+    const newEndDate =
+      data.EndDate !== undefined ? (data.EndDate ? new Date(data.EndDate) : null) : existing.EndDate;
     const newDestination = data.Destination !== undefined ? data.Destination : existing.Destination;
     const newReferenceDoc = data.ReferenceDoc ?? existing.ReferenceDoc;
     const newIsActive = data.IsActive !== undefined ? Boolean(data.IsActive) : existing.IsActive;
+
+    // Prevent non-Admin province override on active secondment ("انتداب")
+    if (newCaseType === "انتداب" && newIsActive && data.Province) {
+      assertProvinceAccess(data.Province, requestingUser);
+    }
 
     const record = await prisma.$transaction(
       async (tx) => {
@@ -554,10 +147,7 @@ class SpecialCasesService {
           (!existing.IsActive || existing.CaseType !== "انتداب");
 
         if (isTransitioningToSecondment) {
-          await this._archiveOriginatingPost(tx, employeeId, {
-            Destination: newDestination,
-            ReferenceDoc: newReferenceDoc,
-          });
+          await archiveOriginatingPost(tx, employeeId, { Destination: newDestination, ReferenceDoc: newReferenceDoc }, employee);
         }
 
         const updatedCase = await tx.specialCases.update({
@@ -573,16 +163,14 @@ class SpecialCasesService {
         });
 
         if (newIsActive) {
-          await this._syncEmployeeStatus(tx, employeeId, newCaseType, {
+          await syncEmployeeStatus(tx, employeeId, newCaseType, {
             destination: newDestination,
-            previousCaseType: existing.CaseType,
             startDate: newStartDate,
             province: data.Province,
             directorate: data.Directorate,
           });
         } else {
-          // Case was toggled/updated to inactive: reinstate employee status based on remaining active cases (or "نشط")
-          await this._reinstateEmployeeStatus(tx, employeeId, existing);
+          await reinstateEmployeeStatus(tx, employeeId, existing);
         }
 
         return updatedCase;
@@ -600,18 +188,16 @@ class SpecialCasesService {
     });
 
     CacheService.invalidateEmployeeEcosystem();
-
     return record;
   }
 
-  /**
-   * DELETE /api/employees/:id/special-cases/:caseId
-   * Delete case and atomically reinstate employee status if active.
-   */
   static async delete(employeeId, caseId, requestingUser) {
-    const employee = await prisma.employees.findUnique({ where: { Id: employeeId } });
+    const employee = await prisma.employees.findUnique({
+      where: { Id: employeeId },
+      select: EMPLOYEE_ACCESS_SELECT,
+    });
     if (!employee) throw ApiError.notFound(`Employee ${employeeId} not found.`);
-    await this._verifyAccess(employee, requestingUser);
+    assertProvinceAccess(employee.Province, requestingUser);
 
     const existing = await prisma.specialCases.findUnique({ where: { Id: caseId } });
     if (!existing || existing.EmployeesId !== employeeId) {
@@ -621,9 +207,8 @@ class SpecialCasesService {
     await prisma.$transaction(
       async (tx) => {
         await tx.specialCases.delete({ where: { Id: caseId } });
-
         if (existing.IsActive) {
-          await this._reinstateEmployeeStatus(tx, employeeId, existing);
+          await reinstateEmployeeStatus(tx, employeeId, existing);
         }
       },
       { maxWait: 15000, timeout: 60000 }
@@ -642,16 +227,13 @@ class SpecialCasesService {
     return { message: "Special case deleted successfully." };
   }
 
-  /**
-   * End / Reintegrate a temporary special case (e.g. انتداب, استيداع).
-   * Sets IsActive: false, EndDate: data.endDate || new Date(),
-   * optionally appends reinstatement reference to ReferenceDoc,
-   * restores originating post (if انتداب), and logs SystemRecord.
-   */
   static async endCase(employeeId, caseId, data = {}, requestingUser) {
-    const employee = await prisma.employees.findUnique({ where: { Id: employeeId } });
+    const employee = await prisma.employees.findUnique({
+      where: { Id: employeeId },
+      select: EMPLOYEE_ACCESS_SELECT,
+    });
     if (!employee) throw ApiError.notFound(`Employee ${employeeId} not found.`);
-    await this._verifyAccess(employee, requestingUser);
+    assertProvinceAccess(employee.Province, requestingUser);
 
     const existing = await prisma.specialCases.findUnique({ where: { Id: caseId } });
     if (!existing || existing.EmployeesId !== employeeId) {
@@ -669,15 +251,9 @@ class SpecialCasesService {
       async (tx) => {
         const updatedCase = await tx.specialCases.update({
           where: { Id: caseId },
-          data: {
-            IsActive: false,
-            EndDate: endDate,
-            ReferenceDoc: updatedReferenceDoc,
-          },
+          data: { IsActive: false, EndDate: endDate, ReferenceDoc: updatedReferenceDoc },
         });
-
-        await this._reinstateEmployeeStatus(tx, employeeId, existing);
-
+        await reinstateEmployeeStatus(tx, employeeId, existing);
         return updatedCase;
       },
       { maxWait: 15000, timeout: 60000 }
@@ -693,7 +269,6 @@ class SpecialCasesService {
     });
 
     CacheService.invalidateEmployeeEcosystem();
-
     return record;
   }
 }

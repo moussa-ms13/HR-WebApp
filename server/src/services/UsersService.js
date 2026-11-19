@@ -4,10 +4,13 @@
 // Matches existing RafatDB schema exactly.
 // ============================================================
 const prisma = require("../config/database");
+const bcrypt = require("bcryptjs");
 const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
 const { ROLES } = require("../config/constants");
 const { invalidateUserPermissionsCache } = require("../middleware/auth");
+
+const BCRYPT_ROUNDS = 10;
 
 class UsersService {
   // ──────────────────────────────────────────────
@@ -100,6 +103,13 @@ class UsersService {
   // CREATE — Add a new user with roles
   // ──────────────────────────────────────────────
   static async create(data, requestingUser) {
+    if (requestingUser.role !== ROLES.ADMIN) {
+      throw ApiError.forbidden("Only administrators can create users.");
+    }
+    if (!data.userName || !data.password || !data.fullName) {
+      throw ApiError.badRequest("FullName, UserName, and Password are required.");
+    }
+
     // Check for duplicate UserName
     const existing = await prisma.users.findFirst({
       where: { UserName: data.userName },
@@ -110,12 +120,13 @@ class UsersService {
     }
 
     const now = new Date();
+    const hashedPassword = await bcrypt.hash(String(data.password), BCRYPT_ROUNDS);
 
     const user = await prisma.users.create({
       data: {
         FullName: data.fullName,
         UserName: data.userName,
-        Password: data.password, // Plain text for legacy compatibility
+        Password: hashedPassword,
         Role: data.role || ROLES.USER,
         IsSecondaryUser: data.isSecondaryUser || false,
         UserId: data.userId || "",
@@ -152,6 +163,10 @@ class UsersService {
   // UPDATE — Edit user and replace their roles
   // ──────────────────────────────────────────────
   static async update(id, data, requestingUser) {
+    if (requestingUser.role !== ROLES.ADMIN) {
+      throw ApiError.forbidden("Only administrators can update users.");
+    }
+
     const existing = await prisma.users.findUnique({ where: { Id: id } });
 
     if (!existing) {
@@ -168,14 +183,18 @@ class UsersService {
       }
     }
 
+    const hashedPassword = data.password
+      ? await bcrypt.hash(String(data.password), BCRYPT_ROUNDS)
+      : null;
+
     // Use a transaction: update user + delete old roles + create new roles
     const user = await prisma.$transaction(async (tx) => {
-      const updated = await tx.users.update({
+      await tx.users.update({
         where: { Id: id },
         data: {
           FullName: data.fullName ?? existing.FullName,
           UserName: data.userName ?? existing.UserName,
-          ...(data.password && { Password: data.password }),
+          ...(hashedPassword && { Password: hashedPassword }),
           Role: data.role ?? existing.Role,
           IsSecondaryUser: data.isSecondaryUser ?? existing.IsSecondaryUser,
           UserId: data.userId !== undefined ? data.userId : existing.UserId,
@@ -224,6 +243,10 @@ class UsersService {
   // DELETE — Remove a user and cascade their roles
   // ──────────────────────────────────────────────
   static async delete(id, requestingUser) {
+    if (requestingUser.role !== ROLES.ADMIN) {
+      throw ApiError.forbidden("Only administrators can delete users.");
+    }
+
     const existing = await prisma.users.findUnique({ where: { Id: id } });
 
     if (!existing) {

@@ -1,14 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { refreshEmployees } from '../../utils/cacheManager';
-import { X, Save, Loader2, Upload, Image as ImageIcon, ChevronDown, ChevronLeft } from 'lucide-react';
+import { X, Save, Loader2, Upload, Image as ImageIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
   getAllowedProvinces,
-  getMofatishiyat,
-  getMohafathat,
-  PROVINCIAL_AMLAK_BASE,
-  PROVINCIAL_MASH_BASE,
-  REGIONAL_DIRECTORATE,
   formatProvincialDirectorate,
   resolveDirectorateOnProvinceChange,
 } from '../../utils/constants';
@@ -16,46 +11,7 @@ import EmployeeService from '../../services/employeeService';
 import { getAssetUrl } from '../../utils/employeeUtils';
 import apiClient from '../../services/apiClient';
 import { useToast } from '../../components/ui/Toast';
-
-// --- Tree View Data Helpers ---
-// TreeNode Component for the Assignment Tree
-// Non-leaf nodes (isLeaf={false}) are strictly expand/collapse category headers ONLY and can NEVER be selected.
-const TreeNode = ({ label, value, children, onSelect, isLeaf, dirTag }) => {
-  const [isOpen, setIsOpen] = useState(true);
-
-  const handleRowClick = (e) => {
-    e.stopPropagation();
-    if (isLeaf) {
-      onSelect(value || label, dirTag);
-    } else {
-      setIsOpen((prev) => !prev);
-    }
-  };
-
-  return (
-    <div className="ml-4 rtl:ml-0 rtl:mr-4 select-none">
-      <div
-        onClick={handleRowClick}
-        className={`flex items-center py-1.5 px-2 rounded transition-colors cursor-pointer ${
-          isLeaf
-            ? 'text-slate-700 hover:text-emerald-700 hover:bg-emerald-50 font-normal'
-            : 'font-bold text-slate-800 hover:bg-slate-100'
-        }`}
-      >
-        {!isLeaf && (
-          <div className="p-0.5 rounded text-slate-500">
-            {isOpen ? <ChevronDown size={16} /> : <ChevronLeft size={16} />}
-          </div>
-        )}
-        {isLeaf && <div className="w-4 h-4 inline-block mr-1 rtl:mr-0 rtl:ml-1" />}
-        <div className="flex-1 mr-1 rtl:mr-0 rtl:ml-1">
-          {label}
-        </div>
-      </div>
-      {isOpen && children && <div className="border-r-2 border-slate-100 pr-2 rtl:pr-4">{children}</div>}
-    </div>
-  );
-};
+import WorkplaceTreePicker from '../../components/common/WorkplaceTreePicker';
 
 const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
   const { user } = useAuth();
@@ -70,9 +26,6 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
 
   // Tabs State
   const [activeTab, setActiveTab] = useState('personal');
-
-  // Tree View State
-  const [showTree, setShowTree] = useState(false);
 
   // Profile Image State
   const [profileImageFile, setProfileImageFile] = useState(null);
@@ -161,7 +114,6 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
       fetchJobTitles();
       setProfileImageFile(null);
       setError('');
-      setShowTree(false);
       setActiveTab('personal'); // Reset tab on open
 
       const empId = employee?.Id || employee?.id;
@@ -307,14 +259,6 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
     }
   };
 
-  const handleTreeSelect = (selectedPlace) => {
-    setFormData(prev => ({
-      ...prev,
-      Directorate: selectedPlace
-    }));
-    setShowTree(false);
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -389,9 +333,6 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
     }
     return baseOptions;
   };
-
-  const dirAmlak = PROVINCIAL_AMLAK_BASE;
-  const dirMash = PROVINCIAL_MASH_BASE;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 font-sans" dir="rtl">
@@ -582,64 +523,13 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
                     </div>
 
                     {/* Tree-View Assignment */}
-                    <div className="lg:col-span-2 relative">
+                    <div className="lg:col-span-2">
                       <label className="block text-sm font-medium text-slate-700 mb-1">مكان التعيين <span className="text-red-500">*</span></label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          readOnly
-                          value={formData.Directorate || ''}
-                          placeholder="اضغط لاختيار مكان التعيين..."
-                          className="w-full px-3 py-2 border border-slate-300 rounded-lg bg-white outline-none text-sm cursor-pointer"
-                          onClick={() => { if (formData.Province) setShowTree(!showTree); else toast.warning("يرجى اختيار الولاية أولاً."); }}
-                        />
-                        <button type="button" onClick={() => { if (formData.Province) setShowTree(!showTree); else toast.warning("يرجى اختيار الولاية أولاً."); }} className="px-4 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-sm font-medium transition-colors">
-                          {showTree ? 'إغلاق' : 'اختيار'}
-                        </button>
-                      </div>
-
-                      {/* Tree Popup */}
-                      {showTree && formData.Province && (
-                        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-4 z-10 max-h-64 overflow-y-auto">
-                          <TreeNode label={REGIONAL_DIRECTORATE} onSelect={handleTreeSelect} isLeaf={false}>
-
-                            {formData.Province === 'الشلف' && (
-                              <TreeNode label={REGIONAL_DIRECTORATE} value={REGIONAL_DIRECTORATE} onSelect={handleTreeSelect} isLeaf={true} dirTag={REGIONAL_DIRECTORATE} />
-                            )}
-
-                            <TreeNode label={dirAmlak} onSelect={handleTreeSelect} isLeaf={false}>
-                              <TreeNode
-                                label={`${dirAmlak} (${formData.Province})`}
-                                value={`${dirAmlak} (${formData.Province})`}
-                                onSelect={handleTreeSelect}
-                                isLeaf={true}
-                                dirTag={dirAmlak}
-                              />
-                              <TreeNode label="مفتشيات أملاك الدولة" onSelect={handleTreeSelect} isLeaf={false}>
-                                {getMofatishiyat(formData.Province).map(m => (
-                                  <TreeNode key={m} label={m} value={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirAmlak} />
-                                ))}
-                              </TreeNode>
-                            </TreeNode>
-
-                            <TreeNode label={dirMash} onSelect={handleTreeSelect} isLeaf={false}>
-                              <TreeNode
-                                label={`${dirMash} (${formData.Province})`}
-                                value={`${dirMash} (${formData.Province})`}
-                                onSelect={handleTreeSelect}
-                                isLeaf={true}
-                                dirTag={dirMash}
-                              />
-                              <TreeNode label="المحافظات العقارية" onSelect={handleTreeSelect} isLeaf={false}>
-                                {getMohafathat(formData.Province).map(m => (
-                                  <TreeNode key={m} label={m} value={m} onSelect={handleTreeSelect} isLeaf={true} dirTag={dirMash} />
-                                ))}
-                              </TreeNode>
-                            </TreeNode>
-
-                          </TreeNode>
-                        </div>
-                      )}
+                      <WorkplaceTreePicker
+                        province={formData.Province}
+                        value={formData.Directorate}
+                        onChange={(place) => setFormData(prev => ({ ...prev, Directorate: place }))}
+                      />
                     </div>
 
                     <div>

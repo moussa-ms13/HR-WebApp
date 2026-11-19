@@ -10,35 +10,16 @@ import EmployeeService from '../../services/employeeService';
 import { normalizeGender } from '../../utils/leaveCertificateConfig';
 import { formatEmployeeName } from '../../utils/employeeUtils';
 import { useToast } from '../../components/ui/Toast';
+import {
+  LEAVE_TYPES,
+  SPECIAL_CASE_TYPES,
+  PERMANENT_CASES,
+  DESTINATION_CASES,
+  calculateEndDate,
+} from './utils/leaveModalHelpers';
 
 // Minimum characters before the employee search API is triggered
 const MIN_SEARCH_CHARS = 2;
-
-// ── Type Constants ──────────────────────────────────────────
-const LEAVE_TYPES = [
-  "عطلة سنوية",
-  "عطلة مرضية",
-  "عطلة أمومة",
-  "عطلة استثنائية",
-  "عطلة بدون راتب"
-];
-
-const SPECIAL_CASE_TYPES = [
-  "في استيداع",
-  "تأدية الخدمة الوطنية",
-  "توقيف بمقرر",
-  "انتداب",
-  "استقالة",
-  "نقل",
-  "تحويل",
-  "تقاعد"
-];
-
-// Permanent cases: no EndDate
-const PERMANENT_CASES = new Set(["استقالة", "تقاعد", "نقل"]);
-
-// Cases requiring a Destination field
-const DESTINATION_CASES = new Set(["انتداب", "تحويل", "نقل"]);
 
 // ── Component ───────────────────────────────────────────────
 const UnifiedEntryModal = ({
@@ -183,9 +164,7 @@ const UnifiedEntryModal = ({
   useEffect(() => {
     if (entryCategory !== 'leave' || leaveForm.isOpenEnded) return;
     if (leaveForm.StartDate && leaveForm.DaysCount > 0) {
-      const start = new Date(leaveForm.StartDate);
-      start.setDate(start.getDate() + Number(leaveForm.DaysCount) - 1);
-      const calc = start.toISOString().split('T')[0];
+      const calc = calculateEndDate(leaveForm.StartDate, leaveForm.DaysCount);
       setLeaveForm(prev => prev.EndDate !== calc ? { ...prev, EndDate: calc } : prev);
     }
   }, [leaveForm.StartDate, leaveForm.DaysCount, leaveForm.isOpenEnded, entryCategory]);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useSWR from 'swr';
 import apiClient from '../../services/apiClient';
@@ -10,12 +10,18 @@ import { formatProvincialDirectorate } from '../../utils/constants';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { StatutoryStatusBadge } from '../../components/common/UnifiedBadge';
 
-// Modular Domain Tabs
+// Primary overview tab loaded immediately; heavy secondary tabs code-split on demand
 import ProfileOverviewTab from './components/tabs/ProfileOverviewTab';
-import LeavesTab from './components/tabs/LeavesTab';
-import SpecialCasesTab from './components/tabs/SpecialCasesTab';
-import CareerTab from './components/tabs/CareerTab';
-import DocumentsTab from './components/tabs/DocumentsTab';
+const LeavesTab = lazy(() => import('./components/tabs/LeavesTab'));
+const SpecialCasesTab = lazy(() => import('./components/tabs/SpecialCasesTab'));
+const CareerTab = lazy(() => import('./components/tabs/CareerTab'));
+const DocumentsTab = lazy(() => import('./components/tabs/DocumentsTab'));
+
+const TabFallback = () => (
+  <div className="flex items-center justify-center py-16">
+    <Loader2 size={28} className="animate-spin text-emerald-500" />
+  </div>
+);
 
 const fetcher = async (url) => {
   const res = await apiClient.get(url);
@@ -203,36 +209,38 @@ const EmployeeProfile = () => {
         <ProfileOverviewTab employee={employee} onRefresh={mutateSummary} />
       )}
 
-      {activeTab === 'leaves' && hasPermission('checkBoxLeaves') && (
-        <LeavesTab employee={employee} onRefresh={mutateSummary} />
-      )}
+      <Suspense fallback={<TabFallback />}>
+        {activeTab === 'leaves' && hasPermission('checkBoxLeaves') && (
+          <LeavesTab employee={employee} onRefresh={mutateSummary} />
+        )}
 
-      {activeTab === 'special-cases' && hasPermission('checkBoxSpecialCases') && (
-        <SpecialCasesTab
-          employee={employee}
-          onRefresh={mutateSummary}
-          showConfirm={showConfirm}
-          closeConfirm={closeConfirm}
-        />
-      )}
+        {activeTab === 'special-cases' && hasPermission('checkBoxSpecialCases') && (
+          <SpecialCasesTab
+            employee={employee}
+            onRefresh={mutateSummary}
+            showConfirm={showConfirm}
+            closeConfirm={closeConfirm}
+          />
+        )}
 
-      {activeTab === 'career' && (
-        <CareerTab
-          employee={employee}
-          onRefresh={mutateSummary}
-          showConfirm={showConfirm}
-          closeConfirm={closeConfirm}
-        />
-      )}
+        {activeTab === 'career' && (
+          <CareerTab
+            employee={employee}
+            onRefresh={mutateSummary}
+            showConfirm={showConfirm}
+            closeConfirm={closeConfirm}
+          />
+        )}
 
-      {activeTab === 'documents' && (
-        <DocumentsTab
-          employee={employee}
-          onRefresh={mutateSummary}
-          showConfirm={showConfirm}
-          closeConfirm={closeConfirm}
-        />
-      )}
+        {activeTab === 'documents' && (
+          <DocumentsTab
+            employee={employee}
+            onRefresh={mutateSummary}
+            showConfirm={showConfirm}
+            closeConfirm={closeConfirm}
+          />
+        )}
+      </Suspense>
 
       {/* Generic Shared Confirm Modal */}
       <ConfirmModal

@@ -161,7 +161,7 @@ const EmployeesList = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       commitSearch(value);
-    }, 500);
+    }, 300);
   };
 
   const handleSearchKeyDown = (e) => {

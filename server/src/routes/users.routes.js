@@ -5,8 +5,8 @@
 // ============================================================
 const express = require("express");
 const UsersService = require("../services/UsersService");
-const { authenticate, hasPermission } = require("../middleware/auth");
-const { PERMISSIONS } = require("../config/constants");
+const { authenticate, authorize } = require("../middleware/auth");
+const { ROLES } = require("../config/constants");
 
 const router = express.Router();
 
@@ -39,27 +39,27 @@ router.get("/:id", async (req, res) => {
 
 /**
  * POST /api/users
- * Creates a new user. Requires Admin role or 'checkBoxAdd' permission.
+ * Creates a new user. Strictly Admin-only to prevent privilege escalation.
  */
-router.post("/", hasPermission(PERMISSIONS.ADD), async (req, res) => {
+router.post("/", authorize(ROLES.ADMIN), async (req, res) => {
   const user = await UsersService.create(req.body, req.user);
   res.status(201).json({ success: true, data: user });
 });
 
 /**
  * PUT /api/users/:id
- * Updates an existing user. Requires Admin role or 'checkBoxEdit' permission.
+ * Updates an existing user. Strictly Admin-only.
  */
-router.put("/:id", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
+router.put("/:id", authorize(ROLES.ADMIN), async (req, res) => {
   const user = await UsersService.update(Number(req.params.id), req.body, req.user);
   res.json({ success: true, data: user });
 });
 
 /**
  * DELETE /api/users/:id
- * Deletes a user. Requires Admin role or 'checkBoxDelete' permission.
+ * Deletes a user. Strictly Admin-only.
  */
-router.delete("/:id", hasPermission(PERMISSIONS.DELETE), async (req, res) => {
+router.delete("/:id", authorize(ROLES.ADMIN), async (req, res) => {
   const result = await UsersService.delete(Number(req.params.id), req.user);
   res.json({ success: true, data: result });
 });

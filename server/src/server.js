@@ -1,8 +1,6 @@
 // ============================================================
 // HR-WebApp — Express Server Entry Point
 // ============================================================
-console.log('--- SERVER RESTARTED AT:', new Date().toISOString(), '---');
-
 require("express-async-errors"); // Must be imported before routes
 const express = require("express");
 const cors = require("cors");
@@ -27,7 +25,7 @@ const prisma = require("./config/database");
 
 // Warm up database connection pool
 prisma.$connect()
-  .then(() => prisma.$queryRawUnsafe("SELECT 1"))
+  .then(() => prisma.$queryRaw`SELECT 1`)
   .then(() => console.log("[Database] Connection pool warmed up successfully."))
   .catch((err) => console.error("[Database] Warmup warning:", err.message));
 
@@ -64,13 +62,23 @@ app.use(compression());
 const employeeFilesRoutes = require('./routes/employeeFiles.routes');
 app.use('/api/employees/:id/files', employeeFilesRoutes);
 
-app.use(express.json({ limit: "55mb" }));
-app.use(express.urlencoded({ extended: true, limit: "55mb" }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Serve static files (Employee documents, profile images, etc.)
-// MUST be after cors middleware
+// Serve ONLY profile images statically; employee documents are strictly served via
+// authenticated /api/employee-files/:docId/(view|download) with geographic RBAC.
 const path = require("path");
-app.use("/uploads", express.static(path.join(__dirname, "../../uploads")));
+app.use(
+  "/uploads/employee_images",
+  express.static(path.join(__dirname, "../../uploads/employee_images"), {
+    dotfiles: "deny",
+    index: false,
+    maxAge: "1d",
+    setHeaders: (res) => {
+      res.setHeader("X-Content-Type-Options", "nosniff");
+    },
+  })
+);
 
 // Request logging (dev only)
 if (process.env.NODE_ENV === "development") {
@@ -98,10 +106,15 @@ app.use((_req, res) => {
 });
 
 // ─── Global Multer Error Handler ──────────────────────────
-app.use((err, req, res, next) => {
-  if (err.name === 'MulterError') {
-    console.error("Multer error:", err.code, "field:", err.field);
-    return res.status(400).json({ success: false, message: `Multer Error: ${err.code} on field ${err.field}` });
+app.use((err, _req, res, next) => {
+  if (err.name === "MulterError") {
+    const msg =
+      err.code === "LIMIT_FILE_SIZE"
+        ? "حجم الملف يتجاوز الحد الأقصى المسموح به."
+        : err.code === "LIMIT_FILE_COUNT"
+        ? "عدد الملفات يتجاوز الحد الأقصى المسموح به."
+        : "خطأ في معالجة الملف المرفق.";
+    return res.status(400).json({ success: false, message: msg });
   }
   next(err);
 });

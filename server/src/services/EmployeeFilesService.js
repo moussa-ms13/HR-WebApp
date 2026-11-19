@@ -22,18 +22,34 @@ class EmployeeFilesService {
     const cleanRelative = String(filePath).replace(/^[/\\]+/, "").replace(/^uploads[/\\]+/i, "");
     const fullPath = path.resolve(uploadsRoot, cleanRelative);
 
-    if (!fullPath.toLowerCase().startsWith(uploadsRoot.toLowerCase())) {
+    if (!fullPath.toLowerCase().startsWith(uploadsRoot.toLowerCase() + path.sep)) {
       throw ApiError.forbidden("Invalid file path.");
     }
     return fullPath;
+  }
+
+  static cleanupUploadedFiles(files = []) {
+    for (const file of files) {
+      if (file?.path && fs.existsSync(file.path)) {
+        try {
+          fs.unlinkSync(file.path);
+        } catch (_) {}
+      }
+    }
   }
 
   /**
    * Upload and save multiple file records for an employee (Batch Upload)
    */
   static async uploadMultipleFiles(employeeId, files = [], data = {}, requestingUser) {
-    // 1. Verify employee access via Geographic RBAC
-    const employee = await EmployeesService.getById(employeeId, requestingUser);
+    let employee;
+    try {
+      // 1. Verify employee access via Geographic RBAC
+      employee = await EmployeesService.getById(employeeId, requestingUser);
+    } catch (err) {
+      this.cleanupUploadedFiles(files);
+      throw err;
+    }
 
     if (!files || files.length === 0) {
       throw ApiError.badRequest("No files provided.");
@@ -88,14 +104,6 @@ class EmployeeFilesService {
     CacheService.invalidateEmployeeEcosystem();
 
     return createdRecords;
-  }
-
-  /**
-   * Upload and save a single file record for an employee
-   */
-  static async uploadFile(employeeId, file, data, requestingUser) {
-    const results = await this.uploadMultipleFiles(employeeId, file ? [file] : [], data, requestingUser);
-    return results[0];
   }
 
   /**
@@ -167,13 +175,16 @@ class EmployeeFilesService {
   /**
    * Delete a file
    */
-  static async deleteFile(fileId, requestingUser) {
+  static async deleteFile(fileId, requestingUser, expectedEmployeeId = null) {
     const file = await prisma.employeeFiles.findUnique({
       where: { Id: fileId },
-      include: { Employee: true }
+      include: { Employee: { select: { Id: true, Name: true, LastName: true, Province: true } } }
     });
 
     if (!file) throw ApiError.notFound("File not found.");
+    if (expectedEmployeeId && file.EmployeesId !== Number(expectedEmployeeId)) {
+      throw ApiError.forbidden("الوثيقة لا تنتمي لهذا الموظف.");
+    }
 
     // RBAC check on the parent employee
     await EmployeesService.getById(file.EmployeesId, requestingUser);
@@ -277,16 +288,28 @@ class EmployeeFilesService {
   /**
    * Update file metadata and optionally replace the file
    */
-  static async updateFile(fileId, data, file, requestingUser) {
+  static async updateFile(fileId, data, file, requestingUser, expectedEmployeeId = null) {
     const existingFile = await prisma.employeeFiles.findUnique({
       where: { Id: fileId },
-      include: { Employee: true }
+      include: { Employee: { select: { Id: true, Name: true, LastName: true, Province: true } } }
     });
 
-    if (!existingFile) throw ApiError.notFound("File not found.");
+    if (!existingFile) {
+      this.cleanupUploadedFiles(file ? [file] : []);
+      throw ApiError.notFound("File not found.");
+    }
+    if (expectedEmployeeId && existingFile.EmployeesId !== Number(expectedEmployeeId)) {
+      this.cleanupUploadedFiles(file ? [file] : []);
+      throw ApiError.forbidden("الوثيقة لا تنتمي لهذا الموظف.");
+    }
 
     // RBAC check
-    await EmployeesService.getById(existingFile.EmployeesId, requestingUser);
+    try {
+      await EmployeesService.getById(existingFile.EmployeesId, requestingUser);
+    } catch (err) {
+      this.cleanupUploadedFiles(file ? [file] : []);
+      throw err;
+    }
 
     // Safely destructure data (which is req.body) to prevent crashes if it is undefined or null
     const { DocumentName, Category, DocumentDate } = data || {};

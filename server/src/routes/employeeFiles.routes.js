@@ -1,7 +1,9 @@
 const express = require("express");
 const EmployeeFilesService = require("../services/EmployeeFilesService");
+const EmployeesService = require("../services/EmployeesService");
 const { authenticate, hasPermission, hasAnyPermission } = require("../middleware/auth");
 const upload = require("../middleware/upload");
+const ApiError = require("../utils/ApiError");
 const { PERMISSIONS } = require("../config/constants");
 
 // mergeParams allows this router to access :id from the parent router (employees.routes.js)
@@ -10,34 +12,48 @@ const router = express.Router({ mergeParams: true });
 router.use(authenticate);
 
 /**
+ * Validates numeric employee ID and enforces Geographic RBAC BEFORE Multer touches the filesystem.
+ */
+const verifyEmployeeAccess = async (req, _res, next) => {
+  const employeeId = Number(req.params.id);
+  if (!Number.isInteger(employeeId) || employeeId <= 0) {
+    throw ApiError.badRequest("معرف الموظف غير صالح.");
+  }
+  await EmployeesService.getById(employeeId, req.user);
+  next();
+};
+
+/**
  * GET /api/employees/:id/files
  * Fetch all files for an employee
  */
-router.get("/", async (req, res, next) => {
-  try {
-    const result = await EmployeeFilesService.getFilesByEmployee(
-      Number(req.params.id),
-      req.user,
-      { page: req.query.page, limit: req.query.limit }
-    );
-    res.json({ success: true, ...result });
-  } catch (error) {
-    next(error);
+router.get("/", async (req, res) => {
+  const employeeId = Number(req.params.id);
+  if (!Number.isInteger(employeeId) || employeeId <= 0) {
+    throw ApiError.badRequest("معرف الموظف غير صالح.");
   }
+  const result = await EmployeeFilesService.getFilesByEmployee(
+    employeeId,
+    req.user,
+    { page: req.query.page, limit: req.query.limit }
+  );
+  res.json({ success: true, ...result });
 });
 
 /**
  * POST /api/employees/:id/files
- * Batch upload up to 15 files under the 'files' form-data key
+ * Batch upload up to 20 files
  */
-router.post("/", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), upload.any(), async (req, res, next) => {
-  try {
+router.post(
+  "/",
+  hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT),
+  verifyEmployeeAccess,
+  upload.any(),
+  async (req, res) => {
     const files = req.files || [];
-
     if (files.length === 0) {
       return res.status(400).json({ success: false, message: "لم يتم تحديد أي ملفات للرفع." });
     }
-
     const result = await EmployeeFilesService.uploadMultipleFiles(
       Number(req.params.id),
       files,
@@ -45,17 +61,19 @@ router.post("/", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), upload.any
       req.user
     );
     res.status(201).json({ success: true, data: result });
-  } catch (error) {
-    next(error);
   }
-});
+);
 
 /**
  * POST /api/employees/:id/files/batch
  * Alias batch upload endpoint
  */
-router.post("/batch", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), upload.any(), async (req, res, next) => {
-  try {
+router.post(
+  "/batch",
+  hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT),
+  verifyEmployeeAccess,
+  upload.any(),
+  async (req, res) => {
     const files = req.files || [];
     if (files.length === 0) {
       return res.status(400).json({ success: false, message: "لم يتم تحديد أي ملفات للرفع." });
@@ -67,63 +85,67 @@ router.post("/batch", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), uploa
       req.user
     );
     res.status(201).json({ success: true, data: result });
-  } catch (error) {
-    next(error);
   }
-});
+);
 
 /**
  * POST /api/employees/:id/files/bulk-delete
  * Bulk delete multiple documents by their IDs.
- * Body: { documentIds: [1, 2, 3] }
- *
- * NOTE: express.json() is applied inline because this router is mounted
- * BEFORE the global express.json() middleware in server.js (required for
- * multipart upload routes). Without it, req.body is undefined.
  */
-router.post("/bulk-delete", express.json(), hasPermission(PERMISSIONS.DELETE), async (req, res, next) => {
-  try {
-    const { documentIds } = req.body;
+router.post(
+  "/bulk-delete",
+  express.json({ limit: "1mb" }),
+  hasPermission(PERMISSIONS.DELETE),
+  verifyEmployeeAccess,
+  async (req, res) => {
+    const { documentIds } = req.body || {};
     const result = await EmployeeFilesService.bulkDeleteFiles(
       Number(req.params.id),
       documentIds,
       req.user
     );
     res.json({ success: true, ...result });
-  } catch (error) {
-    next(error);
   }
-});
+);
 
 /**
  * DELETE /api/employees/:id/files/:fileId
- * Delete a document
+ * Delete a document (verifies file belongs to employee :id)
  */
-router.delete("/:fileId", hasPermission(PERMISSIONS.DELETE), async (req, res, next) => {
-  try {
-    const result = await EmployeeFilesService.deleteFile(Number(req.params.fileId), req.user);
-    res.json({ success: true, ...result });
-  } catch (error) {
-    next(error);
+router.delete("/:fileId", hasPermission(PERMISSIONS.DELETE), async (req, res) => {
+  const employeeId = Number(req.params.id);
+  const fileId = Number(req.params.fileId);
+  if (!Number.isInteger(employeeId) || !Number.isInteger(fileId)) {
+    throw ApiError.badRequest("معرف غير صالح.");
   }
+  const result = await EmployeeFilesService.deleteFile(fileId, req.user, employeeId);
+  res.json({ success: true, ...result });
 });
 
 /**
  * PUT /api/employees/:id/files/:fileId
- * Update a document's metadata
+ * Update a document's metadata or replace file (verifies access BEFORE upload)
  */
-router.put("/:fileId", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), upload.single("file"), async (req, res, next) => {
-  try {
+router.put(
+  "/:fileId",
+  hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT),
+  verifyEmployeeAccess,
+  upload.single("file"),
+  async (req, res) => {
+    const fileId = Number(req.params.fileId);
+    if (!Number.isInteger(fileId) || fileId <= 0) {
+      EmployeeFilesService.cleanupUploadedFiles(req.file ? [req.file] : []);
+      throw ApiError.badRequest("معرف الوثيقة غير صالح.");
+    }
     const result = await EmployeeFilesService.updateFile(
-      Number(req.params.fileId),
+      fileId,
       req.body || {},
       req.file,
-      req.user
+      req.user,
+      Number(req.params.id)
     );
     res.json({ success: true, data: result });
-  } catch (error) {
-    next(error);
   }
-});
+);
 
 module.exports = router;

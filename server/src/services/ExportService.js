@@ -1,68 +1,52 @@
-
+// ============================================================
+// ExportService — Facade for Filter Options, Live Previews & Excel Exports
+// ============================================================
 const excel = require("exceljs");
 const prisma = require("../config/database");
 const { ROLES } = require("../config/constants");
 const CacheService = require("./CacheService");
-const {
-  resolveGeographicFilter,
-  buildTokenizedSearch,
-  buildDirectorateCondition,
-} = require("../utils/queryBuilder");
+const { resolveGeographicFilter } = require("../utils/queryBuilder");
 const {
   STANDARD_LEAVE_TYPES,
   STANDARD_CASE_TYPES,
-  formatDate,
   getColumnsDefinition,
-  getDefaultReportTitle,
   buildOfficialExcelWorksheet,
 } = require("./exports/exportColumnsAndStyles");
-const {
-  formatNominalRows,
-  formatLeavesRows,
-  formatSpecialCasesRows,
-  formatDegreesExperienceRows,
-  formatHighPositionsRows,
-} = require("./exports/exportFormatters");
+const { fetchReportData } = require("./exports/exportDataFetchers");
 
 const RAW_FILTER_OPTIONS_CACHE_KEY = "RAW_FILTER_OPTIONS";
 
+const CANONICAL_CATEGORIES = [
+  "اسلاك مشتركة",
+  "أسلاك تقنية (خاصة)",
+  "متعاقدون بدوام كلي",
+  "متعاقدون بدوام جزئي",
+];
+
+function resolveActiveColumns(reportType, selectedColumns) {
+  const availableDefs = getColumnsDefinition(reportType);
+  let activeDefs = availableDefs.filter((col) => col.default);
+  if (Array.isArray(selectedColumns) && selectedColumns.length > 0) {
+    const selectedSet = new Set(selectedColumns);
+    const filtered = availableDefs.filter((col) => selectedSet.has(col.key));
+    if (filtered.length > 0) activeDefs = filtered;
+  }
+  return { availableDefs, activeDefs };
+}
+
 class ExportService {
-
-  static invalidateExportCache() {
-    CacheService.del(RAW_FILTER_OPTIONS_CACHE_KEY);
-  }
-
-  static formatDate(d) {
-    return formatDate(d);
-  }
-
-
   static async _getRawFilterOptions() {
     let raw = CacheService.get(RAW_FILTER_OPTIONS_CACHE_KEY);
     if (raw) return raw;
 
     const [empLocations, jobTitles, dbLeaveStates, dbCases] = await Promise.all([
-      prisma.employees.groupBy({
-        by: ["Province", "Directorate"],
-        _count: true,
-      }),
+      prisma.employees.groupBy({ by: ["Province", "Directorate"], _count: true }),
       prisma.jobTitles.findMany({
-        select: {
-          Id: true,
-          RankName: true,
-          EmploymentCategory: true,
-          CategoryLevel: true,
-        },
+        select: { Id: true, RankName: true, EmploymentCategory: true, CategoryLevel: true },
         orderBy: [{ EmploymentCategory: "asc" }, { RankName: "asc" }],
       }),
-      prisma.employeeStates.groupBy({
-        by: ["StateTypeOrReason"],
-        _count: true,
-      }),
-      prisma.specialCases.groupBy({
-        by: ["CaseType"],
-        _count: true,
-      }),
+      prisma.employeeStates.groupBy({ by: ["StateTypeOrReason"], _count: true }),
+      prisma.specialCases.groupBy({ by: ["CaseType"], _count: true }),
     ]);
 
     raw = { empLocations, jobTitles, dbLeaveStates, dbCases };
@@ -70,10 +54,6 @@ class ExportService {
     return raw;
   }
 
-  /**
-   * 1. GET FILTER OPTIONS
-   * Returns cascading filter data scoped to user's permissions in < 1ms from in-memory cache.
-   */
   static async getFilterOptions(requestingUser) {
     const { allowedProvinces } = resolveGeographicFilter(requestingUser);
     const { empLocations, jobTitles, dbLeaveStates, dbCases } = await this._getRawFilterOptions();
@@ -84,11 +64,9 @@ class ExportService {
     empLocations.forEach((loc) => {
       const prov = (loc.Province || "").trim();
       const dir = (loc.Directorate || "").trim();
-
       if (!prov || !allowedProvinces.includes(prov)) return;
 
       provincesSet.add(prov);
-
       if (dir) {
         if (!directoratesByProvince[prov]) directoratesByProvince[prov] = new Set();
         directoratesByProvince[prov].add(dir);
@@ -100,14 +78,6 @@ class ExportService {
       formattedDirectorates[p] = Array.from(dirs).sort();
     }
 
-    const CANONICAL_CATEGORIES = [
-      "اسلاك مشتركة",
-      "أسلاك تقنية (خاصة)",
-      "متعاقدون بدوام كلي",
-      "متعاقدون بدوام جزئي",
-    ];
-    const employmentCategories = CANONICAL_CATEGORIES;
-
     const dbLeaveTypes = dbLeaveStates.map((s) => (s.StateTypeOrReason || "").trim()).filter(Boolean);
     const leaveTypes = Array.from(new Set([...STANDARD_LEAVE_TYPES, ...dbLeaveTypes])).sort();
 
@@ -117,7 +87,7 @@ class ExportService {
     return {
       provinces: allowedProvinces.filter((p) => provincesSet.has(p) || requestingUser?.role === ROLES.ADMIN),
       directorates: formattedDirectorates,
-      employmentCategories,
+      employmentCategories: CANONICAL_CATEGORIES,
       ranks: jobTitles.map((j) => ({
         id: j.Id,
         rankName: j.RankName,
@@ -129,335 +99,17 @@ class ExportService {
     };
   }
 
-  /**
-   * Metadata & Columns definition per report type
-   */
   static getColumnsDefinition(reportType) {
     return getColumnsDefinition(reportType);
   }
 
-  /**
-   * 2. RESOLVE REPORT ROWS (Optimized Lean Queries with Promise.all)
-   */
   static async getReportData(reportType, filters = {}, requestingUser, limit = null) {
-    const { provinceFilter } = resolveGeographicFilter(requestingUser, filters.province);
-    const baseWhere = { Province: provinceFilter };
-
-    const dirCondition = buildDirectorateCondition(filters.directorate);
-    if (dirCondition) {
-      baseWhere.AND = [...(baseWhere.AND || []), dirCondition];
-    }
-
-    // ──────────────────────────────────────────────
-    // TEMPLATE 1: NOMINAL LIST (القائمة الاسمية)
-    // ──────────────────────────────────────────────
-    if (reportType === "nominal" || !reportType) {
-      const where = { ...baseWhere };
-
-      if (filters.status && String(filters.status).trim()) {
-        const st = String(filters.status).trim();
-        if (st === "متعاقد") {
-          where.AND = [
-            ...(where.AND || []),
-            {
-              OR: [
-                { EmployeeStatus: "متعاقد" },
-                { JobTitle: { EmploymentCategory: { contains: "متعاقد" } } },
-              ],
-            },
-          ];
-        } else if (st === "مرسم" || st === "في الخدمة") {
-          where.EmployeeStatus = { in: ["مرسم", "مثبت", "نشط"] };
-        } else {
-          where.EmployeeStatus = st;
-        }
-      }
-      if (filters.gender && String(filters.gender).trim()) {
-        where.Gender = String(filters.gender).trim();
-      }
-      if (filters.rankId && Number(filters.rankId)) {
-        where.JobTitleId = Number(filters.rankId);
-      }
-      if (filters.employmentCategory && String(filters.employmentCategory).trim()) {
-        where.JobTitle = {
-          EmploymentCategory: String(filters.employmentCategory).trim(),
-        };
-      }
-
-      if (filters.search && String(filters.search).trim()) {
-        const tokenSearch = buildTokenizedSearch(filters.search, (token) => [
-          { Name: { contains: token } },
-          { LastName: { contains: token } },
-          { NameFr: { contains: token } },
-          { LastNameFr: { contains: token } },
-          { NIN: { contains: token } },
-          { JobTitle: { RankName: { contains: token } } },
-          { AssignedPosition: { contains: token } },
-        ]);
-        if (tokenSearch) {
-          where.AND = [...(where.AND || []), ...tokenSearch.AND];
-        }
-      }
-
-      const [totalCount, employees] = await Promise.all([
-        prisma.employees.count({ where }),
-        prisma.employees.findMany({
-          where,
-          select: {
-            Id: true,
-            Name: true,
-            LastName: true,
-            NameFr: true,
-            LastNameFr: true,
-            NIN: true,
-            DateOfBirth: true,
-            PlaceOfBirth: true,
-            Gender: true,
-            MaritalStatus: true,
-            Province: true,
-            Directorate: true,
-            InstallationDate: true,
-            Degree: true,
-            LastDegreeDate: true,
-            EmployeeStatus: true,
-            AssignedPosition: true,
-            PhoneNumber: true,
-            JobTitle: {
-              select: { Id: true, RankName: true, EmploymentCategory: true },
-            },
-          },
-          orderBy: [{ Province: "asc" }, { LastName: "asc" }, { Name: "asc" }],
-          take: limit || undefined,
-        }),
-      ]);
-
-      return { totalCount, rows: formatNominalRows(employees) };
-    }
-
-    // ──────────────────────────────────────────────
-    // TEMPLATE 2: LEAVES REPORT (قائمة العطل والوضعيات)
-    // ──────────────────────────────────────────────
-    if (reportType === "leaves") {
-      const now = new Date();
-      const whereState = {
-        Employee: { ...baseWhere },
-      };
-
-      if (filters.leaveType && String(filters.leaveType).trim()) {
-        whereState.StateTypeOrReason = String(filters.leaveType).trim();
-      }
-
-      if (filters.resumeStatus === "ساري المفعول") {
-        whereState.IsResumed = false;
-        whereState.EndDate = { gte: now };
-      } else if (filters.resumeStatus === "لم يستأنف (متأخر)") {
-        whereState.IsResumed = false;
-        whereState.EndDate = { lt: now };
-      } else if (filters.resumeStatus === "تم الاستئناف") {
-        whereState.IsResumed = true;
-      }
-
-      if (filters.dateFrom) {
-        whereState.StartDate = { gte: new Date(filters.dateFrom) };
-      }
-      if (filters.dateTo) {
-        whereState.EndDate = { ...whereState.EndDate, lte: new Date(filters.dateTo) };
-      }
-
-      const [totalCount, states] = await Promise.all([
-        prisma.employeeStates.count({ where: whereState }),
-        prisma.employeeStates.findMany({
-          where: whereState,
-          select: {
-            Id: true,
-            StateTypeOrReason: true,
-            DaysCount: true,
-            StartDate: true,
-            EndDate: true,
-            IsResumed: true,
-            ActualReturnDate: true,
-            ResumptionDate: true,
-            Notes: true,
-            Employee: {
-              select: {
-                Id: true,
-                Name: true,
-                LastName: true,
-                NameFr: true,
-                LastNameFr: true,
-                Province: true,
-                Directorate: true,
-                JobTitle: { select: { RankName: true } },
-              },
-            },
-          },
-          orderBy: [{ StartDate: "desc" }, { Id: "desc" }],
-          take: limit || undefined,
-        }),
-      ]);
-
-      return { totalCount, rows: formatLeavesRows(states, now) };
-    }
-
-    // ──────────────────────────────────────────────
-    // TEMPLATE 3: SPECIAL CASES (الحالات الخاصة)
-    // ──────────────────────────────────────────────
-    if (reportType === "special-cases") {
-      const whereCase = {
-        Employee: { ...baseWhere },
-      };
-
-      if (filters.caseType && String(filters.caseType).trim()) {
-        whereCase.CaseType = String(filters.caseType).trim();
-      }
-
-      if (filters.activeStatus === "ساري المفعول") {
-        whereCase.IsActive = true;
-      } else if (filters.activeStatus === "منتهي") {
-        whereCase.IsActive = false;
-      }
-
-      if (filters.dateFrom) {
-        whereCase.StartDate = { gte: new Date(filters.dateFrom) };
-      }
-      if (filters.dateTo) {
-        whereCase.EndDate = { lte: new Date(filters.dateTo) };
-      }
-
-      const [totalCount, cases] = await Promise.all([
-        prisma.specialCases.count({ where: whereCase }),
-        prisma.specialCases.findMany({
-          where: whereCase,
-          select: {
-            Id: true,
-            CaseType: true,
-            StartDate: true,
-            EndDate: true,
-            Destination: true,
-            ReferenceDoc: true,
-            IsActive: true,
-            Employee: {
-              select: {
-                Id: true,
-                Name: true,
-                LastName: true,
-                NameFr: true,
-                LastNameFr: true,
-                Province: true,
-                Directorate: true,
-                JobTitle: { select: { RankName: true } },
-              },
-            },
-          },
-          orderBy: [{ StartDate: "desc" }, { Id: "desc" }],
-          take: limit || undefined,
-        }),
-      ]);
-
-      return { totalCount, rows: formatSpecialCasesRows(cases) };
-    }
-
-    // ──────────────────────────────────────────────
-    // TEMPLATE 4: DEGREES & EXPERIENCE (الدرجات وتعويض الخبرة 1.4%)
-    // ──────────────────────────────────────────────
-    if (reportType === "degrees-experience") {
-      const where = { ...baseWhere };
-
-      if (filters.categoryMode === "الدرجات (1-12) للمرسمين") {
-        where.JobTitle = {
-          EmploymentCategory: { not: { contains: "متعاقد" } },
-        };
-      } else if (filters.categoryMode === "تعويض الخبرة (1.4%) للمتعاقدين") {
-        where.JobTitle = {
-          EmploymentCategory: { contains: "متعاقد" },
-        };
-      }
-
-      const [totalCount, employees] = await Promise.all([
-        prisma.employees.count({ where }),
-        prisma.employees.findMany({
-          where,
-          select: {
-            Id: true,
-            Name: true,
-            LastName: true,
-            NameFr: true,
-            LastNameFr: true,
-            Province: true,
-            Directorate: true,
-            Degree: true,
-            LastDegreeDate: true,
-            JobTitle: {
-              select: { RankName: true, EmploymentCategory: true },
-            },
-          },
-          orderBy: [{ Province: "asc" }, { Degree: "desc" }, { LastName: "asc" }],
-          take: limit || undefined,
-        }),
-      ]);
-
-      return { totalCount, rows: formatDegreesExperienceRows(employees) };
-    }
-
-    // ──────────────────────────────────────────────
-    // TEMPLATE 5: HIGH & STRUCTURAL POSITIONS (المناصب العليا)
-    // ──────────────────────────────────────────────
-    if (reportType === "high-positions") {
-      const where = {
-        ...baseWhere,
-        OR: [
-          { PositionHistories: { some: { EndDate: null } } },
-          { AssignedPosition: { notIn: ["", "بدون منصب", "لا يوجد"] } },
-        ],
-      };
-
-      const [totalCount, employees] = await Promise.all([
-        prisma.employees.count({ where }),
-        prisma.employees.findMany({
-          where,
-          select: {
-            Id: true,
-            Name: true,
-            LastName: true,
-            NameFr: true,
-            LastNameFr: true,
-            Province: true,
-            Directorate: true,
-            PositionDate: true,
-            AssignedPosition: true,
-            EmployeeStatus: true,
-            JobTitle: { select: { RankName: true } },
-            PositionHistories: {
-              where: { EndDate: null },
-              orderBy: { InstallDate: "desc" },
-              take: 1,
-              select: { PositionName: true, InstallDate: true, Reference: true },
-            },
-          },
-          orderBy: [{ Province: "asc" }, { LastName: "asc" }],
-          take: limit || undefined,
-        }),
-      ]);
-
-      return { totalCount, rows: formatHighPositionsRows(employees) };
-    }
-
-    return { totalCount: 0, rows: [] };
+    return fetchReportData(reportType, filters, requestingUser, limit);
   }
 
-  /**
-   * 3. GET LIVE PREVIEW
-   */
   static async getPreview(reportType, filters = {}, selectedColumns = [], requestingUser) {
-    const { totalCount, rows } = await this.getReportData(reportType, filters, requestingUser, 50);
-    const availableDefs = this.getColumnsDefinition(reportType);
-
-    let activeDefs = availableDefs.filter((col) => col.default);
-    if (Array.isArray(selectedColumns) && selectedColumns.length > 0) {
-      const selectedSet = new Set(selectedColumns);
-      const filtered = availableDefs.filter((col) => selectedSet.has(col.key));
-      if (filtered.length > 0) activeDefs = filtered;
-    }
+    const { totalCount, rows } = await fetchReportData(reportType, filters, requestingUser, 50);
+    const { availableDefs, activeDefs } = resolveActiveColumns(reportType, selectedColumns);
 
     const preview = rows.map((row) => {
       const item = {};
@@ -480,19 +132,16 @@ class ExportService {
     };
   }
 
-  /**
-   * 4. GENERATE OFFICIAL ALGERIAN RTL EXCEL WORKBOOK
-   */
-  static async exportCustomExcel(reportType, filters = {}, selectedColumns = [], customTitle = "", requestingUser, res) {
-    const { totalCount, rows: rawData } = await this.getReportData(reportType, filters, requestingUser, null);
-    const availableDefs = this.getColumnsDefinition(reportType);
-
-    let activeDefs = availableDefs.filter((col) => col.default);
-    if (Array.isArray(selectedColumns) && selectedColumns.length > 0) {
-      const selectedSet = new Set(selectedColumns);
-      const filtered = availableDefs.filter((col) => selectedSet.has(col.key));
-      if (filtered.length > 0) activeDefs = filtered;
-    }
+  static async exportCustomExcel(
+    reportType,
+    filters = {},
+    selectedColumns = [],
+    customTitle = "",
+    requestingUser,
+    res
+  ) {
+    const { totalCount, rows: rawData } = await fetchReportData(reportType, filters, requestingUser, null);
+    const { activeDefs } = resolveActiveColumns(reportType, selectedColumns);
 
     const workbook = new excel.Workbook();
     workbook.creator = "الجمهورية الجزائرية - وزارة المالية - HR System";
@@ -516,10 +165,17 @@ class ExportService {
   }
 
   /**
-   * Legacy basic export function for backward compatibility
+   * Scoped basic employee export — enforces Geographic RBAC for requestingUser.
    */
-  static async exportEmployeesToExcel(res) {
-    return this.exportCustomExcel("nominal", {}, [], "القائمة الاسمية الشاملة لجميع الموظفين", { role: ROLES.ADMIN }, res);
+  static async exportEmployeesToExcel(res, requestingUser) {
+    return this.exportCustomExcel(
+      "nominal",
+      {},
+      [],
+      "القائمة الاسمية الشاملة لجميع الموظفين",
+      requestingUser,
+      res
+    );
   }
 }
 

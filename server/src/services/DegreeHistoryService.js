@@ -146,13 +146,14 @@ class DegreeHistoryService {
   }
 
   static async update(arg1, arg2, data, requestingUser) {
-    let employeeId = Number(arg1);
+    let employeeId = arg1 ? Number(arg1) : null;
     let degreeId = Number(arg2);
 
-    let existing = await prisma.degreeHistory.findFirst({
-      where: { Id: degreeId, EmployeesId: employeeId },
-    });
-    if (!existing) {
+    let existing = employeeId
+      ? await prisma.degreeHistory.findFirst({ where: { Id: degreeId, EmployeesId: employeeId } })
+      : await prisma.degreeHistory.findUnique({ where: { Id: degreeId } });
+
+    if (!existing && employeeId) {
       // Handle reversed args in case called as (degreeId, employeeId, data, user)
       const reversed = await prisma.degreeHistory.findFirst({
         where: { Id: employeeId, EmployeesId: degreeId },
@@ -161,10 +162,13 @@ class DegreeHistoryService {
         degreeId = Number(arg1);
         employeeId = Number(arg2);
         existing = reversed;
-      } else {
-        throw ApiError.notFound(`سجل الدرجة أو تعويض الخبرة غير موجود.`);
       }
     }
+
+    if (!existing) {
+      throw ApiError.notFound(`سجل الدرجة أو تعويض الخبرة غير موجود.`);
+    }
+    employeeId = existing.EmployeesId;
 
     const employee = await this._assertAccess(employeeId, requestingUser);
 
@@ -236,15 +240,16 @@ class DegreeHistoryService {
   }
 
   static async delete(employeeId, degreeId, requestingUser) {
-    const employee = await this._assertAccess(employeeId, requestingUser);
-
-    const existing = await prisma.degreeHistory.findFirst({
-      where: { Id: degreeId, EmployeesId: employeeId },
-    });
+    const existing = employeeId
+      ? await prisma.degreeHistory.findFirst({ where: { Id: degreeId, EmployeesId: employeeId } })
+      : await prisma.degreeHistory.findUnique({ where: { Id: degreeId } });
     if (!existing) throw ApiError.notFound(`Degree record ${degreeId} not found.`);
 
+    const resolvedEmployeeId = existing.EmployeesId;
+    const employee = await this._assertAccess(resolvedEmployeeId, requestingUser);
+
     await prisma.degreeHistory.delete({ where: { Id: degreeId } });
-    await this._syncEmployeeDegree(employeeId);
+    await this._syncEmployeeDegree(resolvedEmployeeId);
     cacheService.invalidateEmployeeEcosystem();
 
     const empCategory = employee.JobTitle?.EmploymentCategory || "";
@@ -256,7 +261,7 @@ class DegreeHistoryService {
         title: "حذف تعويض خبرة مهنية",
         description: `تم حذف تعويض خبرة مهنية (${existing.DegreeLevel} سنة) من سجل الموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
         usersId: requestingUser.id,
-        employeesId: employeeId,
+        employeesId: resolvedEmployeeId,
         ipAddress: requestingUser.ipAddress,
       });
     } else {
@@ -265,7 +270,7 @@ class DegreeHistoryService {
         title: "حذف سجل درجة",
         description: `تم حذف الدرجة ${existing.DegreeLevel} من سجل الموظف '${employee.LastName} ${employee.Name}' بواسطة '${requestingUser.userName}'.`,
         usersId: requestingUser.id,
-        employeesId: employeeId,
+        employeesId: resolvedEmployeeId,
         ipAddress: requestingUser.ipAddress,
       });
     }

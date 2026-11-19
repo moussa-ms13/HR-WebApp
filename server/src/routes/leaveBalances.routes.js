@@ -3,6 +3,8 @@ const { authenticate, hasPermission, hasAnyPermission } = require("../middleware
 const { ROLES, PERMISSIONS, getAllowedProvinces } = require("../config/constants");
 const prisma = require("../config/database");
 const LeaveBalanceService = require("../services/LeaveBalanceService");
+const SystemRecordService = require("../services/SystemRecordService");
+const CacheService = require("../services/CacheService");
 
 const router = express.Router();
 router.use(authenticate);
@@ -101,8 +103,11 @@ router.get("/employee/:id/:year(\\d+)", async (req, res, next) => {
 router.post("/employee/:id", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res) => {
   try {
     const employeeId = parseInt(req.params.id, 10);
+    if (!Number.isInteger(employeeId) || employeeId <= 0) {
+      return res.status(400).json({ success: false, message: "معرّف الموظف غير صالح" });
+    }
     await assertEmployeeAccess(employeeId, req.user);
-    const { year, totalDays, remainingDays, notes } = req.body;
+    const { year, totalDays, remainingDays, notes } = req.body || {};
 
     const record = await LeaveBalanceService.upsertBalance(employeeId, {
       year,
@@ -110,6 +115,16 @@ router.post("/employee/:id", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT)
       remainingDays: remainingDays ?? 0,
       notes,
     });
+
+    await SystemRecordService.log({
+      userFullName: req.user.fullName,
+      title: "تحديث رصيد العطلة السنوية",
+      description: `تم حفظ رصيد سنة ${record.Year} (المتبقي: ${record.RemainingDays} يوم) للموظف #${employeeId} بواسطة '${req.user.userName}'.`,
+      usersId: req.user.id,
+      employeesId: employeeId,
+      ipAddress: req.user.ipAddress,
+    });
+    CacheService.invalidateEmployeeEcosystem();
 
     res.json({ success: true, data: record, message: `تم حفظ رصيد السنة ${year} بنجاح.` });
   } catch (error) {
@@ -127,9 +142,23 @@ router.delete("/employee/:id/:year", hasPermission(PERMISSIONS.DELETE), async (r
   try {
     const employeeId = parseInt(req.params.id, 10);
     const year = parseInt(req.params.year, 10);
+    if (!Number.isInteger(employeeId) || employeeId <= 0 || !Number.isInteger(year)) {
+      return res.status(400).json({ success: false, message: "معرّف الموظف أو السنة غير صالحة" });
+    }
     await assertEmployeeAccess(employeeId, req.user);
 
     const result = await LeaveBalanceService.deleteBalance(employeeId, year);
+
+    await SystemRecordService.log({
+      userFullName: req.user.fullName,
+      title: "حذف رصيد العطلة السنوية",
+      description: `تم حذف رصيد سنة ${year} للموظف #${employeeId} بواسطة '${req.user.userName}'.`,
+      usersId: req.user.id,
+      employeesId: employeeId,
+      ipAddress: req.user.ipAddress,
+    });
+    CacheService.invalidateEmployeeEcosystem();
+
     res.json(result);
   } catch (error) {
     console.error("Leave Balance Delete Error:", error);

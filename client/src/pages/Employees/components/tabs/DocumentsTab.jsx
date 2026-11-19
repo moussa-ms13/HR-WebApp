@@ -257,7 +257,8 @@ const DocumentsTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
       const contentType = response.headers['content-type'] || 'application/octet-stream';
       const blob = new Blob([response.data], { type: contentType });
       const fileURL = URL.createObjectURL(blob);
-      window.open(fileURL, '_blank');
+      window.open(fileURL, '_blank', 'noopener,noreferrer');
+      setTimeout(() => URL.revokeObjectURL(fileURL), 60000);
     } catch (err) {
       toast.error('فشل في فتح الملف للعرض');
     } finally {

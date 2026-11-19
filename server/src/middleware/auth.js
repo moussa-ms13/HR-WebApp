@@ -12,6 +12,7 @@ const { extractClientIp, asyncLocalStorage } = require("../utils/requestContext"
 // Short-lived cache (5s) for live DB permissions so updates take effect without requiring re-login
 const userPermsCache = new Map();
 const USER_PERMS_TTL_MS = 5000;
+const MAX_USER_PERMS_CACHE = 500;
 
 function invalidateUserPermissionsCache(userId) {
   if (userId !== undefined && userId !== null) {
@@ -56,6 +57,10 @@ async function getLiveUserAuthData(userId) {
     permissions,
   };
 
+  if (!userPermsCache.has(numericId) && userPermsCache.size >= MAX_USER_PERMS_CACHE) {
+    const oldestKey = userPermsCache.keys().next().value;
+    if (oldestKey !== undefined) userPermsCache.delete(oldestKey);
+  }
   userPermsCache.set(numericId, { data, expiresAt: now + USER_PERMS_TTL_MS });
   return data;
 }
@@ -78,10 +83,16 @@ const authenticate = async (req, _res, next) => {
     req.clientIp = cleanIp;
 
     let liveAuth = null;
+    let dbLookupFailed = false;
     try {
       liveAuth = await getLiveUserAuthData(decoded.id ?? decoded.Id);
     } catch (_) {
-      // Fallback to JWT payload if DB lookup fails transiently
+      // Fallback to JWT payload only if DB lookup fails transiently
+      dbLookupFailed = true;
+    }
+
+    if (!dbLookupFailed && !liveAuth) {
+      throw ApiError.unauthorized("User account no longer exists or is inactive.");
     }
 
     req.user = {
@@ -91,7 +102,7 @@ const authenticate = async (req, _res, next) => {
             role: liveAuth.role || decoded.role,
             userName: liveAuth.userName || decoded.userName,
             fullName: liveAuth.fullName || decoded.fullName,
-            permissions: { ...(decoded.permissions || {}), ...liveAuth.permissions },
+            permissions: liveAuth.permissions,
           }
         : {}),
       ipAddress: cleanIp,

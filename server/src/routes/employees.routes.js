@@ -27,7 +27,7 @@ router.use("/:id/special-cases", specialCasesRoutes);
  */
 router.get("/export", hasPermission(PERMISSIONS.EXPORT), async (req, res, next) => {
   try {
-    await ExportService.exportEmployeesToExcel(res);
+    await ExportService.exportEmployeesToExcel(res, req.user);
   } catch (error) {
     next(error);
   }
@@ -98,10 +98,27 @@ router.put("/:id", hasPermission(PERMISSIONS.EDIT), async (req, res) => {
  * Uploads a profile image for an employee
  */
 const uploadImage = require("../middleware/uploadImage");
-router.post("/:id/image", hasPermission(PERMISSIONS.EDIT), uploadImage.single("profileImage"), async (req, res) => {
-  const result = await EmployeesService.uploadProfileImage(Number(req.params.id), req.file, req.user);
-  res.json({ success: true, data: result });
-});
+const ApiError = require("../utils/ApiError");
+
+const verifyEmployeeImageAccess = async (req, _res, next) => {
+  const employeeId = Number(req.params.id);
+  if (!Number.isInteger(employeeId) || employeeId <= 0) {
+    throw ApiError.badRequest("معرف الموظف غير صالح.");
+  }
+  await EmployeesService.getById(employeeId, req.user);
+  next();
+};
+
+router.post(
+  "/:id/image",
+  hasPermission(PERMISSIONS.EDIT),
+  verifyEmployeeImageAccess,
+  uploadImage.single("profileImage"),
+  async (req, res) => {
+    const result = await EmployeesService.uploadProfileImage(Number(req.params.id), req.file, req.user);
+    res.json({ success: true, data: result });
+  }
+);
 
 /**
  * DELETE /api/employees/:id
@@ -235,7 +252,13 @@ router.delete("/:id/degrees/:degreeId", hasPermission(PERMISSIONS.DELETE), async
  */
 router.put("/:id/states/:stateId", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res, next) => {
   try {
-    const state = await EmployeeStatesService.update(Number(req.params.stateId), req.body, req.user);
+    const employeeId = Number(req.params.id);
+    const stateId = Number(req.params.stateId);
+    const existing = await EmployeeStatesService.getById(stateId, req.user);
+    if (existing.EmployeesId !== employeeId) {
+      throw ApiError.forbidden("سجل الإجازة لا ينتمي لهذا الموظف.");
+    }
+    const state = await EmployeeStatesService.update(stateId, req.body, req.user);
     res.json({ success: true, data: state });
   } catch (error) {
     next(error);
@@ -248,7 +271,13 @@ router.put("/:id/states/:stateId", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS
  */
 router.put("/:id/states/:stateId/resume", hasAnyPermission(PERMISSIONS.ADD, PERMISSIONS.EDIT), async (req, res, next) => {
   try {
-    const result = await EmployeeStatesService.resumeLeaveEarly(Number(req.params.stateId), req.body, req.user);
+    const employeeId = Number(req.params.id);
+    const stateId = Number(req.params.stateId);
+    const existing = await EmployeeStatesService.getById(stateId, req.user);
+    if (existing.EmployeesId !== employeeId) {
+      throw ApiError.forbidden("سجل الإجازة لا ينتمي لهذا الموظف.");
+    }
+    const result = await EmployeeStatesService.resumeLeaveEarly(stateId, req.body, req.user);
     res.json({
       success: true,
       data: result.data || result,

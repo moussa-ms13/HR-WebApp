@@ -9,28 +9,14 @@ import { refreshLeaves, refreshSpecialCases, refreshEmployees } from '../../util
 import { useToast } from '../../components/ui/Toast';
 import { normalizeGender } from '../../utils/leaveCertificateConfig';
 import { formatEmployeeName } from '../../utils/employeeUtils';
+import {
+  LEAVE_TYPES,
+  SPECIAL_CASE_TYPES,
+  calculateEndDate,
+} from './utils/leaveModalHelpers';
 
 // Minimum characters before the employee search API is triggered
 const MIN_SEARCH_CHARS = 2;
-
-const LEAVE_TYPES = [
-  "عطلة سنوية",
-  "عطلة مرضية",
-  "عطلة أمومة",
-  "عطلة استثنائية",
-  "عطلة بدون راتب"
-];
-
-const SPECIAL_CASE_TYPES = [
-  "في استيداع",
-  "تأدية الخدمة الوطنية",
-  "توقيف بمقرر",
-  "انتداب",
-  "استقالة",
-  "نقل",
-  "تحويل",
-  "تقاعد"
-];
 
 const PERMANENT_STATES = ["استقالة", "نقل", "تحويل", "تقاعد", "انتداب"];
 
@@ -228,10 +214,7 @@ const EmployeeStateModal = ({ isOpen, onClose, record, onSuccess }) => {
   useEffect(() => {
     if (formData.isOpenEnded) return;
     if (formData.StartDate && formData.DaysCount > 0) {
-      const start = new Date(formData.StartDate);
-      start.setDate(start.getDate() + Number(formData.DaysCount) - 1);
-      const calculatedEnd = start.toISOString().split('T')[0];
-
+      const calculatedEnd = calculateEndDate(formData.StartDate, formData.DaysCount);
       setFormData(prev => {
         if (prev.EndDate !== calculatedEnd) {
           return { ...prev, EndDate: calculatedEnd };

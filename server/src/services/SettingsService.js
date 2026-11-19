@@ -40,15 +40,27 @@ class SettingsService {
    * Batch update settings.
    */
   static async updateSettings(newSettings) {
-    if (!newSettings || typeof newSettings !== 'object') return;
+    if (!newSettings || typeof newSettings !== "object" || Array.isArray(newSettings)) return {};
+
+    const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+    const entries = Object.entries(newSettings)
+      .filter(([key]) => typeof key === "string" && !FORBIDDEN_KEYS.has(key) && /^[a-zA-Z0-9_.-]{1,100}$/.test(key))
+      .slice(0, 50)
+      .map(([key, value]) => [key, String(value ?? "").slice(0, 2000)]);
+
+    if (entries.length === 0) {
+      return await this.getAllSettings();
+    }
+
+    const sanitizedMap = Object.fromEntries(entries);
 
     try {
       await prisma.$transaction(async (tx) => {
-        for (const [key, value] of Object.entries(newSettings)) {
+        for (const [key, value] of entries) {
           await tx.systemSettings.upsert({
             where: { Key: key },
-            update: { Value: String(value), UpdatedAt: new Date() },
-            create: { Key: key, Value: String(value) },
+            update: { Value: value, UpdatedAt: new Date() },
+            create: { Key: key, Value: value },
           });
         }
       });
@@ -57,7 +69,7 @@ class SettingsService {
     } catch (e) {
       console.warn("SystemSettings table not accessible, writing to fallback settings.json");
       const current = fs.existsSync(SETTINGS_FILE) ? JSON.parse(fs.readFileSync(SETTINGS_FILE, "utf-8")) : {};
-      const updated = { ...current, ...newSettings };
+      const updated = { ...current, ...sanitizedMap };
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify(updated, null, 2), "utf-8");
       cacheService.del(CACHE_KEY);
       return updated;

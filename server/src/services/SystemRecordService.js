@@ -122,15 +122,15 @@ class SystemRecordService {
       prisma.systemRecords.count({ where }),
     ]);
 
-    return { 
-      success: true, 
-      data: records, 
+    return {
+      success: true,
+      data: records,
       meta: {
-        total, 
-        page: Number(page), 
-        limit: Number(limit), 
-        totalPages: Math.ceil(total / limit) 
-      }
+        total,
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit),
+      },
     };
   }
 }

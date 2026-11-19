@@ -2,6 +2,7 @@ const prisma = require("../config/database");
 const ApiError = require("../utils/ApiError");
 const SystemRecordService = require("./SystemRecordService");
 const cacheService = require("./CacheService");
+const { sanitizePagination } = require("../utils/queryBuilder");
 
 function normalizeEmploymentCategory(cat) {
   if (!cat) return "";
@@ -19,26 +20,23 @@ class JobTitlesService {
    * Fetch all Job Titles with optional pagination/search
    */
   static async getAll(page = 1, limit = 100, search = "") {
-    const isDefaultAll = Number(page) === 1 && Number(limit) === 100 && !search;
-    const cacheKey = isDefaultAll ? "job_titles_all" : `job_titles_${page}_${limit}_${search}`;
+    const { safePage, safeLimit, skip } = sanitizePagination(page, limit, 500);
+    const trimmedSearch = String(search || "").trim();
+    const cacheKey = !trimmedSearch ? `job_titles_${safePage}_${safeLimit}` : null;
 
-    const cached = cacheService.get(cacheKey);
-    if (cached) {
-      return cached;
+    if (cacheKey) {
+      const cached = cacheService.get(cacheKey);
+      if (cached) return cached;
     }
 
-    const skip = (page - 1) * limit;
-    
-    const where = search 
-      ? { RankName: { contains: search } }
-      : {};
+    const where = trimmedSearch ? { RankName: { contains: trimmedSearch } } : {};
 
     const [total, jobTitles] = await Promise.all([
       prisma.jobTitles.count({ where }),
       prisma.jobTitles.findMany({
         where,
         skip,
-        take: Number(limit),
+        take: safeLimit,
         orderBy: { RankName: "asc" },
         select: {
           Id: true,
@@ -49,20 +47,22 @@ class JobTitlesService {
           AddedDate: true,
           _count: { select: { Employees: true } },
         },
-      })
+      }),
     ]);
 
     const result = {
       data: jobTitles,
       meta: {
         total,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / limit)
-      }
+        page: safePage,
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit),
+      },
     };
 
-    cacheService.set(cacheKey, result);
+    if (cacheKey) {
+      cacheService.set(cacheKey, result);
+    }
     return result;
   }
 

@@ -1,46 +1,28 @@
 // ============================================================
 // DegreeHistory Controller
+// Handles standalone /api/degree-history/:id update & delete
 // ============================================================
 const DegreeHistoryService = require("../services/DegreeHistoryService");
+const ApiError = require("../utils/ApiError");
 
 class DegreeHistoryController {
-  static async getByEmployee(req, res) {
-    const data = await DegreeHistoryService.getByEmployee(
-      Number(req.params.id || req.params.employeeId),
-      req.user
-    );
-    res.json({ success: true, data });
-  }
-
-  static async create(req, res) {
-    const record = await DegreeHistoryService.create(
-      Number(req.params.id || req.params.employeeId),
-      req.body,
-      req.user
-    );
-    res.status(201).json({ success: true, data: record });
-  }
-
   static async update(req, res) {
-    const employeeId = Number(req.params.employeeId || req.params.id);
     const degreeId = Number(req.params.degreeId || req.params.id);
-    const record = await DegreeHistoryService.update(
-      employeeId,
-      degreeId,
-      req.body,
-      req.user
-    );
+    const employeeId = req.params.employeeId ? Number(req.params.employeeId) : null;
+    if (!Number.isInteger(degreeId) || degreeId <= 0) {
+      throw ApiError.badRequest("معرف السجل غير صالح.");
+    }
+    const record = await DegreeHistoryService.update(employeeId, degreeId, req.body, req.user);
     res.json({ success: true, data: record });
   }
 
   static async delete(req, res) {
-    const employeeId = Number(req.params.employeeId || req.params.id);
     const degreeId = Number(req.params.degreeId || req.params.id);
-    const result = await DegreeHistoryService.delete(
-      employeeId,
-      degreeId,
-      req.user
-    );
+    const employeeId = req.params.employeeId ? Number(req.params.employeeId) : null;
+    if (!Number.isInteger(degreeId) || degreeId <= 0) {
+      throw ApiError.badRequest("معرف السجل غير صالح.");
+    }
+    const result = await DegreeHistoryService.delete(employeeId, degreeId, req.user);
     res.json({ success: true, ...result });
   }
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -81,8 +81,12 @@ export default function SpecialCasesList() {
   const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
   const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
 
-  const debouncedSearch = useDebounce(searchInput, 500);
+  const debouncedSearch = useDebounce(searchInput, 300);
   const search = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : '';
+
+  useEffect(() => {
+    setPage(1);
+  }, [search]);
 
   const currentYear = new Date().getFullYear();
   const isPastYear = Boolean(yearFilter) && Number(yearFilter) < currentYear;
@@ -143,7 +147,6 @@ export default function SpecialCasesList() {
 
   const handleSearchChange = (e) => {
     setSearchInput(e.target.value);
-    setPage(1);
   };
 
   const handleAdd = () => {

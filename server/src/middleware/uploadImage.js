@@ -3,39 +3,48 @@ const path = require("path");
 const fs = require("fs");
 const ApiError = require("../utils/ApiError");
 
-// Configure Storage
+const IMAGES_BASE_DIR = path.resolve(__dirname, "../../../uploads/employee_images");
+const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ALLOWED_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const employeeId = req.params.id || "temp";
-    const dir = path.join(__dirname, "../../../uploads/employee_images", String(employeeId));
-    
+  destination: (req, _file, cb) => {
+    const rawId = String(req.params.id || "").trim();
+    if (!/^\d+$/.test(rawId)) {
+      return cb(ApiError.badRequest("معرف الموظف غير صالح."));
+    }
+
+    const dir = path.resolve(IMAGES_BASE_DIR, rawId);
+    if (!dir.toLowerCase().startsWith(IMAGES_BASE_DIR.toLowerCase() + path.sep)) {
+      return cb(ApiError.forbidden("مسار التخزين غير مصرح به."));
+    }
+
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    
-    cb(null, dir);
+    return cb(null, dir);
   },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || "").toLowerCase();
+    const safeExt = ALLOWED_EXTENSIONS.has(ext) ? ext : ".jpg";
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + safeExt);
+  },
 });
 
-// File filter for Images only
-const fileFilter = (req, file, cb) => {
-  const allowedMimeTypes = ["image/jpeg", "image/png", "image/webp"];
-
-  if (allowedMimeTypes.includes(file.mimetype)) {
+const fileFilter = (_req, file, cb) => {
+  const ext = path.extname(file.originalname || "").toLowerCase();
+  if (ALLOWED_MIME_TYPES.has(file.mimetype) && ALLOWED_EXTENSIONS.has(ext)) {
     cb(null, true);
   } else {
     cb(ApiError.badRequest("نوع الملف غير مدعوم. مسموح فقط بالصور (JPEG/PNG/WEBP)."), false);
   }
 };
 
-const uploadImage = multer({ 
+const uploadImage = multer({
   storage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB Limit
-  fileFilter
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 }, // 10MB max for profile photo
+  fileFilter,
 });
 
 module.exports = uploadImage;

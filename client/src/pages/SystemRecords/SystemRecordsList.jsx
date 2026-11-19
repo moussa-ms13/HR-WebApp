@@ -79,7 +79,7 @@ const SystemRecordsList = () => {
     debounceRef.current = setTimeout(() => {
       setSearch(val.trim());
       setPage(1);
-    }, 400);
+    }, 300);
   };
 
   useEffect(() => {
@@ -196,7 +196,7 @@ const SystemRecordsList = () => {
               </tr>
             </thead>
             <tbody className="text-sm divide-y divide-gray-100">
-              {isLoading ? (
+              {isLoading && !data ? (
                 <tr>
                   <td colSpan="7" className="py-12 text-center text-gray-400">
                     <Loader2 size={32} className="animate-spin mx-auto mb-2 text-emerald-500" />
@@ -211,8 +211,8 @@ const SystemRecordsList = () => {
                   </td>
                 </tr>
               ) : (
-                records.map((rec) => (
-                  <tr key={rec?.Id || Math.random()} className="hover:bg-slate-50/50 transition-colors group">
+                records.map((rec, idx) => (
+                  <tr key={rec?.Id ?? `rec-${idx}`} className="hover:bg-slate-50/50 transition-colors group">
                     <td className="py-3 px-4 text-gray-500 font-mono text-xs">{rec?.Id}</td>
                     <td className="py-3 px-4 text-slate-600 text-xs">
                       <DateText value={rec?.CreatedDate} showTime />
