@@ -443,16 +443,22 @@ export function printOfficialDocumentInIframe(Component, props, docTitle = "وث
   <title>${docTitle}</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap');
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
     html, body {
       direction: rtl;
       background: white;
       margin: 0 !important;
       padding: 0 !important;
-      font-family: 'Amiri', 'Traditional Arabic', Arial, sans-serif;
-      color: #000;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
+      font-family: 'Traditional Arabic', 'Amiri', 'Times New Roman', serif;
+      color: #000000;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
     @page {
       size: A4 portrait;
