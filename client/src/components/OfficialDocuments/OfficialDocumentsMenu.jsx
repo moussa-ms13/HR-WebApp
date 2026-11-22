@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, lazy, Suspense } from "react";
-import { FileText, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 const WorkCertificateModal = lazy(() => import("./WorkCertificateModal"));
 
@@ -8,10 +8,6 @@ const OFFICIAL_DOCUMENT_ITEMS = [
   {
     id: "work-certificate",
     label: "شهادة عمل",
-    description: "إصدار شهادة عمل رسمية مع رمز QR",
-    icon: FileText,
-    iconColor: "text-emerald-600",
-    bgColor: "bg-emerald-50",
   },
 ];
 
@@ -47,10 +43,8 @@ export default function OfficialDocumentsMenu({ employee }) {
         <button
           type="button"
           onClick={() => setMenuOpen((prev) => !prev)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold shadow-xs transition-colors hover:bg-[#0e3d29] active:scale-[0.98] cursor-pointer"
-          style={{ backgroundColor: "#124E35" }}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium shadow-sm transition-colors cursor-pointer"
         >
-          <FileText size={16} />
           <span>إصدار وثيقة</span>
           <ChevronDown
             size={15}
@@ -59,35 +53,17 @@ export default function OfficialDocumentsMenu({ employee }) {
         </button>
 
         {menuOpen && (
-          <div className="absolute left-0 mt-2 w-72 rounded-xl bg-white shadow-xl border border-slate-200/90 py-1.5 z-50">
-            <div className="px-3.5 py-1.5 border-b border-slate-100 text-[11px] font-bold text-slate-400">
-              الوثائق الإدارية الرسمية
-            </div>
-            {OFFICIAL_DOCUMENT_ITEMS.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => handleOpenDoc(item.id)}
-                  className="w-full text-right px-3.5 py-2.5 hover:bg-slate-50 flex items-start gap-3 transition-colors cursor-pointer"
-                >
-                  <div
-                    className={`w-8 h-8 rounded-lg ${item.bgColor} ${item.iconColor} flex items-center justify-center shrink-0 mt-0.5`}
-                  >
-                    <Icon size={16} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="text-sm font-bold text-slate-800">
-                      {item.label}
-                    </div>
-                    <div className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                      {item.description}
-                    </div>
-                  </div>
-                </button>
-              );
-            })}
+          <div className="absolute left-0 mt-2 w-48 rounded-xl bg-white shadow-lg border border-slate-200/90 py-1 z-50">
+            {OFFICIAL_DOCUMENT_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleOpenDoc(item.id)}
+                className="w-full text-right px-4 py-2 text-sm font-medium text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 transition-colors cursor-pointer"
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
         )}
       </div>

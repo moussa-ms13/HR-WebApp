@@ -198,8 +198,7 @@ export default function ExperienceDecisionModal({
               type="button"
               onClick={handlePrint}
               disabled={isPrinting}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-semibold shadow-xs transition-colors hover:bg-[#0e3d29] disabled:opacity-60 cursor-pointer"
-              style={{ backgroundColor: "#124E35" }}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium shadow-sm transition-colors disabled:opacity-60 cursor-pointer"
             >
               {isPrinting ? (
                 <Loader2 size={16} className="animate-spin" />

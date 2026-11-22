@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import EmployeeService from '../../services/employeeService';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import EmployeeModal from './EmployeeModal';
-import { Search, MoreVertical, Loader2, Users, ArrowUpDown, ChevronDown, ChevronRight, ChevronLeft, Download, FileText } from 'lucide-react';
+import { Search, MoreVertical, Loader2, Users, ArrowUpDown, ChevronDown, ChevronRight, ChevronLeft, Download } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { refreshEmployees } from '../../utils/cacheManager';
@@ -460,10 +460,9 @@ const EmployeesList = () => {
                                   setOfficialDocState({ type: 'work-certificate', employee: emp });
                                   setOpenDropdownId(null);
                                 }}
-                                className="w-full text-right px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 cursor-pointer"
+                                className="w-full text-right px-4 py-2 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2 cursor-pointer"
                               >
-                                <FileText size={15} />
-                                <span>شهادة عمل</span>
+                                شهادة عمل
                               </button>
 
                               {hasPermission('checkBoxDelete') && (

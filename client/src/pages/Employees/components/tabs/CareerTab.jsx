@@ -835,11 +835,9 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
                     sortedDegrees[1] || null
                   )
                 }
-                className="text-white hover:bg-[#0e3d29] px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-xs cursor-pointer"
-                style={{ backgroundColor: '#124E35' }}
+                className="bg-white text-emerald-700 border border-emerald-200 hover:bg-emerald-50 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
                 title="طباعة مقرر تعويض الخبرة المهنية"
               >
-                <Printer size={16} />
                 طباعة المقرر
               </button>
               <button
