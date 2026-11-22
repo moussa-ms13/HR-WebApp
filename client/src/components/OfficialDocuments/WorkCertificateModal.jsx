@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Printer, FileText, Loader2 } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import WorkCertificateDocument, {
   WORK_CERT_SIGNATORIES,
 } from "./WorkCertificateDocument";
@@ -94,211 +94,196 @@ export default function WorkCertificateModal({ isOpen, onClose, employee }) {
       >
         {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/90 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
-              <FileText size={19} />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-slate-800">
-                إصدار شهادة عمل
-              </h2>
-              <p className="text-xs text-slate-500">
-                {form.fullName || "معاينة فورية وطباعة رسمية بصيغة A4"}
-              </p>
-            </div>
+          <div>
+            <h2 className="text-base font-bold text-slate-800">
+              إصدار شهادة عمل
+            </h2>
+            <p className="text-xs text-slate-500">
+              {form.fullName || "معاينة فورية وطباعة رسمية"}
+            </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={handlePrint}
-              disabled={isPrinting}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium shadow-sm transition-colors disabled:opacity-60 cursor-pointer"
-            >
-              {isPrinting ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Printer size={16} />
-              )}
-              <span>طباعة الشهادة (A4)</span>
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition-colors cursor-pointer"
-              title="إغلاق"
-            >
-              <X size={20} />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition-colors cursor-pointer"
+            title="إغلاق"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         {/* Split Body: Controls (Right) + Live A4 Preview (Left) */}
         <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
           {/* Controls Panel */}
-          <div className="w-full lg:w-[360px] shrink-0 border-b lg:border-b-0 lg:border-l border-slate-200 bg-white overflow-y-auto p-4 space-y-4 custom-scrollbar">
-            {isLoadingEmployee && (
-              <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                <Loader2 size={14} className="animate-spin" />
-                <span>جاري تحميل بيانات الموظف الكاملة...</span>
-              </div>
-            )}
+          <div className="w-full lg:w-[360px] shrink-0 border-b lg:border-b-0 lg:border-l border-slate-200 bg-white flex flex-col min-h-0 max-h-[45vh] lg:max-h-none">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+              {isLoadingEmployee && (
+                <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>جاري تحميل بيانات الموظف الكاملة...</span>
+                </div>
+              )}
 
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide border-b border-slate-100 pb-1.5">
-                بيانات المرجع والختم
-              </h3>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      الرقم التسلسلي
+                    </label>
+                    <input
+                      type="text"
+                      value={form.refNumber}
+                      onChange={(e) => updateField("refNumber", e.target.value)}
+                      placeholder="مثال: 145"
+                      className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      السنة
+                    </label>
+                    <input
+                      type="text"
+                      value={form.year}
+                      onChange={(e) => updateField("year", e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                      dir="ltr"
+                    />
+                  </div>
+                </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    الرقم التسلسلي
+                    تاريخ الإصدار
                   </label>
                   <input
-                    type="text"
-                    value={form.refNumber}
-                    onChange={(e) => updateField("refNumber", e.target.value)}
-                    placeholder="مثال: 145"
+                    type="date"
+                    value={form.issueDate}
+                    onChange={(e) => updateField("issueDate", e.target.value)}
                     className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
                   />
                 </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    السنة
-                  </label>
-                  <input
-                    type="text"
-                    value={form.year}
-                    onChange={(e) => updateField("year", e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                    dir="ltr"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  تاريخ الإصدار
-                </label>
-                <input
-                  type="date"
-                  value={form.issueDate}
-                  onChange={(e) => updateField("issueDate", e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  الممضي (السلطة الموقعة)
-                </label>
-                <select
-                  value={form.signatoryKey}
-                  onChange={(e) => updateField("signatoryKey", e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg bg-white focus:ring-1 focus:ring-emerald-500 outline-none"
-                >
-                  {Object.values(WORK_CERT_SIGNATORIES).map((sig) => (
-                    <option key={sig.id} value={sig.id}>
-                      {sig.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="space-y-3 pt-1">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide border-b border-slate-100 pb-1.5">
-                بيانات الموظف (تعبئة تلقائية قابلة للتعديل)
-              </h3>
-
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    اللقب والاسم
-                  </label>
-                  <input
-                    type="text"
-                    value={form.fullName}
-                    onChange={(e) => updateField("fullName", e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    الجنس
+                    الممضي (السلطة الموقعة)
                   </label>
                   <select
-                    value={form.gender}
-                    onChange={(e) => updateField("gender", e.target.value)}
-                    className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg bg-white focus:ring-1 focus:ring-emerald-500 outline-none"
+                    value={form.signatoryKey}
+                    onChange={(e) => updateField("signatoryKey", e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg bg-white focus:ring-1 focus:ring-emerald-500 outline-none"
                   >
-                    <option value="ذكر">ذكر</option>
-                    <option value="أنثى">أنثى</option>
+                    {Object.values(WORK_CERT_SIGNATORIES).map((sig) => (
+                      <option key={sig.id} value={sig.id}>
+                        {sig.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    تاريخ الميلاد
-                  </label>
-                  <input
-                    type="date"
-                    value={form.birthDate}
-                    onChange={(e) => updateField("birthDate", e.target.value)}
-                    className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                  />
+              <div className="space-y-3 border-t border-slate-100 pt-3">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      اللقب والاسم
+                    </label>
+                    <input
+                      type="text"
+                      value={form.fullName}
+                      onChange={(e) => updateField("fullName", e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      الجنس
+                    </label>
+                    <select
+                      value={form.gender}
+                      onChange={(e) => updateField("gender", e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg bg-white focus:ring-1 focus:ring-emerald-500 outline-none"
+                    >
+                      <option value="ذكر">ذكر</option>
+                      <option value="أنثى">أنثى</option>
+                    </select>
+                  </div>
                 </div>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      تاريخ الميلاد
+                    </label>
+                    <input
+                      type="date"
+                      value={form.birthDate}
+                      onChange={(e) => updateField("birthDate", e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      مكان الميلاد
+                    </label>
+                    <input
+                      type="text"
+                      value={form.birthPlace}
+                      onChange={(e) => updateField("birthPlace", e.target.value)}
+                      placeholder="الشلف"
+                      className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    مكان الميلاد
+                    الرتبة / المنصب
                   </label>
                   <input
                     type="text"
-                    value={form.birthPlace}
-                    onChange={(e) => updateField("birthPlace", e.target.value)}
-                    placeholder="الشلف"
+                    value={form.jobTitle}
+                    onChange={(e) => updateField("jobTitle", e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    مكان التعيين (المديرية / المصلحة)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.directorate}
+                    onChange={(e) => updateField("directorate", e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    تاريخ أول توظيف / تنصيب
+                  </label>
+                  <input
+                    type="date"
+                    value={form.firstHireDate}
+                    onChange={(e) => updateField("firstHireDate", e.target.value)}
                     className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
                   />
                 </div>
               </div>
+            </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  الرتبة / المنصب
-                </label>
-                <input
-                  type="text"
-                  value={form.jobTitle}
-                  onChange={(e) => updateField("jobTitle", e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  مكان التعيين (المديرية / المصلحة)
-                </label>
-                <input
-                  type="text"
-                  value={form.directorate}
-                  onChange={(e) => updateField("directorate", e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  تاريخ أول توظيف / تنصيب
-                </label>
-                <input
-                  type="date"
-                  value={form.firstHireDate}
-                  onChange={(e) => updateField("firstHireDate", e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                />
-              </div>
+            <div className="p-4 border-t border-slate-200 bg-slate-50/70 shrink-0 flex justify-end">
+              <button
+                type="button"
+                onClick={handlePrint}
+                disabled={isPrinting}
+                className="px-6 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium shadow-sm transition-colors disabled:opacity-60 cursor-pointer"
+              >
+                {isPrinting ? "جاري الطباعة..." : "طباعة الشهادة"}
+              </button>
             </div>
           </div>
 

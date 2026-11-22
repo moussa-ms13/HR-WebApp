@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { X, Printer, Award, Loader2 } from "lucide-react";
+import { X, Loader2 } from "lucide-react";
 import ExperienceDecisionDocument from "./ExperienceDecisionDocument";
 import ExperienceRecitalsForm from "./ExperienceRecitalsForm";
 import {
@@ -179,226 +179,210 @@ export default function ExperienceDecisionModal({
       >
         {/* Modal Header */}
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/90 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
-              <Award size={19} />
-            </div>
-            <div>
-              <h2 className="text-base font-bold text-slate-800">
-                إصدار مقرر تعويض الخبرة المهنية
-              </h2>
-              <p className="text-xs text-slate-500">
-                {form.fullName || "إعداد الحيثيات وحساب النسبة تلقائياً"}
-              </p>
-            </div>
+          <div>
+            <h2 className="text-base font-bold text-slate-800">
+              إصدار مقرر تعويض الخبرة المهنية
+            </h2>
+            <p className="text-xs text-slate-500">
+              {form.fullName || "إعداد الحيثيات وحساب النسبة تلقائياً"}
+            </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={handlePrint}
-              disabled={isPrinting}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium shadow-sm transition-colors disabled:opacity-60 cursor-pointer"
-            >
-              {isPrinting ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Printer size={16} />
-              )}
-              <span>طباعة المقرر (A4)</span>
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition-colors cursor-pointer"
-              title="إغلاق"
-            >
-              <X size={20} />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 transition-colors cursor-pointer"
+            title="إغلاق"
+          >
+            <X size={20} />
+          </button>
         </div>
 
         {/* Split Body: Controls (Right) + Live A4 Preview (Left) */}
         <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
           {/* Controls Panel */}
-          <div className="w-full lg:w-[400px] shrink-0 border-b lg:border-b-0 lg:border-l border-slate-200 bg-white overflow-y-auto p-4 space-y-4 custom-scrollbar">
-            {isLoadingEmployee && (
-              <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-                <Loader2 size={14} className="animate-spin" />
-                <span>جاري تحميل بيانات الموظف الكاملة...</span>
-              </div>
-            )}
+          <div className="w-full lg:w-[400px] shrink-0 border-b lg:border-b-0 lg:border-l border-slate-200 bg-white flex flex-col min-h-0 max-h-[45vh] lg:max-h-none">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
+              {isLoadingEmployee && (
+                <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                  <Loader2 size={14} className="animate-spin" />
+                  <span>جاري تحميل بيانات الموظف الكاملة...</span>
+                </div>
+              )}
 
-            {/* Reference & Dates */}
-            <div className="space-y-2.5">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide border-b border-slate-100 pb-1.5">
-                المرجع والتواريخ
-              </h3>
-              <div className="grid grid-cols-2 gap-2.5">
+              {/* Reference & Dates */}
+              <div className="space-y-2.5">
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      رقم المقرر
+                    </label>
+                    <input
+                      type="text"
+                      value={form.refNumber}
+                      onChange={(e) => updateField("refNumber", e.target.value)}
+                      placeholder="مثال: 214"
+                      className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      السنة
+                    </label>
+                    <input
+                      type="text"
+                      value={form.year}
+                      onChange={(e) => updateField("year", e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                      dir="ltr"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      تاريخ سريان المفعول
+                    </label>
+                    <input
+                      type="date"
+                      value={form.effectiveDate}
+                      onChange={(e) => updateField("effectiveDate", e.target.value)}
+                      className="w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      تاريخ التحرير
+                    </label>
+                    <input
+                      type="date"
+                      value={form.issueDate}
+                      onChange={(e) => updateField("issueDate", e.target.value)}
+                      className="w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Experience Calculation */}
+              <div className="space-y-2.5 border-t border-slate-100 pt-3">
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      عدد السنوات
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="60"
+                      value={form.years}
+                      onChange={(e) => updateField("years", e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-sm font-bold border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      نسبة إضافية (%) اختيارية
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={form.extraPercent}
+                      onChange={(e) => updateField("extraPercent", e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-sm font-bold border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                      dir="ltr"
+                    />
+                  </div>
+                </div>
+                <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-center">
+                  <span className="text-xs font-bold text-emerald-900">
+                    {calc.formulaText}
+                  </span>
+                </div>
+              </div>
+
+              {/* Employee & Execution Authority */}
+              <div className="space-y-2.5 border-t border-slate-100 pt-3">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      اللقب والاسم
+                    </label>
+                    <input
+                      type="text"
+                      value={form.fullName}
+                      onChange={(e) => updateField("fullName", e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      الجنس
+                    </label>
+                    <select
+                      value={form.gender}
+                      onChange={(e) => updateField("gender", e.target.value)}
+                      className="w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:ring-1 focus:ring-emerald-500 outline-none"
+                    >
+                      <option value="ذكر">ذكر</option>
+                      <option value="أنثى">أنثى</option>
+                    </select>
+                  </div>
+                </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    رقم المقرر
+                    منصب الشغل / الرتبة
                   </label>
                   <input
                     type="text"
-                    value={form.refNumber}
-                    onChange={(e) => updateField("refNumber", e.target.value)}
-                    placeholder="مثال: 214"
-                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    السنة
-                  </label>
-                  <input
-                    type="text"
-                    value={form.year}
-                    onChange={(e) => updateField("year", e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                    dir="ltr"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    تاريخ سريان المفعول
-                  </label>
-                  <input
-                    type="date"
-                    value={form.effectiveDate}
-                    onChange={(e) => updateField("effectiveDate", e.target.value)}
-                    className="w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    تاريخ التحرير
-                  </label>
-                  <input
-                    type="date"
-                    value={form.issueDate}
-                    onChange={(e) => updateField("issueDate", e.target.value)}
-                    className="w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Experience Calculation */}
-            <div className="space-y-2.5 pt-1">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide border-b border-slate-100 pb-1.5">
-                حساب نسبة تعويض الخبرة المهنية (1,4%)
-              </h3>
-              <div className="grid grid-cols-2 gap-2.5">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    عدد السنوات
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="60"
-                    value={form.years}
-                    onChange={(e) => updateField("years", e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-sm font-bold border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                    dir="ltr"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    نسبة إضافية (%) اختيارية
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={form.extraPercent}
-                    onChange={(e) => updateField("extraPercent", e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-sm font-bold border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                    dir="ltr"
-                  />
-                </div>
-              </div>
-              <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-center">
-                <span className="text-xs font-bold text-emerald-900">
-                  {calc.formulaText}
-                </span>
-              </div>
-            </div>
-
-            {/* Employee & Execution Authority */}
-            <div className="space-y-2.5 pt-1">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide border-b border-slate-100 pb-1.5">
-                بيانات المعني وسلطة التنفيذ
-              </h3>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    اللقب والاسم
-                  </label>
-                  <input
-                    type="text"
-                    value={form.fullName}
-                    onChange={(e) => updateField("fullName", e.target.value)}
+                    value={form.jobTitle}
+                    onChange={(e) => updateField("jobTitle", e.target.value)}
                     className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    الجنس
+                    المديرية / مكان التعيين
                   </label>
-                  <select
-                    value={form.gender}
-                    onChange={(e) => updateField("gender", e.target.value)}
-                    className="w-full px-2 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:ring-1 focus:ring-emerald-500 outline-none"
-                  >
-                    <option value="ذكر">ذكر</option>
-                    <option value="أنثى">أنثى</option>
-                  </select>
+                  <input
+                    type="text"
+                    value={form.directorate}
+                    onChange={(e) => updateField("directorate", e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    المدير الولائي المكلف بالتنفيذ (المادة 02)
+                  </label>
+                  <input
+                    type="text"
+                    value={form.targetDirectorTitle}
+                    onChange={(e) =>
+                      updateField("targetDirectorTitle", e.target.value)
+                    }
+                    className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
+                  />
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  منصب الشغل / الرتبة
-                </label>
-                <input
-                  type="text"
-                  value={form.jobTitle}
-                  onChange={(e) => updateField("jobTitle", e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  المديرية / مكان التعيين
-                </label>
-                <input
-                  type="text"
-                  value={form.directorate}
-                  onChange={(e) => updateField("directorate", e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  المدير الولائي المكلف بالتنفيذ (المادة 02)
-                </label>
-                <input
-                  type="text"
-                  value={form.targetDirectorTitle}
-                  onChange={(e) =>
-                    updateField("targetDirectorTitle", e.target.value)
-                  }
-                  className="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-1 focus:ring-emerald-500 outline-none"
-                />
-              </div>
+
+              {/* 4 Optional Dynamic Recitals */}
+              <ExperienceRecitalsForm form={form} updateField={updateField} />
             </div>
 
-            {/* 4 Optional Dynamic Recitals */}
-            <ExperienceRecitalsForm form={form} updateField={updateField} />
+            <div className="p-4 border-t border-slate-200 bg-slate-50/70 shrink-0 flex justify-end">
+              <button
+                type="button"
+                onClick={handlePrint}
+                disabled={isPrinting}
+                className="px-6 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-sm font-medium shadow-sm transition-colors disabled:opacity-60 cursor-pointer"
+              >
+                {isPrinting ? "جاري الطباعة..." : "طباعة المقرر"}
+              </button>
+            </div>
           </div>
 
           {/* Live A4 Preview Area */}

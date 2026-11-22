@@ -37,11 +37,7 @@ const RecitalToggleCard = ({ checked, onToggle, title, children }) => (
  */
 export default function ExperienceRecitalsForm({ form, updateField }) {
   return (
-    <div className="space-y-2.5 pt-1">
-      <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wide border-b border-slate-100 pb-1.5">
-        الحيثيات المهنية الاختيارية (4 حيثيات)
-      </h3>
-
+    <div className="border-t border-slate-100 pt-3 space-y-2.5">
       {/* 1. Temporary Appointment */}
       <RecitalToggleCard
         checked={form.includeTemp}
