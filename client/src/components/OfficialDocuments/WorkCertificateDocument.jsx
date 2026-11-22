@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useRef, useLayoutEffect } from "react";
 import DocumentQrBadge from "./DocumentQrBadge";
 import {
   formatOfficialDateYMD,
@@ -11,18 +11,70 @@ export const WORK_CERT_SIGNATORIES = {
   sub_director: {
     id: "sub_director",
     label: "المدير الفرعي (الافتراضي)",
-    openingLine:
-      "نحـــن المديــــر الفرعــــي للإدارة العامــــة للأمــــلاك الوطنيــــة بالشــــلف، نشــــهد",
+    openingLine: "نحن المدير الفرعي للإدارة العامة للأملاك الوطنية بالشلف، نشهد",
     signatureTitle: "المدير الفرعي",
   },
   regional_director: {
     id: "regional_director",
     label: "المدير الجهوي للأملاك الوطنية بالشلف",
-    openingLine:
-      "نحــــن المديـــــر الجهـــــوي للأمـــــلاك الوطنيـــــة بالشـــــلف، نشـــــهد",
+    openingLine: "نحن المدير الجهوي للأملاك الوطنية بالشلف، نشهد",
     signatureTitle: "المدير الجهوي",
   },
 };
+
+// Arabic dual-joining letters that can connect to a following Arabic letter via Kashida (ـ)
+const DUAL_JOIN_CHARS = new Set("بتثجحخسشصضطظعغفقكلمنهيئ".split(""));
+const RIGHT_JOIN_REGEX = /[\u0622-\u064A]/;
+const ALEF_VARIANTS = new Set(["\u0622", "\u0623", "\u0625", "\u0627"]);
+
+/**
+ * Finds all valid Arabic dual-joining indices in `chars` where a tatweel (\u0640)
+ * can be inserted without breaking Lam-Alef (لا / لأ / لإ / لآ) ligatures.
+ */
+function getKashidaSlots(chars) {
+  const slots = [];
+  for (let i = 0; i < chars.length - 1; i++) {
+    const curr = chars[i];
+    const next = chars[i + 1];
+    if (!DUAL_JOIN_CHARS.has(curr) || !RIGHT_JOIN_REGEX.test(next)) {
+      continue;
+    }
+    if (curr === "ل" && (ALEF_VARIANTS.has(next) || next === "ل")) {
+      continue;
+    }
+    slots.push(i);
+  }
+  return slots;
+}
+
+/**
+ * Distributes `totalTatweels` (\u0640) evenly round-robin across all valid
+ * Arabic connection points in `baseText`.
+ */
+function applyKashidaCount(baseText, totalTatweels) {
+  if (!baseText || totalTatweels <= 0) return baseText;
+  const chars = Array.from(baseText);
+  const slots = getKashidaSlots(chars);
+  if (slots.length === 0) return baseText;
+
+  const counts = new Array(chars.length).fill(0);
+  const basePerSlot = Math.floor(totalTatweels / slots.length);
+  const remainder = totalTatweels % slots.length;
+
+  for (let s = 0; s < slots.length; s++) {
+    const extra = s < remainder ? 1 : 0;
+    counts[slots[s]] = basePerSlot + extra;
+  }
+
+  let out = "";
+  for (let i = 0; i < chars.length; i++) {
+    out += chars[i];
+    if (counts[i] > 0) {
+      out += "\u0640".repeat(counts[i]);
+    }
+  }
+  return out;
+}
 
 /**
  * LtrDate — Renders YYYY/MM/DD dates in strict LTR order while inheriting the exact
@@ -66,6 +118,95 @@ export default function WorkCertificateDocument({
   const g = getOfficialGenderPhrasing(gender);
   const signatory =
     WORK_CERT_SIGNATORIES[signatoryKey] || WORK_CERT_SIGNATORIES.sub_director;
+
+  const baseOpeningLine = signatory.openingLine.replace(/\u0640/g, "");
+  const openingContainerRef = useRef(null);
+  const openingSpanRef = useRef(null);
+  const [stretchedOpeningLine, setStretchedOpeningLine] = useState(() =>
+    applyKashidaCount(baseOpeningLine, 88)
+  );
+
+  useLayoutEffect(() => {
+    const container = openingContainerRef.current;
+    const span = openingSpanRef.current;
+    if (!container || !span) return;
+
+    let isCancelled = false;
+
+    const calibrateKashida = () => {
+      if (isCancelled || !openingContainerRef.current || !openingSpanRef.current) {
+        return;
+      }
+      const pEl = openingContainerRef.current;
+      const sEl = openingSpanRef.current;
+      const maxWidth = pEl.clientWidth;
+      if (!maxWidth || maxWidth <= 0) return;
+
+      const targetWidth = maxWidth * 0.992;
+
+      sEl.textContent = baseOpeningLine;
+      const baseWidth = sEl.offsetWidth;
+      if (baseWidth >= targetWidth) {
+        setStretchedOpeningLine(baseOpeningLine);
+        return;
+      }
+
+      const probeCount = 25;
+      sEl.textContent = applyKashidaCount(baseOpeningLine, probeCount);
+      const probeWidth = sEl.offsetWidth;
+      const pxPerTatweel = (probeWidth - baseWidth) / probeCount;
+
+      if (pxPerTatweel <= 0.05) {
+        setStretchedOpeningLine(baseOpeningLine);
+        return;
+      }
+
+      let bestCount = Math.max(
+        0,
+        Math.floor((targetWidth - baseWidth) / pxPerTatweel)
+      );
+
+      sEl.textContent = applyKashidaCount(baseOpeningLine, bestCount);
+      let currWidth = sEl.offsetWidth;
+
+      let guard = 0;
+      while (currWidth < targetWidth && guard < 80) {
+        const nextText = applyKashidaCount(baseOpeningLine, bestCount + 1);
+        sEl.textContent = nextText;
+        const nextWidth = sEl.offsetWidth;
+        if (nextWidth > maxWidth - 1) {
+          break;
+        }
+        bestCount += 1;
+        currWidth = nextWidth;
+        guard += 1;
+      }
+
+      while (currWidth > maxWidth - 1 && bestCount > 0 && guard < 160) {
+        bestCount -= 1;
+        sEl.textContent = applyKashidaCount(baseOpeningLine, bestCount);
+        currWidth = sEl.offsetWidth;
+        guard += 1;
+      }
+
+      const finalString = applyKashidaCount(baseOpeningLine, bestCount);
+      sEl.textContent = finalString;
+      setStretchedOpeningLine(finalString);
+    };
+
+    calibrateKashida();
+
+    const ownerDoc = container.ownerDocument || document;
+    if (ownerDoc.fonts && ownerDoc.fonts.ready) {
+      ownerDoc.fonts.ready.then(() => {
+        if (!isCancelled) calibrateKashida();
+      });
+    }
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [baseOpeningLine]);
 
   const formattedBirthDate = formatOfficialDateYMD(birthDate, "..../../..");
   const formattedHireDate = formatOfficialDateYMD(firstHireDate, "..../../..");
@@ -210,8 +351,9 @@ export default function WorkCertificateDocument({
           </div>
         </div>
 
-        {/* OPENING SIGNATORY: Smooth Arabic Kashida Elongation With Natural Word Spacing */}
+        {/* OPENING SIGNATORY: Dynamic Full-Width Arabic Kashida Stretch With Normal Word Spacing */}
         <p
+          ref={openingContainerRef}
           style={{
             width: "100%",
             fontSize: "14.5pt",
@@ -222,9 +364,18 @@ export default function WorkCertificateDocument({
             wordSpacing: "normal",
             whiteSpace: "nowrap",
             textIndent: "0",
+            overflow: "hidden",
           }}
         >
-          {signatory.openingLine}
+          <span
+            ref={openingSpanRef}
+            style={{
+              display: "inline-block",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {stretchedOpeningLine}
+          </span>
         </p>
 
         {/* MAIN BODY */}
