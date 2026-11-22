@@ -1,40 +1,11 @@
 import React from "react";
 import DocumentQrBadge from "./DocumentQrBadge";
 import {
+  formatOfficialDateYMD,
   getOfficialGenderPhrasing,
   buildWorkCertificateQrPayload,
   generateOfficialRefCode,
 } from "./officialDocumentUtils";
-
-/**
- * Formats dates strictly as YYYY/MM/DD (e.g., 2001/07/01, 2024/05/02, 2026/11/22),
- * ignoring sentinel SQL dates (year <= 1900).
- */
-function formatDateYMD(dateInput, fallback = "..../../..") {
-  if (!dateInput) return fallback;
-  if (typeof dateInput === "string") {
-    const trimmed = dateInput.trim();
-    if (!trimmed) return fallback;
-    const dmyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (dmyMatch) {
-      const year = parseInt(dmyMatch[3], 10);
-      if (year <= 1900) return fallback;
-      return `${year}/${dmyMatch[2].padStart(2, "0")}/${dmyMatch[1].padStart(2, "0")}`;
-    }
-    const ymdMatch = trimmed.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
-    if (ymdMatch) {
-      const year = parseInt(ymdMatch[1], 10);
-      if (year <= 1900) return fallback;
-      return `${year}/${ymdMatch[2].padStart(2, "0")}/${ymdMatch[3].padStart(2, "0")}`;
-    }
-  }
-  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
-  if (isNaN(d.getTime()) || d.getFullYear() <= 1900) return fallback;
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}/${month}/${day}`;
-}
 
 export const WORK_CERT_SIGNATORIES = {
   sub_director: {
@@ -51,15 +22,21 @@ export const WORK_CERT_SIGNATORIES = {
   },
 };
 
-const LtrDate = ({ value }) => (
+/**
+ * LtrDate — Renders YYYY/MM/DD dates in strict LTR order while inheriting the exact
+ * font family, font size, and font weight of the surrounding Arabic text.
+ */
+const LtrDate = ({ value, bold = true }) => (
   <span
     dir="ltr"
     style={{
       display: "inline-block",
       direction: "ltr",
       unicodeBidi: "isolate",
-      fontFamily: "Arial, 'Segoe UI', Tahoma, sans-serif",
-      fontWeight: "bold",
+      fontFamily: "inherit",
+      fontSize: "inherit",
+      lineHeight: "inherit",
+      fontWeight: bold ? "bold" : "inherit",
     }}
   >
     {`\u2066${value}\u2069`}
@@ -88,9 +65,9 @@ export default function WorkCertificateDocument({
   const signatory =
     WORK_CERT_SIGNATORIES[signatoryKey] || WORK_CERT_SIGNATORIES.sub_director;
 
-  const formattedBirthDate = formatDateYMD(birthDate, "..../../..");
-  const formattedHireDate = formatDateYMD(firstHireDate, "..../../..");
-  const formattedIssueDate = formatDateYMD(issueDate, "..../../..");
+  const formattedBirthDate = formatOfficialDateYMD(birthDate, "..../../..");
+  const formattedHireDate = formatOfficialDateYMD(firstHireDate, "..../../..");
+  const formattedIssueDate = formatOfficialDateYMD(issueDate, "..../../..");
   const displayRefNum = String(refNumber || "").trim() || ".............";
   const displayYear = year || new Date().getFullYear();
 
@@ -117,7 +94,7 @@ export default function WorkCertificateDocument({
         maxHeight: "297mm",
         backgroundColor: "#ffffff",
         color: "#000000",
-        padding: "16mm 15mm 20mm 15mm",
+        padding: "15mm 15mm 18mm 15mm",
         boxSizing: "border-box",
         fontFamily: '"Amiri", "Traditional Arabic", Arial, sans-serif',
         display: "flex",
@@ -133,9 +110,9 @@ export default function WorkCertificateDocument({
         <div
           style={{
             textAlign: "center",
-            fontSize: "15pt",
+            fontSize: "14.5pt",
             fontWeight: "bold",
-            marginBottom: "10mm",
+            marginBottom: "9mm",
             letterSpacing: "0.3px",
           }}
         >
@@ -149,7 +126,7 @@ export default function WorkCertificateDocument({
             justifyContent: "space-between",
             alignItems: "flex-start",
             direction: "ltr",
-            marginBottom: "18mm",
+            marginBottom: "15mm",
           }}
         >
           {/* TOP LEFT: QR Code + Issue Date */}
@@ -158,11 +135,11 @@ export default function WorkCertificateDocument({
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: "8px",
-              minWidth: "150px",
+              gap: "6px",
+              minWidth: "155px",
             }}
           >
-            <DocumentQrBadge payload={qrPayload} referenceCode={qrRefCode} size={66} />
+            <DocumentQrBadge payload={qrPayload} referenceCode={qrRefCode} size={84} />
             <div
               dir="rtl"
               style={{
@@ -184,7 +161,7 @@ export default function WorkCertificateDocument({
               textAlign: "right",
               fontSize: "13pt",
               fontWeight: "bold",
-              lineHeight: "1.65",
+              lineHeight: "1.6",
             }}
           >
             <div>وزارة المالية</div>
@@ -204,12 +181,12 @@ export default function WorkCertificateDocument({
           </div>
         </div>
 
-        {/* CENTER TITLE: Framed Bold & Underlined */}
-        <div style={{ textAlign: "center", marginBottom: "18mm" }}>
+        {/* CENTER TITLE: Framed Bold & Underlined (Horizontally Stretched Without Increasing Font Size) */}
+        <div style={{ textAlign: "center", marginBottom: "16mm" }}>
           <div
             style={{
               display: "inline-block",
-              padding: "8px 56px 12px 56px",
+              padding: "7px 68px 11px 68px",
               border: "1.5px solid #1f2937",
               borderRadius: "8px",
               backgroundColor: "#f3f4f6",
@@ -218,28 +195,30 @@ export default function WorkCertificateDocument({
           >
             <span
               style={{
-                fontSize: "22pt",
+                fontSize: "21pt",
                 fontWeight: "bold",
                 textDecoration: "underline",
                 textUnderlineOffset: "5px",
-                letterSpacing: "1px",
+                wordSpacing: "10px",
                 color: "#000000",
               }}
             >
-              شهادة عمل
+              شـهـــــادة عـمـــــل
             </span>
           </div>
         </div>
 
-        {/* OPENING SIGNATORY */}
+        {/* OPENING SIGNATORY: Full-Width Horizontal Distribution Without Increasing Font Size */}
         <p
           style={{
-            fontSize: "15pt",
+            width: "100%",
+            fontSize: "14.5pt",
             fontWeight: "bold",
             lineHeight: "2.1",
             marginBottom: "10mm",
-            textAlign: "right",
-            textIndent: "10mm",
+            textAlign: "justify",
+            textAlignLast: "justify",
+            textIndent: "0",
           }}
         >
           {signatory.openingLine}
@@ -249,15 +228,15 @@ export default function WorkCertificateDocument({
         <p
           style={{
             width: "100%",
-            fontSize: "15pt",
-            lineHeight: "2.35",
+            fontSize: "14.5pt",
+            lineHeight: "2.3",
             textAlign: "justify",
             marginBottom: "12mm",
             color: "#111827",
           }}
         >
           بأن {g.title}{" "}
-          <strong style={{ fontSize: "15.5pt", color: "#000000" }}>
+          <strong style={{ color: "#000000" }}>
             {fullName || "........................."}
           </strong>{" "}
           {g.born} بتاريخ <LtrDate value={formattedBirthDate} />{" "}
@@ -279,11 +258,11 @@ export default function WorkCertificateDocument({
         {/* CLOSING SENTENCE */}
         <p
           style={{
-            fontSize: "15pt",
+            fontSize: "14.5pt",
             lineHeight: "2.1",
             textAlign: "right",
             textIndent: "10mm",
-            marginBottom: "20mm",
+            marginBottom: "18mm",
             color: "#111827",
           }}
         >
@@ -300,23 +279,23 @@ export default function WorkCertificateDocument({
           }}
         >
           <div style={{ width: "260px", textAlign: "center" }}>
-            <div style={{ fontSize: "15pt", fontWeight: "bold", color: "#000000" }}>
+            <div style={{ fontSize: "14.5pt", fontWeight: "bold", color: "#000000" }}>
               {signatory.signatureTitle}
             </div>
-            <div style={{ height: "18mm" }} />
+            <div style={{ height: "16mm" }} />
           </div>
         </div>
       </div>
 
-      {/* ══════════════ BOTTOM RIGHT COPIES FOOTER ══════════════ */}
+      {/* ══════════════ BOTTOM RIGHT COPIES FOOTER (Raised Upward) ══════════════ */}
       <div
         style={{
           textAlign: "right",
           fontSize: "12pt",
           lineHeight: "1.7",
           color: "#1f2937",
-          paddingTop: "6mm",
-          marginBottom: "14mm",
+          paddingTop: "4mm",
+          marginBottom: "22mm",
         }}
       >
         <div style={{ fontWeight: "bold", textDecoration: "underline", marginBottom: "2px" }}>

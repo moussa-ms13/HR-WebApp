@@ -306,47 +306,73 @@ export function generateOfficialRefCode(prefix, employeeId, refNumber, year) {
   return `${prefix}-${yr}-${numPart}-${idPart}`;
 }
 
+/**
+ * Formats a date into YYYY/MM/DD without timezone shift.
+ * Ignores sentinel SQL dates (year <= 1900).
+ */
+export function formatOfficialDateYMD(dateInput, fallback = "-") {
+  if (!dateInput) return fallback;
+  if (typeof dateInput === "string") {
+    const trimmed = dateInput.trim();
+    if (!trimmed) return fallback;
+    const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (dmy) {
+      const year = parseInt(dmy[3], 10);
+      if (year <= 1900) return fallback;
+      return `${year}/${dmy[2].padStart(2, "0")}/${dmy[1].padStart(2, "0")}`;
+    }
+    const ymd = trimmed.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})/);
+    if (ymd) {
+      const year = parseInt(ymd[1], 10);
+      if (year <= 1900) return fallback;
+      return `${year}/${ymd[2].padStart(2, "0")}/${ymd[3].padStart(2, "0")}`;
+    }
+  }
+  const d = dateInput instanceof Date ? dateInput : new Date(dateInput);
+  if (isNaN(d.getTime()) || d.getFullYear() <= 1900) return fallback;
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function buildWorkCertificateQrPayload({
   refNumber,
   year,
   issueDate,
-  employeeId,
   fullName,
   jobTitle,
   directorate,
   firstHireDate,
 }) {
+  const yr = year || new Date().getFullYear();
+  const ref = String(refNumber || "").trim() || "-";
   return [
-    `Document: شهادة عمل`,
-    `Ref: ${refNumber || "N/A"}/م.ج.أ.و.ش/${year || new Date().getFullYear()}`,
-    `Issue Date: ${formatOfficialDate(issueDate, "N/A")}`,
-    `Employee ID: ${employeeId || "N/A"}`,
-    `Name: ${fullName || "N/A"}`,
-    `Job Title: ${jobTitle || "N/A"}`,
-    `Directorate: ${directorate || "N/A"}`,
-    `Hire Date: ${formatOfficialDate(firstHireDate, "N/A")}`,
+    `شهادة عمل`,
+    `المرجع: ${ref}/م.ج.أ.و.ش/${yr}`,
+    `التاريخ: ${formatOfficialDateYMD(issueDate, "-")}`,
+    `الموظف: ${String(fullName || "").trim() || "-"}`,
+    `الرتبة: ${String(jobTitle || "").trim() || "-"}`,
+    `الهيئة: ${String(directorate || "").trim() || "-"}`,
+    `تاريخ التنصيب: ${formatOfficialDateYMD(firstHireDate, "-")}`,
   ].join("\n");
 }
 
 export function buildExperienceDecisionQrPayload({
   refNumber,
   year,
-  employeeId,
   fullName,
   jobTitle,
   years,
   totalPercentStr,
   effectiveDate,
 }) {
+  const yr = year || new Date().getFullYear();
+  const ref = String(refNumber || "").trim() || "-";
   return [
-    `Document: مقرر تعويض الخبرة المهنية`,
-    `Ref: ${refNumber || "N/A"}/م.ج.أ.و.ش/${year || new Date().getFullYear()}`,
-    `Employee ID: ${employeeId || "N/A"}`,
-    `Name: ${fullName || "N/A"}`,
-    `Job Title: ${jobTitle || "N/A"}`,
-    `Years: ${years ?? 0}`,
-    `Total Percentage: ${totalPercentStr || "0,00"}%`,
-    `Effective Date: ${formatOfficialDate(effectiveDate, "N/A")}`,
+    `مقرر تعويض الخبرة المهنية`,
+    `المرجع: ${ref}/م.ج.أ.و.ش/${yr}`,
+    `الموظف: ${String(fullName || "").trim() || "-"}`,
+    `الرتبة: ${String(jobTitle || "").trim() || "-"}`,
+    `الأقدمية: ${years ?? 0} سنة (${totalPercentStr || "0,00"}%)`,
+    `تاريخ السريان: ${formatOfficialDateYMD(effectiveDate, "-")}`,
   ].join("\n");
 }
 

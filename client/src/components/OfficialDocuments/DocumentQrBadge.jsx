@@ -3,10 +3,13 @@ import { QRCodeSVG } from "qrcode.react";
 
 /**
  * DocumentQrBadge — Print-ready QR code badge positioned in the top-left A4 header area,
- * mirroring the exact placement, size, and typography of leave certificates.
+ * with crisp 84x84 SVG dimensions, white quiet-zone padding, and level="M" error correction
+ * for instant mobile camera decoding.
  */
-export default function DocumentQrBadge({ payload = "", referenceCode = "", size = 64 }) {
-  if (!payload && !referenceCode) return null;
+export default function DocumentQrBadge({ payload = "", referenceCode = "", size = 84 }) {
+  const safePayload =
+    String(payload || "").trim() ||
+    "وثيقة إدارية رسمية - المديرية الجهوية للأملاك الوطنية بالشلف";
 
   return (
     <div
@@ -15,25 +18,35 @@ export default function DocumentQrBadge({ payload = "", referenceCode = "", size
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "flex-start",
-        width: "130px",
-        minWidth: "120px",
+        width: "136px",
+        minWidth: "126px",
         direction: "ltr",
       }}
     >
-      {payload && (
+      <div
+        style={{
+          backgroundColor: "#ffffff",
+          padding: "4px",
+          borderRadius: "2px",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <QRCodeSVG
-          value={payload}
+          value={safePayload}
           size={size}
           level="M"
+          marginSize={1}
           bgColor="#ffffff"
           fgColor="#000000"
         />
-      )}
+      </div>
       {referenceCode && (
         <div
           dir="ltr"
           style={{
-            marginTop: "4px",
+            marginTop: "3px",
             fontSize: "7.5pt",
             fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
             fontWeight: "600",
