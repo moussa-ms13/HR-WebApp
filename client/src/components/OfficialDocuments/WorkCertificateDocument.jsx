@@ -77,6 +77,24 @@ function applyKashidaCount(baseText, totalTatweels) {
 }
 
 /**
+ * Formats birthplace directly attached to preposition "ب" without parentheses or tatweel
+ * (e.g. "الشلف - الشلف" -> "بالشلف - الشلف", "تيارت" -> "بتيارت").
+ */
+function formatAttachedBirthPlace(rawPlace) {
+  const cleaned = String(rawPlace || "")
+    .replace(/[()]/g, "")
+    .trim();
+  if (!cleaned) return "بـ ............";
+  if (cleaned.startsWith("بـ")) {
+    return `ب${cleaned.slice(2).trim()}`;
+  }
+  if (cleaned.startsWith("بال")) {
+    return cleaned;
+  }
+  return `ب${cleaned}`;
+}
+
+/**
  * LtrDate — Renders YYYY/MM/DD dates in strict LTR order while inheriting the exact
  * font family, font size, and font weight of the surrounding Arabic text.
  */
@@ -91,6 +109,7 @@ const LtrDate = ({ value, bold = true }) => (
       fontSize: "inherit",
       lineHeight: "inherit",
       fontWeight: bold ? "bold" : "inherit",
+      color: "#000000",
     }}
   >
     {`\u2066${value}\u2069`}
@@ -358,13 +377,14 @@ export default function WorkCertificateDocument({
             width: "100%",
             fontSize: "14.5pt",
             fontWeight: "bold",
-            lineHeight: "2.1",
-            marginBottom: "10mm",
+            lineHeight: "2",
+            marginBottom: "6mm",
             textAlign: "right",
             wordSpacing: "normal",
             whiteSpace: "nowrap",
             textIndent: "0",
             overflow: "hidden",
+            color: "#000000",
           }}
         >
           <span
@@ -372,6 +392,7 @@ export default function WorkCertificateDocument({
             style={{
               display: "inline-block",
               whiteSpace: "nowrap",
+              color: "#000000",
             }}
           >
             {stretchedOpeningLine}
@@ -386,7 +407,7 @@ export default function WorkCertificateDocument({
             lineHeight: "2.3",
             textAlign: "justify",
             marginBottom: "12mm",
-            color: "#111827",
+            color: "#000000",
           }}
         >
           بأن {g.title}{" "}
@@ -394,9 +415,9 @@ export default function WorkCertificateDocument({
             {fullName || "........................."}
           </strong>{" "}
           {g.born} بتاريخ <LtrDate value={formattedBirthDate} />{" "}
-          <span dir="rtl" style={{ unicodeBidi: "isolate" }}>
-            بـ (<strong>{birthPlace || "..............."}</strong>)
-          </span>
+          <strong style={{ color: "#000000" }}>
+            {formatAttachedBirthPlace(birthPlace)}
+          </strong>
           ، {g.practices} {g.asRole}{" "}
           <strong style={{ color: "#000000" }}>
             {jobTitle || "........................."}
@@ -417,7 +438,7 @@ export default function WorkCertificateDocument({
             textAlign: "right",
             textIndent: "10mm",
             marginBottom: "18mm",
-            color: "#111827",
+            color: "#000000",
           }}
         >
           سلمت {g.toHimHer} هذه الشهادة بناءً على {g.hisHerRequest} وذلك للإدلاء بها فيما
@@ -447,7 +468,7 @@ export default function WorkCertificateDocument({
           textAlign: "right",
           fontSize: "12pt",
           lineHeight: "1.7",
-          color: "#1f2937",
+          color: "#000000",
           paddingTop: "4mm",
           marginBottom: "22mm",
         }}
