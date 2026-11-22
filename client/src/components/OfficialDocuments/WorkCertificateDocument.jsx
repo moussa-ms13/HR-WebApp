@@ -11,13 +11,15 @@ export const WORK_CERT_SIGNATORIES = {
   sub_director: {
     id: "sub_director",
     label: "المدير الفرعي (الافتراضي)",
-    openingLine: "نحن المدير الفرعي للإدارة العامة للأملاك الوطنية بالشلف، نشهد",
+    openingLine:
+      "نحـــن المديــــر الفرعــــي للإدارة العامــــة للأمــــلاك الوطنيــــة بالشــــلف، نشــــهد",
     signatureTitle: "المدير الفرعي",
   },
   regional_director: {
     id: "regional_director",
     label: "المدير الجهوي للأملاك الوطنية بالشلف",
-    openingLine: "نحن المدير الجهوي للأملاك الوطنية بالشلف، نشهد",
+    openingLine:
+      "نحــــن المديـــــر الجهـــــوي للأمـــــلاك الوطنيـــــة بالشـــــلف، نشـــــهد",
     signatureTitle: "المدير الجهوي",
   },
 };
@@ -208,7 +210,7 @@ export default function WorkCertificateDocument({
           </div>
         </div>
 
-        {/* OPENING SIGNATORY: Full-Width Horizontal Distribution Without Increasing Font Size */}
+        {/* OPENING SIGNATORY: Smooth Arabic Kashida Elongation With Natural Word Spacing */}
         <p
           style={{
             width: "100%",
@@ -216,8 +218,9 @@ export default function WorkCertificateDocument({
             fontWeight: "bold",
             lineHeight: "2.1",
             marginBottom: "10mm",
-            textAlign: "justify",
-            textAlignLast: "justify",
+            textAlign: "right",
+            wordSpacing: "normal",
+            whiteSpace: "nowrap",
             textIndent: "0",
           }}
         >
