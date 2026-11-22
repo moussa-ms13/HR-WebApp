@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, lazy, Suspense } from 'react';
 import useSWR from 'swr';
 import apiClient from '../../../../services/apiClient';
 import { useAuth } from '../../../../context/AuthContext';
 import { useToast } from '../../../../components/ui/Toast';
 import { DateText, normalizeEmbeddedDates } from '../../../../utils/dateUtils';
 import { refreshEmployeeCareer, refreshEmployees } from '../../../../utils/cacheManager';
+import { findContractMovement } from '../../../../components/OfficialDocuments/officialDocumentUtils';
 import {
   Briefcase,
   Clock,
@@ -18,7 +19,12 @@ import {
   FileText,
   Award,
   MessageSquare,
+  Printer,
 } from 'lucide-react';
+
+const ExperienceDecisionModal = lazy(() =>
+  import('../../../../components/OfficialDocuments/ExperienceDecisionModal')
+);
 
 const fetcher = async (url) => {
   const res = await apiClient.get(url);
@@ -122,6 +128,21 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
   const [showContractualModal, setShowContractualModal] = useState(false);
   const [editingDegree, setEditingDegree] = useState(null);
   const [editingContractualDegree, setEditingContractualDegree] = useState(null);
+  const [experiencePrintState, setExperiencePrintState] = useState({
+    open: false,
+    experienceRecord: null,
+    previousExperienceRecord: null,
+  });
+
+  const contractMovement = findContractMovement(rankHistory);
+
+  const handlePrintExperienceDecision = (record = null, previousRecord = null) => {
+    setExperiencePrintState({
+      open: true,
+      experienceRecord: record,
+      previousExperienceRecord: previousRecord,
+    });
+  };
 
   const initialContractualForm = {
     Years: '',
@@ -796,7 +817,7 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
            ======================================================== */
         <div className="bg-white rounded-xl border border-gray-200 overflow-visible flex flex-col shadow-sm">
           {/* Section Header */}
-          <div className="p-6 border-b border-gray-200 flex justify-between items-center">
+          <div className="p-6 border-b border-gray-200 flex flex-wrap justify-between items-center gap-3">
             <div className="flex items-center gap-3">
               <h3 className="text-lg font-bold text-slate-800">
                 تعويض الخبرة المهنية
@@ -805,13 +826,31 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
                 1.4% لكل سنة
               </span>
             </div>
-            <button
-              onClick={handleOpenContractualModal}
-              className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors cursor-pointer"
-            >
-              <Plus size={16} />
-              إضافة تعويض خبرة
-            </button>
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() =>
+                  handlePrintExperienceDecision(
+                    sortedDegrees[0] || null,
+                    sortedDegrees[1] || null
+                  )
+                }
+                className="text-white hover:bg-[#0e3d29] px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-xs cursor-pointer"
+                style={{ backgroundColor: '#124E35' }}
+                title="طباعة مقرر تعويض الخبرة المهنية"
+              >
+                <Printer size={16} />
+                طباعة المقرر
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenContractualModal}
+                className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors cursor-pointer"
+              >
+                <Plus size={16} />
+                إضافة تعويض خبرة
+              </button>
+            </div>
           </div>
 
           {/* Content Area */}
@@ -890,17 +929,18 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
                   <div className="col-span-3">الأقدمية المحتسبة</div>
                   <div className="col-span-3">معادلة ونسبة التعويض</div>
                   <div className="col-span-2">تاريخ السريان</div>
-                  <div className="col-span-3">مرجع المقرر</div>
-                  <div className="col-span-1 text-left">إجراء</div>
+                  <div className="col-span-2">مرجع المقرر</div>
+                  <div className="col-span-2 text-left">إجراء</div>
                 </div>
 
                 {/* Structured 12-Column Ledger Row Cards */}
                 <div className="space-y-2.5">
-                  {sortedDegrees.map((deg) => {
+                  {sortedDegrees.map((deg, idx) => {
                     const years = Number(deg.DegreeLevel) || 0;
                     const isCurrent = years === currentYears;
                     const docText = formatReferenceDoc(deg.ReferenceDoc);
                     const rate = (years * 1.4).toFixed(1);
+                    const prevDeg = sortedDegrees[idx + 1] || null;
 
                     return (
                       <div
@@ -943,8 +983,8 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
                           </span>
                         </div>
 
-                        {/* Column 4 (col-span-3 flex items-center justify-start min-w-0) */}
-                        <div className="col-span-1 sm:col-span-3 flex items-center justify-start min-w-0">
+                        {/* Column 4 (col-span-2 flex items-center justify-start min-w-0) */}
+                        <div className="col-span-1 sm:col-span-2 flex items-center justify-start min-w-0">
                           {docText ? (
                             <div
                               className="inline-flex items-center gap-2 bg-slate-100/80 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold max-w-full truncate"
@@ -958,8 +998,8 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
                           )}
                         </div>
 
-                        {/* Column 5 (col-span-1 flex items-center justify-end gap-1 sm:gap-2) */}
-                        <div className="col-span-1 sm:col-span-1 flex items-center justify-end gap-1 sm:gap-2">
+                        {/* Column 5 (col-span-2 flex items-center justify-end gap-1 sm:gap-1.5) */}
+                        <div className="col-span-1 sm:col-span-2 flex items-center justify-end gap-1 sm:gap-1.5">
                           {deg.Notes && deg.Notes.trim() && deg.Notes !== '—' && (
                             <div
                               className="p-1.5 rounded-md text-amber-700 bg-amber-50 border border-amber-200/70 cursor-help shrink-0 transition-colors hover:bg-amber-100"
@@ -968,6 +1008,15 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
                               <MessageSquare size={13} />
                             </div>
                           )}
+
+                          <button
+                            type="button"
+                            onClick={() => handlePrintExperienceDecision(deg, prevDeg)}
+                            className="text-emerald-600 hover:text-emerald-800 hover:bg-emerald-50 p-1.5 rounded-lg transition-colors cursor-pointer shrink-0"
+                            title="طباعة مقرر تعويض الخبرة المهنية"
+                          >
+                            <Printer size={15} />
+                          </button>
 
                           {hasPermission('checkBoxEdit') && (
                             <button
@@ -1382,6 +1431,26 @@ const CareerTab = ({ employee, onRefresh, showConfirm, closeConfirm }) => {
           </div>
         </div>
       )}
+
+      {/* Lazy-Loaded Official Experience Allowance Decision Print Modal (Contractual Only) */}
+      <Suspense fallback={null}>
+        {experiencePrintState.open && (
+          <ExperienceDecisionModal
+            isOpen={true}
+            onClose={() =>
+              setExperiencePrintState({
+                open: false,
+                experienceRecord: null,
+                previousExperienceRecord: null,
+              })
+            }
+            employee={employee}
+            experienceRecord={experiencePrintState.experienceRecord}
+            previousExperienceRecord={experiencePrintState.previousExperienceRecord}
+            contractMovement={contractMovement}
+          />
+        )}
+      </Suspense>
     </div>
   );
 };

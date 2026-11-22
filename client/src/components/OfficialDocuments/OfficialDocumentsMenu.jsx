@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, lazy, Suspense } from "react";
-import { FileText, Award, ChevronDown } from "lucide-react";
+import { FileText, ChevronDown } from "lucide-react";
 
 const WorkCertificateModal = lazy(() => import("./WorkCertificateModal"));
-const ExperienceDecisionModal = lazy(() => import("./ExperienceDecisionModal"));
 
+// Universal administrative documents applicable to all employees
 const OFFICIAL_DOCUMENT_ITEMS = [
   {
     id: "work-certificate",
@@ -12,14 +12,6 @@ const OFFICIAL_DOCUMENT_ITEMS = [
     icon: FileText,
     iconColor: "text-emerald-600",
     bgColor: "bg-emerald-50",
-  },
-  {
-    id: "experience-decision",
-    label: "مقرر تعويض الخبرة المهنية",
-    description: "مقرر حساب تعويض الخبرة (1,4%) مع الحيثيات",
-    icon: Award,
-    iconColor: "text-amber-600",
-    bgColor: "bg-amber-50",
   },
 ];
 
@@ -103,13 +95,6 @@ export default function OfficialDocumentsMenu({ employee }) {
       <Suspense fallback={null}>
         {activeDoc === "work-certificate" && (
           <WorkCertificateModal
-            isOpen={true}
-            onClose={() => setActiveDoc(null)}
-            employee={employee}
-          />
-        )}
-        {activeDoc === "experience-decision" && (
-          <ExperienceDecisionModal
             isOpen={true}
             onClose={() => setActiveDoc(null)}
             employee={employee}

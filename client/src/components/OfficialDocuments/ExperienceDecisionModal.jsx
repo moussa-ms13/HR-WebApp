@@ -11,11 +11,20 @@ import {
   resolveEmployeeJobTitle,
   resolveEmployeeDirectorate,
   resolveTargetDirectorTitle,
+  parseAdministrativeReference,
+  detectWorkSchedule,
   printOfficialDocumentInIframe,
   useResolvedEmployee,
 } from "./officialDocumentUtils";
 
-export default function ExperienceDecisionModal({ isOpen, onClose, employee }) {
+export default function ExperienceDecisionModal({
+  isOpen,
+  onClose,
+  employee,
+  experienceRecord = null,
+  previousExperienceRecord = null,
+  contractMovement = null,
+}) {
   const { resolvedEmployee, isLoadingEmployee } = useResolvedEmployee(isOpen, employee);
   const [isPrinting, setIsPrinting] = useState(false);
 
@@ -52,28 +61,86 @@ export default function ExperienceDecisionModal({ isOpen, onClose, employee }) {
 
   useEffect(() => {
     if (!isOpen || !resolvedEmployee) return;
+
     const hireDate =
       resolvedEmployee.FirstHireDate || resolvedEmployee.InstallationDate;
-    const empCat = String(resolvedEmployee.JobTitle?.EmploymentCategory || "");
-    const defaultSchedule = empCat.includes("جزئي") ? "الجزئي" : "الكامل";
     const resolvedDir = resolveEmployeeDirectorate(resolvedEmployee);
 
-    setForm((prev) => ({
-      ...prev,
-      year: String(new Date().getFullYear()),
+    // 1. Parse selected experience allowance record (if provided)
+    const parsedCurRef = parseAdministrativeReference(experienceRecord?.ReferenceDoc);
+    const resolvedYears =
+      experienceRecord?.DegreeLevel != null && experienceRecord.DegreeLevel !== ""
+        ? Number(experienceRecord.DegreeLevel)
+        : suggestExperienceYears(hireDate);
+    const resolvedEffectiveDate =
+      toIsoDateInput(experienceRecord?.EffectiveDate) || getTodayIsoDate();
+    const resolvedIssueDate = parsedCurRef.dateIso || getTodayIsoDate();
+    const resolvedYear = parsedCurRef.dateIso
+      ? parsedCurRef.dateIso.slice(0, 4)
+      : resolvedEffectiveDate
+      ? resolvedEffectiveDate.slice(0, 4)
+      : String(new Date().getFullYear());
+
+    // 2. Parse immediately preceding experience allowance record (if any)
+    const hasPrev = Boolean(previousExperienceRecord);
+    const parsedPrevRef = parseAdministrativeReference(
+      previousExperienceRecord?.ReferenceDoc
+    );
+    const resolvedPrevEffectiveDate = toIsoDateInput(
+      previousExperienceRecord?.EffectiveDate
+    );
+
+    // 3. Parse matching work contract movement from "حركة في الرتب" (if any)
+    const parsedContractRef = parseAdministrativeReference(
+      contractMovement?.Reference
+    );
+    const resolvedContractStartDate =
+      toIsoDateInput(contractMovement?.InstallDate) || toIsoDateInput(hireDate);
+    const resolvedSchedule = detectWorkSchedule(contractMovement, resolvedEmployee);
+
+    setForm({
+      refNumber: parsedCurRef.number || "",
+      year: resolvedYear,
+      issueDate: resolvedIssueDate,
+      effectiveDate: resolvedEffectiveDate,
       fullName: resolveEmployeeFullName(resolvedEmployee),
       gender: resolvedEmployee.Gender || "ذكر",
-      jobTitle: resolveEmployeeJobTitle(resolvedEmployee),
+      jobTitle:
+        resolveEmployeeJobTitle(resolvedEmployee) ||
+        contractMovement?.RankName ||
+        "",
       directorate: resolvedDir,
       targetDirectorTitle: resolveTargetDirectorTitle(
         resolvedEmployee.Directorate || resolvedDir,
         resolvedEmployee.Province
       ),
-      years: suggestExperienceYears(hireDate),
-      contractSchedule: defaultSchedule,
-      contractStartDate: prev.contractStartDate || toIsoDateInput(hireDate),
-    }));
-  }, [isOpen, resolvedEmployee]);
+      years: resolvedYears,
+      extraPercent: 0,
+      // Dynamic career recitals
+      includeTemp: false,
+      tempDecNum: "",
+      tempDecDate: "",
+      tempStartDate: "",
+      includeContract: true,
+      contractNum: parsedContractRef.number || "",
+      contractDate: parsedContractRef.dateIso || "",
+      contractSchedule: resolvedSchedule,
+      contractStartDate: resolvedContractStartDate,
+      includePrevDecision: hasPrev,
+      prevDecNum: hasPrev ? parsedPrevRef.number : "",
+      prevDecDate: hasPrev ? parsedPrevRef.dateIso : "",
+      prevEffectiveDate: hasPrev ? resolvedPrevEffectiveDate : "",
+      includeNationalService: false,
+      nsDecNum: "",
+      nsDecDate: "",
+    });
+  }, [
+    isOpen,
+    resolvedEmployee,
+    experienceRecord,
+    previousExperienceRecord,
+    contractMovement,
+  ]);
 
   if (!isOpen) return null;
 

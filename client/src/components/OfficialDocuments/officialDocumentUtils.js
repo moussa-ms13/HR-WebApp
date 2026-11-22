@@ -206,6 +206,97 @@ export function resolveTargetDirectorTitle(directorate, province) {
 }
 
 /**
+ * Parses Algerian HR reference strings such as:
+ * - "مقرر رقم 1043 المؤرخ في 2026/09/27"
+ * - "مقرر رقم 553 المؤرخ في 14/04/2025"
+ * - "عقد رقم 5098"
+ * Returns { number: string, dateIso: string } (dateIso is YYYY-MM-DD or "").
+ */
+export function parseAdministrativeReference(rawText) {
+  if (!rawText || typeof rawText !== "string") {
+    return { number: "", dateIso: "" };
+  }
+
+  // Normalize Arabic-Indic digits (٠-٩) to Western digits (0-9)
+  const text = rawText
+    .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
+    .trim();
+
+  // 1. Extract decision/contract number
+  let number = "";
+  const explicitNum = text.match(/رقم\s*:?\s*(\d+)/);
+  if (explicitNum) {
+    number = explicitNum[1];
+  } else {
+    const leadingNum = text.match(/^\s*(\d+)(?!\s*[/-]\s*\d{1,2}\s*[/-])/);
+    if (leadingNum) {
+      number = leadingNum[1];
+    }
+  }
+
+  // 2. Extract date (supports YYYY/MM/DD, YYYY-MM-DD, DD/MM/YYYY, MM/DD/YYYY)
+  let dateIso = "";
+  const ymd = text.match(/(\d{4})\s*[/-]\s*(\d{1,2})\s*[/-]\s*(\d{1,2})/);
+  if (ymd) {
+    const y = parseInt(ymd[1], 10);
+    const m = parseInt(ymd[2], 10);
+    const d = parseInt(ymd[3], 10);
+    if (y > 1900 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      dateIso = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    } else if (y > 1900 && d >= 1 && d <= 12 && m >= 1 && m <= 31) {
+      // Handle inverted YYYY/DD/MM if ever encountered
+      dateIso = `${y}-${String(d).padStart(2, "0")}-${String(m).padStart(2, "0")}`;
+    }
+  } else {
+    const dmy = text.match(/(\d{1,2})\s*[/-]\s*(\d{1,2})\s*[/-]\s*(\d{4})/);
+    if (dmy) {
+      const first = parseInt(dmy[1], 10);
+      const second = parseInt(dmy[2], 10);
+      const y = parseInt(dmy[3], 10);
+      if (y > 1900) {
+        if (second >= 1 && second <= 12 && first >= 1 && first <= 31) {
+          dateIso = `${y}-${String(second).padStart(2, "0")}-${String(first).padStart(2, "0")}`;
+        } else if (first >= 1 && first <= 12 && second >= 1 && second <= 31) {
+          dateIso = `${y}-${String(first).padStart(2, "0")}-${String(second).padStart(2, "0")}`;
+        }
+      }
+    }
+  }
+
+  return { number, dateIso };
+}
+
+/**
+ * Detects full-time ("الكامل") vs part-time ("الجزئي") from contract movement or job category.
+ */
+export function detectWorkSchedule(contractMovement, employee) {
+  const combined = [
+    contractMovement?.Notes,
+    contractMovement?.Reference,
+    employee?.JobTitle?.EmploymentCategory,
+    employee?.JobTitle?.Category,
+    employee?.EmploymentCategory,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return combined.includes("جزئي") ? "الجزئي" : "الكامل";
+}
+
+/**
+ * Finds the best matching contract movement row from rankHistory ("حركة في الرتب").
+ */
+export function findContractMovement(rankHistory = []) {
+  if (!Array.isArray(rankHistory) || rankHistory.length === 0) return null;
+  const contractRow = rankHistory.find((row) => {
+    const ref = String(row?.Reference || "");
+    const notes = String(row?.Notes || "");
+    return ref.includes("عقد") || notes.includes("عقد") || notes.includes("توقيت");
+  });
+  return contractRow || rankHistory[0] || null;
+}
+
+/**
  * Generates compact reference code shown under top-left QR code.
  */
 export function generateOfficialRefCode(prefix, employeeId, refNumber, year) {

@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import EmployeeService from '../../services/employeeService';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import EmployeeModal from './EmployeeModal';
-import { Search, MoreVertical, Loader2, Users, ArrowUpDown, ChevronDown, ChevronRight, ChevronLeft, Download, FileText, Award } from 'lucide-react';
+import { Search, MoreVertical, Loader2, Users, ArrowUpDown, ChevronDown, ChevronRight, ChevronLeft, Download, FileText } from 'lucide-react';
 import { useToast } from '../../components/ui/Toast';
 import ConfirmModal from '../../components/ui/ConfirmModal';
 import { refreshEmployees } from '../../utils/cacheManager';
@@ -13,7 +13,6 @@ import { formatEmployeeName } from '../../utils/employeeUtils';
 import { StatutoryStatusBadge, ProfileCompletenessBadge } from '../../components/common/UnifiedBadge';
 
 const WorkCertificateModal = lazy(() => import('../../components/OfficialDocuments/WorkCertificateModal'));
-const ExperienceDecisionModal = lazy(() => import('../../components/OfficialDocuments/ExperienceDecisionModal'));
 
 const fetcher = async (
   [_url, page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder]
@@ -466,17 +465,6 @@ const EmployeesList = () => {
                                 <FileText size={15} />
                                 <span>شهادة عمل</span>
                               </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOfficialDocState({ type: 'experience-decision', employee: emp });
-                                  setOpenDropdownId(null);
-                                }}
-                                className="w-full text-right px-4 py-2 text-sm text-amber-700 hover:bg-amber-50 flex items-center gap-2 cursor-pointer"
-                              >
-                                <Award size={15} />
-                                <span>مقرر تعويض الخبرة</span>
-                              </button>
 
                               {hasPermission('checkBoxDelete') && (
                                 <>
@@ -567,13 +555,6 @@ const EmployeesList = () => {
       <Suspense fallback={null}>
         {officialDocState.type === 'work-certificate' && (
           <WorkCertificateModal
-            isOpen={true}
-            onClose={() => setOfficialDocState({ type: null, employee: null })}
-            employee={officialDocState.employee}
-          />
-        )}
-        {officialDocState.type === 'experience-decision' && (
-          <ExperienceDecisionModal
             isOpen={true}
             onClose={() => setOfficialDocState({ type: null, employee: null })}
             employee={officialDocState.employee}
