@@ -13,6 +13,7 @@ import { formatEmployeeName } from '../../utils/employeeUtils';
 import { StatutoryStatusBadge, ProfileCompletenessBadge } from '../../components/common/UnifiedBadge';
 
 const WorkCertificateModal = lazy(() => import('../../components/OfficialDocuments/WorkCertificateModal'));
+const WorkCertificateFrModal = lazy(() => import('../../components/OfficialDocuments/WorkCertificateFrModal'));
 
 const fetcher = async (
   [_url, page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder]
@@ -465,6 +466,17 @@ const EmployeesList = () => {
                                 شهادة عمل
                               </button>
 
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOfficialDocState({ type: 'work-certificate-fr', employee: emp });
+                                  setOpenDropdownId(null);
+                                }}
+                                className="w-full text-right px-4 py-2 text-sm text-gray-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2 cursor-pointer"
+                              >
+                                شهادة عمل (فرنسية)
+                              </button>
+
                               {hasPermission('checkBoxDelete') && (
                                 <>
                                   <div className="my-1 border-t border-slate-100" />
@@ -554,6 +566,13 @@ const EmployeesList = () => {
       <Suspense fallback={null}>
         {officialDocState.type === 'work-certificate' && (
           <WorkCertificateModal
+            isOpen={true}
+            onClose={() => setOfficialDocState({ type: null, employee: null })}
+            employee={officialDocState.employee}
+          />
+        )}
+        {officialDocState.type === 'work-certificate-fr' && (
+          <WorkCertificateFrModal
             isOpen={true}
             onClose={() => setOfficialDocState({ type: null, employee: null })}
             employee={officialDocState.employee}

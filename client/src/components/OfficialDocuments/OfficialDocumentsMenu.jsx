@@ -2,12 +2,17 @@ import React, { useState, useRef, useEffect, lazy, Suspense } from "react";
 import { ChevronDown } from "lucide-react";
 
 const WorkCertificateModal = lazy(() => import("./WorkCertificateModal"));
+const WorkCertificateFrModal = lazy(() => import("./WorkCertificateFrModal"));
 
 // Universal administrative documents applicable to all employees
 const OFFICIAL_DOCUMENT_ITEMS = [
   {
     id: "work-certificate",
     label: "شهادة عمل",
+  },
+  {
+    id: "work-certificate-fr",
+    label: "شهادة عمل (فرنسية)",
   },
 ];
 
@@ -71,6 +76,13 @@ export default function OfficialDocumentsMenu({ employee }) {
       <Suspense fallback={null}>
         {activeDoc === "work-certificate" && (
           <WorkCertificateModal
+            isOpen={true}
+            onClose={() => setActiveDoc(null)}
+            employee={employee}
+          />
+        )}
+        {activeDoc === "work-certificate-fr" && (
+          <WorkCertificateFrModal
             isOpen={true}
             onClose={() => setActiveDoc(null)}
             employee={employee}
