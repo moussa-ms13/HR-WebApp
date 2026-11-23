@@ -136,7 +136,8 @@ class EmployeesService {
         UsersId: requestingUser.userName,
         NIN: data.NIN || "",
         SIS: data.SIS || "",
-        AssignedPosition: data.AssignedPosition || "",
+        AssignedPosition:
+          employeeStatus === "متعاقد" ? "" : (data.AssignedPosition || ""),
         ConfirmationDate:
           employeeStatus === "متربص" || employeeStatus === "متعاقد"
             ? null
@@ -148,7 +149,12 @@ class EmployeesService {
         InstallationDate: data.InstallationDate ? new Date(data.InstallationDate) : defaultDate,
         JobTitleId: jobTitleId,
         LastDegreeDate: data.LastDegreeDate ? new Date(data.LastDegreeDate) : defaultDate,
-        PositionDate: data.PositionDate ? new Date(data.PositionDate) : null,
+        PositionDate:
+          employeeStatus === "متعاقد" || !data.AssignedPosition
+            ? null
+            : data.PositionDate
+            ? new Date(data.PositionDate)
+            : null,
         StatusDate: defaultDate,
         Address: data.Address || "",
         Email: data.Email || "",
@@ -225,7 +231,10 @@ class EmployeesService {
         UsersId: requestingUser.userName,
         NIN: data.NIN ?? existing.NIN,
         SIS: data.SIS ?? existing.SIS,
-        AssignedPosition: data.AssignedPosition ?? existing.AssignedPosition,
+        AssignedPosition:
+          targetEmployeeStatus === "متعاقد"
+            ? ""
+            : (data.AssignedPosition ?? existing.AssignedPosition),
         ConfirmationDate:
           targetEmployeeStatus === "متربص" || targetEmployeeStatus === "متعاقد"
             ? null
@@ -237,7 +246,13 @@ class EmployeesService {
         InstallationDate: data.InstallationDate ? new Date(data.InstallationDate) : existing.InstallationDate,
         LastDegreeDate: data.LastDegreeDate ? new Date(data.LastDegreeDate) : existing.LastDegreeDate,
         JobTitleId: targetJobTitleId,
-        PositionDate: data.PositionDate ? new Date(data.PositionDate) : existing.PositionDate,
+        PositionDate:
+          targetEmployeeStatus === "متعاقد" ||
+          (data.AssignedPosition !== undefined && !data.AssignedPosition)
+            ? null
+            : data.PositionDate !== undefined
+            ? (data.PositionDate ? new Date(data.PositionDate) : null)
+            : existing.PositionDate,
         Address: data.Address ?? existing.Address,
         Email: data.Email ?? existing.Email,
         NumberOfChildren: data.NumberOfChildren !== undefined ? Number(data.NumberOfChildren) : existing.NumberOfChildren,

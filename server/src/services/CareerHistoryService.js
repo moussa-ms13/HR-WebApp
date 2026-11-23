@@ -40,6 +40,32 @@ class CareerHistoryService {
    * (excluding internal secondment archive records containing <!-- ORIGIN:).
    */
   static async _syncEmployeePosition(employeeId) {
+    const emp = await prisma.employees.findUnique({
+      where: { Id: employeeId },
+      select: {
+        EmployeeStatus: true,
+        CorpsType: true,
+        JobTitle: { select: { EmploymentCategory: true } },
+      },
+    });
+
+    const isContractual =
+      emp?.EmployeeStatus === "متعاقد" ||
+      emp?.CorpsType === "متعاقد" ||
+      (emp?.JobTitle?.EmploymentCategory || "").includes("متعاقد");
+
+    if (isContractual) {
+      await prisma.employees.update({
+        where: { Id: employeeId },
+        data: {
+          AssignedPosition: "",
+          PositionDate: null,
+          UpdateDate: new Date(),
+        },
+      });
+      return;
+    }
+
     const activePositions = await prisma.positionHistory.findMany({
       where: {
         EmployeesId: employeeId,
@@ -70,7 +96,15 @@ class CareerHistoryService {
   static async assertEmployeeAccess(employeeId, requestingUser) {
     const employee = await prisma.employees.findUnique({
       where: { Id: employeeId },
-      select: { Id: true, Name: true, LastName: true, Province: true },
+      select: {
+        Id: true,
+        Name: true,
+        LastName: true,
+        Province: true,
+        EmployeeStatus: true,
+        CorpsType: true,
+        JobTitle: { select: { EmploymentCategory: true } },
+      },
     });
     if (!employee) throw ApiError.notFound(`Employee ${employeeId} not found.`);
 
@@ -261,6 +295,14 @@ class CareerHistoryService {
 
   static async createPosition(employeeId, data, requestingUser) {
     const employee = await this.assertEmployeeAccess(employeeId, requestingUser);
+
+    const isContractual =
+      employee.EmployeeStatus === "متعاقد" ||
+      employee.CorpsType === "متعاقد" ||
+      (employee.JobTitle?.EmploymentCategory || "").includes("متعاقد");
+    if (isContractual) {
+      throw ApiError.badRequest("لا يمكن إسناد منصب عالي لعون متعاقد.");
+    }
 
     if (!data.PositionName || !data.PositionName.trim()) {
       throw ApiError.badRequest("اسم المنصب مطلوب.");

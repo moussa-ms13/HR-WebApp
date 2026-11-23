@@ -97,7 +97,8 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
       DateOfBirth: formatDateForInput(emp.DateOfBirth),
       InstallationDate: formatDateForInput(emp.InstallationDate),
       LastDegreeDate: formatDateForInput(emp.LastDegreeDate),
-      PositionDate: formatDateForInput(emp.PositionDate),
+      AssignedPosition: isContr ? '' : (emp.AssignedPosition || ''),
+      PositionDate: isContr ? '' : formatDateForInput(emp.PositionDate),
       ConfirmationDate: isContr ? '' : formatDateForInput(emp.ConfirmationDate),
       EmployeeStatus: isContr ? 'متعاقد' : (emp.EmployeeStatus === 'متربص' ? 'متربص' : 'مرسم'),
     };
@@ -272,6 +273,9 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
         throw new Error('يرجى اختيار مكان التعيين من القائمة الشجرية');
       }
 
+      const curJob = jobTitles.find(j => String(j.Id) === String(formData.JobTitleId));
+      const isContr = (curJob && isContractualJob(curJob)) || formData.EmployeeStatus === 'متعاقد';
+
       const payload = {
         ...formData,
         Gender: formData.Gender || '',
@@ -284,8 +288,9 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
         DateOfBirth: formData.DateOfBirth || null,
         InstallationDate: formData.InstallationDate || null,
         LastDegreeDate: formData.LastDegreeDate || null,
-        ConfirmationDate: formData.ConfirmationDate || null,
-        PositionDate: formData.PositionDate || null,
+        ConfirmationDate: isContr ? null : (formData.ConfirmationDate || null),
+        AssignedPosition: isContr ? '' : (formData.AssignedPosition || ''),
+        PositionDate: isContr || !formData.AssignedPosition ? null : (formData.PositionDate || null),
       };
 
       let savedEmployeeId = null;
@@ -541,40 +546,36 @@ const EmployeeModal = ({ isOpen, onClose, employee, onSuccess }) => {
                         ))}
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">المنصب العالي </label>
-                      {(() => {
-                        const curJob = jobTitles.find(j => String(j.Id) === String(formData.JobTitleId));
-                        const isContr = (curJob && isContractualJob(curJob)) || formData.EmployeeStatus === 'متعاقد';
-                        return (
-                          <input
-                            type="text"
-                            name="AssignedPosition"
-                            value={formData.AssignedPosition}
-                            onChange={handleChange}
-                            disabled={isContr}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
-                          />
-                        );
-                      })()}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ المنصب العالي</label>
-                      {(() => {
-                        const curJob = jobTitles.find(j => String(j.Id) === String(formData.JobTitleId));
-                        const isContr = (curJob && isContractualJob(curJob)) || formData.EmployeeStatus === 'متعاقد';
-                        return (
-                          <input
-                            type="date"
-                            name="PositionDate"
-                            value={formData.PositionDate}
-                            onChange={handleChange}
-                            disabled={isContr || !formData.AssignedPosition || formData.AssignedPosition === 'لا شيء'}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
-                          />
-                        );
-                      })()}
-                    </div>
+                    {(() => {
+                      const curJob = jobTitles.find(j => String(j.Id) === String(formData.JobTitleId));
+                      const isContr = (curJob && isContractualJob(curJob)) || formData.EmployeeStatus === 'متعاقد';
+                      if (isContr) return null;
+                      return (
+                        <>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">المنصب العالي </label>
+                            <input
+                              type="text"
+                              name="AssignedPosition"
+                              value={formData.AssignedPosition}
+                              onChange={handleChange}
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ المنصب العالي</label>
+                            <input
+                              type="date"
+                              name="PositionDate"
+                              value={formData.PositionDate}
+                              onChange={handleChange}
+                              disabled={!formData.AssignedPosition || formData.AssignedPosition === 'لا شيء'}
+                              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
+                            />
+                          </div>
+                        </>
+                      );
+                    })()}
 
                     <div>
                       <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ التنصيب</label>

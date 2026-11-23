@@ -11,7 +11,7 @@ export const WORK_CERT_SIGNATORIES = {
   sub_director: {
     id: "sub_director",
     label: "المدير الفرعي (الافتراضي)",
-    openingLine: "نحن المدير الفرعي للإدارة العامة للأملاك الوطنية بالشلف، نشهد",
+    openingLine: "نحن المدير الفرعي للإدارة العامة بالمديرية الجهوية للأملاك الوطنية بالشلف، نشهد",
     signatureTitle: "المدير الفرعي",
   },
   regional_director: {
@@ -134,7 +134,7 @@ export default function WorkCertificateDocument({
   const openingContainerRef = useRef(null);
   const openingSpanRef = useRef(null);
   const [stretchedOpeningLine, setStretchedOpeningLine] = useState(() =>
-    applyKashidaCount(baseOpeningLine, 44)
+    applyKashidaCount(baseOpeningLine, 12)
   );
 
   useLayoutEffect(() => {

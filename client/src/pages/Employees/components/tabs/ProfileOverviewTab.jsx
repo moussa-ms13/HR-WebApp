@@ -98,13 +98,13 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
       Province: employee.Province || '',
       Directorate: formatProvincialDirectorate(employee.Directorate, employee.Province),
       JobTitleId: employee.JobTitleId ?? '',
-      AssignedPosition: employee.AssignedPosition || '',
+      AssignedPosition: initialIsContr ? '' : (employee.AssignedPosition || ''),
       EmployeeStatus: initialIsContr ? 'متعاقد' : (employee.EmployeeStatus || 'مرسم'),
       InstallationDate: sanitizeDate(employee.InstallationDate),
       Degree: employee.Degree ?? 0,
       LastDegreeDate: sanitizeDate(employee.LastDegreeDate),
       ConfirmationDate: initialIsContr ? '' : sanitizeDate(employee.ConfirmationDate),
-      PositionDate: sanitizeDate(employee.PositionDate),
+      PositionDate: initialIsContr ? '' : sanitizeDate(employee.PositionDate),
       IsProfileComplete: employee.IsProfileComplete || false,
     });
     setIsEditing(true);
@@ -163,8 +163,9 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
         DateOfBirth: editData.DateOfBirth || null,
         InstallationDate: editData.InstallationDate || null,
         LastDegreeDate: editData.LastDegreeDate || null,
-        ConfirmationDate: editData.ConfirmationDate || null,
-        PositionDate: editData.PositionDate || null,
+        ConfirmationDate: isContractual ? null : (editData.ConfirmationDate || null),
+        AssignedPosition: isContractual ? '' : (editData.AssignedPosition || ''),
+        PositionDate: isContractual || !editData.AssignedPosition ? null : (editData.PositionDate || null),
       };
       await EmployeeService.update(id, payload);
       await refreshEmployees(id);
@@ -515,38 +516,42 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
             )}
           </div>
 
-          {/* Assigned Position (High Post) */}
-          <div>
-            <span className="block text-xs font-medium text-gray-400 mb-1">المنصب العالي</span>
-            {isEditing ? (
-              <input
-                value={editData.AssignedPosition}
-                onChange={(e) => editField('AssignedPosition', e.target.value)}
-                disabled={isContractual}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
-              />
-            ) : (
-              <span className="block font-semibold text-slate-800">{employee.AssignedPosition || '—'}</span>
-            )}
-          </div>
+          {/* Assigned Position (High Post) — Hidden for Contractual Employees */}
+          {!isContractual && (
+            <div>
+              <span className="block text-xs font-medium text-gray-400 mb-1">المنصب العالي</span>
+              {isEditing ? (
+                <input
+                  value={editData.AssignedPosition}
+                  onChange={(e) => editField('AssignedPosition', e.target.value)}
+                  disabled={isContractual}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                />
+              ) : (
+                <span className="block font-semibold text-slate-800">{employee.AssignedPosition || '—'}</span>
+              )}
+            </div>
+          )}
 
-          {/* Position Date */}
-          <div>
-            <span className="block text-xs font-medium text-gray-400 mb-1">تاريخ المنصب العالي</span>
-            {isEditing ? (
-              <input
-                value={editData.PositionDate}
-                onChange={(e) => editField('PositionDate', e.target.value)}
-                type="date"
-                disabled={isContractual || !editData.AssignedPosition || editData.AssignedPosition === 'لا شيء'}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
-              />
-            ) : (
-              <span className="block font-semibold text-slate-800">
-                <DateText value={employee.PositionDate} />
-              </span>
-            )}
-          </div>
+          {/* Position Date — Hidden for Contractual Employees */}
+          {!isContractual && (
+            <div>
+              <span className="block text-xs font-medium text-gray-400 mb-1">تاريخ المنصب العالي</span>
+              {isEditing ? (
+                <input
+                  value={editData.PositionDate}
+                  onChange={(e) => editField('PositionDate', e.target.value)}
+                  type="date"
+                  disabled={isContractual || !editData.AssignedPosition || editData.AssignedPosition === 'لا شيء'}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                />
+              ) : (
+                <span className="block font-semibold text-slate-800">
+                  <DateText value={employee.PositionDate} />
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Installation Date */}
           <div>
@@ -583,27 +588,31 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
             )}
           </div>
 
-          {/* Confirmation Date */}
-          <div>
-            <span className="block text-xs font-medium text-gray-400 mb-1">تاريخ التثبيت</span>
-            {isEditing ? (
-              <input
-                value={editData.ConfirmationDate}
-                onChange={(e) => editField('ConfirmationDate', e.target.value)}
-                type="date"
-                disabled={editData.EmployeeStatus === 'متربص' || isContractual}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
-              />
-            ) : (
-              <span className="block font-semibold text-slate-800">
-                <DateText value={employee.ConfirmationDate} />
-              </span>
-            )}
-          </div>
+          {/* Confirmation Date — Hidden for Contractual Employees */}
+          {!isContractual && (
+            <div>
+              <span className="block text-xs font-medium text-gray-400 mb-1">تاريخ التثبيت</span>
+              {isEditing ? (
+                <input
+                  value={editData.ConfirmationDate}
+                  onChange={(e) => editField('ConfirmationDate', e.target.value)}
+                  type="date"
+                  disabled={editData.EmployeeStatus === 'متربص' || isContractual}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                />
+              ) : (
+                <span className="block font-semibold text-slate-800">
+                  <DateText value={employee.ConfirmationDate} />
+                </span>
+              )}
+            </div>
+          )}
 
-          {/* Degree */}
+          {/* Degree / Experience Years */}
           <div>
-            <span className="block text-xs font-medium text-gray-400 mb-1">الدرجة</span>
+            <span className="block text-xs font-medium text-gray-400 mb-1">
+              {isContractual ? 'سنوات الخبرة المهنية' : 'الدرجة'}
+            </span>
             {isEditing ? (
               <input
                 value={editData.Degree}
@@ -613,13 +622,17 @@ const ProfileOverviewTab = ({ employee, onRefresh }) => {
                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg text-sm outline-none focus:ring-1 focus:ring-emerald-300"
               />
             ) : (
-              <span className="block font-semibold text-slate-800">{employee.Degree || '—'}</span>
+              <span className="block font-semibold text-slate-800">
+                {employee.Degree ? (isContractual ? `${employee.Degree} سنة` : employee.Degree) : '—'}
+              </span>
             )}
           </div>
 
-          {/* Last Degree Date */}
+          {/* Last Degree Date / Experience Effective Date */}
           <div>
-            <span className="block text-xs font-medium text-gray-400 mb-1">تاريخ آخر درجة</span>
+            <span className="block text-xs font-medium text-gray-400 mb-1">
+              {isContractual ? 'تاريخ سريان تعويض الخبرة' : 'تاريخ آخر درجة'}
+            </span>
             {isEditing ? (
               <input
                 value={editData.LastDegreeDate}
