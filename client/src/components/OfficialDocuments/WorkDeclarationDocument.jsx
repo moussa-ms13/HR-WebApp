@@ -240,7 +240,7 @@ export default function WorkDeclarationDocument({
         </div>
       </div>
 
-      {/* ══════════════ TITLE BLOCK (** إقرار بالعمل **) ══════════════ */}
+      {/* ══════════════ TITLE BLOCK (إقرار بالعمل) ══════════════ */}
       <div
         style={{
           textAlign: "center",
@@ -249,15 +249,14 @@ export default function WorkDeclarationDocument({
       >
         <span
           style={{
-            fontSize: "24pt",
+            fontSize: "28pt",
             fontWeight: "bold",
             color: "#000000",
-            borderBottom: "2px solid #000000",
-            paddingBottom: "2px",
+            textDecoration: "none",
             whiteSpace: "nowrap",
           }}
         >
-          * * إقــــرار بـالـعـمــــل * *
+          إقرار بالعمل
         </span>
       </div>
 
