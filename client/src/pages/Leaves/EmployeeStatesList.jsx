@@ -27,6 +27,7 @@ import { DateText } from '../../utils/formatDate';
 import { printLeaveCertificate } from '../../utils/printLeaveCertificate';
 import { formatEmployeeName } from '../../utils/employeeUtils';
 import { LeaveStatusBadge } from '../../components/common/UnifiedBadge';
+import { isAnnualLeaveType, resolveConsumedYearFromLeave } from './utils/leaveModalHelpers';
 
 const RECORD_VIEW_OPTIONS = [
   { id: 'active', label: 'العطل الجارية حالياً' },
@@ -371,16 +372,29 @@ const EmployeeStatesList = () => {
                         {st?.RecordCategory || '-'}
                       </td>
                       <td
-                        className="py-3 px-4 text-gray-500 font-medium max-w-[180px] truncate"
+                        className="py-3 px-4 text-gray-500 font-medium max-w-[230px]"
                         title={
                           (st?.Type || st?.StateTypeOrReason) === 'عطلة استثنائية' && st?.ExceptionalReason
                             ? `عطلة استثنائية (${st.ExceptionalReason})`
+                            : isAnnualLeaveType(st?.Type || st?.StateTypeOrReason) && resolveConsumedYearFromLeave(st)
+                            ? `${st?.Type || st?.StateTypeOrReason} — بعنوان سنة ${resolveConsumedYearFromLeave(st)}`
                             : (st?.Type || st?.StateTypeOrReason)
                         }
                       >
-                        {(st?.Type || st?.StateTypeOrReason) === 'عطلة استثنائية' && st?.ExceptionalReason
-                          ? `عطلة استثنائية (${st.ExceptionalReason})`
-                          : (st?.Type || st?.StateTypeOrReason || '-')}
+                        {(st?.Type || st?.StateTypeOrReason) === 'عطلة استثنائية' && st?.ExceptionalReason ? (
+                          <span className="truncate block">{`عطلة استثنائية (${st.ExceptionalReason})`}</span>
+                        ) : isAnnualLeaveType(st?.Type || st?.StateTypeOrReason) ? (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-slate-700 font-semibold">{st?.Type || st?.StateTypeOrReason}</span>
+                            {resolveConsumedYearFromLeave(st) && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 whitespace-nowrap">
+                                بعنوان سنة {resolveConsumedYearFromLeave(st)}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="truncate block">{st?.Type || st?.StateTypeOrReason || '-'}</span>
+                        )}
                       </td>
                       <td className="py-3 px-4 font-mono text-gray-600">
                         <DateText value={st?.StartDate} />

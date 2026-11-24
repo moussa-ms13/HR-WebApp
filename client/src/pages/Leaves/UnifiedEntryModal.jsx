@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { refreshLeaves, refreshSpecialCases } from '../../utils/cacheManager';
-import { X, Loader2, Calendar, Search, Check, MapPin, FileText } from 'lucide-react';
+import { X, Loader2, Calendar, Search, Check, MapPin, FileText, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
 import useDebounce from '../../hooks/useDebounce';
 import EmployeeStatesService from '../../services/employeeStatesService';
 import SpecialCasesService from '../../services/specialCasesService';
 import EmployeeService from '../../services/employeeService';
+import LeaveBalancesService from '../../services/leaveBalancesService';
 import { normalizeGender } from '../../utils/leaveCertificateConfig';
 import { formatEmployeeName } from '../../utils/employeeUtils';
 import { useToast } from '../../components/ui/Toast';
@@ -16,6 +17,9 @@ import {
   PERMANENT_CASES,
   DESTINATION_CASES,
   calculateEndDate,
+  isAnnualLeaveType,
+  normalizeBalanceOptions,
+  pickDefaultTargetYear,
 } from './utils/leaveModalHelpers';
 
 // Minimum characters before the employee search API is triggered
@@ -63,6 +67,7 @@ const UnifiedEntryModal = ({
   // ── Leave Fields ──
   const [leaveForm, setLeaveForm] = useState({
     StateTypeOrReason: LEAVE_TYPES[0],
+    targetYear: '',
     ExceptionalReason: '',
     isOpenEnded: false,
     CustomEndText: '',
@@ -76,6 +81,8 @@ const UnifiedEntryModal = ({
     SecondDoctorName: '',
     SecondCertificateDate: '',
   });
+  const [balanceOptions, setBalanceOptions] = useState([]);
+  const [isBalancesLoading, setIsBalancesLoading] = useState(false);
 
   // ── Special Case Fields ──
   const [caseForm, setCaseForm] = useState({
@@ -156,9 +163,60 @@ const UnifiedEntryModal = ({
   }, [isOpen, searchQuery, provinceFilter, directorateFilter, preSelectedEmployee]);
 
   // Annual leave always has a fixed numeric day count: open-ended mode is never allowed
-  const isAnnualLeave =
-    String(leaveForm.StateTypeOrReason || '').trim() === 'عطلة سنوية' ||
-    String(leaveForm.StateTypeOrReason || '').includes('سنوية');
+  const isAnnualLeave = isAnnualLeaveType(leaveForm.StateTypeOrReason);
+
+  const activeEmployeeId =
+    preSelectedEmployee?.id || preSelectedEmployee?.Id || selectedEmployee?.Id || null;
+
+  // ── Fetch annual leave balances for selected employee (oldest year with remaining > 0 pre-selected) ──
+  useEffect(() => {
+    if (!isOpen || entryCategory !== 'leave' || !activeEmployeeId) {
+      setBalanceOptions([]);
+      return;
+    }
+    let cancelled = false;
+    setIsBalancesLoading(true);
+    LeaveBalancesService.getEmployeeBalances(activeEmployeeId)
+      .then((res) => {
+        if (cancelled) return;
+        const opts = normalizeBalanceOptions(res);
+        setBalanceOptions(opts);
+        const defaultYr = pickDefaultTargetYear(opts);
+        setLeaveForm((prev) => ({
+          ...prev,
+          targetYear: defaultYr,
+        }));
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBalanceOptions([]);
+          setLeaveForm((prev) => ({ ...prev, targetYear: '' }));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsBalancesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, entryCategory, activeEmployeeId]);
+
+  const selectedBalanceOption =
+    balanceOptions.find((b) => String(b.year) === String(leaveForm.targetYear)) || null;
+  const requestedDaysNumeric = Number(leaveForm.DaysCount) || 0;
+  const hasAnyPositiveBalance = balanceOptions.some((b) => b.effectiveRemaining > 0);
+  const isAnnualBalanceMissing =
+    entryCategory === 'leave' &&
+    isAnnualLeave &&
+    Boolean(activeEmployeeId) &&
+    !isBalancesLoading &&
+    (!hasAnyPositiveBalance || !leaveForm.targetYear);
+  const isAnnualBalanceExceeded =
+    entryCategory === 'leave' &&
+    isAnnualLeave &&
+    Boolean(selectedBalanceOption) &&
+    requestedDaysNumeric > selectedBalanceOption.effectiveRemaining;
 
   // ── Auto-calc EndDate for leaves ──
   useEffect(() => {
@@ -202,6 +260,7 @@ const UnifiedEntryModal = ({
       setError('');
       setLeaveForm({
         StateTypeOrReason: LEAVE_TYPES[0],
+        targetYear: '',
         ExceptionalReason: '',
         isOpenEnded: false,
         CustomEndText: '',
@@ -243,10 +302,23 @@ const UnifiedEntryModal = ({
     e.preventDefault();
     setError('');
 
-    const empId = preSelectedEmployee?.id || selectedEmployee?.Id;
+    const empId = preSelectedEmployee?.id || preSelectedEmployee?.Id || selectedEmployee?.Id;
     if (!empId) {
       setError('الرجاء اختيار الموظف المعني');
       return;
+    }
+
+    if (entryCategory === 'leave' && isAnnualLeave) {
+      if (!leaveForm.targetYear || !selectedBalanceOption) {
+        setError('يرجى اختيار سنة استهلاك الرصيد (بعنوان سنة)؛ لا يوجد رصيد متاح لهذا الموظف.');
+        return;
+      }
+      if (requestedDaysNumeric > selectedBalanceOption.effectiveRemaining) {
+        setError(
+          `الرصيد المتبقي لسنة ${leaveForm.targetYear} غير كافٍ (المتبقي: ${selectedBalanceOption.effectiveRemaining} يوم، المطلوب: ${requestedDaysNumeric} يوم)`
+        );
+        return;
+      }
     }
 
     setLoading(true);
@@ -294,6 +366,8 @@ const UnifiedEntryModal = ({
           EmployeesId: employeeId,
           RecordCategory: 'تسجيل عطلة', // or 'عطلة'
           StateTypeOrReason: leaveForm.StateTypeOrReason,
+          targetYear: isAnnualLeave && leaveForm.targetYear ? Number(leaveForm.targetYear) : null,
+          ConsumedYear: isAnnualLeave && leaveForm.targetYear ? Number(leaveForm.targetYear) : null,
           ExceptionalReason: cleanedExceptionalReason,
           exceptionalReason: cleanedExceptionalReason,
           isOpenEnded: effectiveOpenEnded,
@@ -626,6 +700,92 @@ const UnifiedEntryModal = ({
                   </select>
                 </div>
 
+                {/* ── Explicit Consumption Year Selector for Annual Leave ── */}
+                {isAnnualLeave && (
+                  <div className="md:col-span-2 animate-[fadeIn_0.2s_ease-out] space-y-2">
+                    <label className="block text-xs font-semibold text-slate-700">
+                      بعنوان سنة (مصدر استهلاك الرصيد) <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      required
+                      disabled={!activeEmployeeId || isBalancesLoading || !hasAnyPositiveBalance}
+                      value={leaveForm.targetYear}
+                      onChange={(e) =>
+                        setLeaveForm((prev) => ({ ...prev, targetYear: e.target.value }))
+                      }
+                      className="w-full h-10 px-3 border border-slate-200 hover:border-slate-300 rounded-lg outline-none bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 text-sm font-medium transition-colors disabled:bg-slate-50 disabled:text-slate-400"
+                    >
+                      {!activeEmployeeId ? (
+                        <option value="">اختر الموظف أولاً لعرض أرصدة السنوات...</option>
+                      ) : isBalancesLoading ? (
+                        <option value="">جاري تحميل أرصدة السنوات...</option>
+                      ) : balanceOptions.length === 0 ? (
+                        <option value="">لا توجد أرصدة مسجلة لهذا الموظف</option>
+                      ) : !hasAnyPositiveBalance ? (
+                        <option value="">جميع أرصدة السنوات المسجلة مستنفدة (0 يوم)</option>
+                      ) : (
+                        balanceOptions.map((b) => {
+                          const exhausted = b.effectiveRemaining <= 0;
+                          return (
+                            <option key={b.year} value={String(b.year)} disabled={exhausted}>
+                              {exhausted
+                                ? `سنة ${b.year} — المتبقي: 0 يوم (مستنفدة)`
+                                : `سنة ${b.year} — المتبقي: ${b.effectiveRemaining} يوم`}
+                            </option>
+                          );
+                        })
+                      )}
+                    </select>
+
+                    {activeEmployeeId && !isBalancesLoading && balanceOptions.length === 0 && (
+                      <div className="p-2.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-lg text-xs font-medium flex items-center gap-2">
+                        <AlertCircle size={15} className="text-amber-600 shrink-0" />
+                        <span>
+                          لا يوجد رصيد عطلة سنوية مسجل لهذا الموظف بعد. يرجى إضافة رصيد السنوات من تبويب الإجازات (إدارة الرصيد والديون).
+                        </span>
+                      </div>
+                    )}
+
+                    {activeEmployeeId && !isBalancesLoading && balanceOptions.length > 0 && !hasAnyPositiveBalance && (
+                      <div className="p-2.5 bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs font-medium flex items-center gap-2">
+                        <AlertCircle size={15} className="text-red-500 shrink-0" />
+                        <span>جميع أرصدة العطل السنوية المسجلة لهذا الموظف مستنفدة بالكامل (0 يوم متبقي).</span>
+                      </div>
+                    )}
+
+                    {isAnnualBalanceExceeded && selectedBalanceOption && (
+                      <div className="p-2.5 bg-red-50 text-red-700 border border-red-200 rounded-lg text-xs font-semibold flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <AlertCircle size={15} className="text-red-500 shrink-0" />
+                          <span>
+                            المدة المطلوبة ({requestedDaysNumeric} يوم) تتجاوز الرصيد المتبقي لسنة {selectedBalanceOption.year} ({selectedBalanceOption.effectiveRemaining} يوم).
+                          </span>
+                        </div>
+                        {selectedBalanceOption.effectiveRemaining > 0 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setLeaveForm((prev) => ({
+                                ...prev,
+                                DaysCount: selectedBalanceOption.effectiveRemaining,
+                              }))
+                            }
+                            className="px-2.5 py-1 bg-white hover:bg-red-100 text-red-700 border border-red-300 rounded-md text-[11px] font-bold transition-colors cursor-pointer"
+                          >
+                            ضبط المدة إلى {selectedBalanceOption.effectiveRemaining} يوم
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {!isAnnualBalanceExceeded && selectedBalanceOption && requestedDaysNumeric > 0 && (
+                      <p className="text-[11px] text-emerald-700 font-medium">
+                        سيتم خصم {requestedDaysNumeric} يوم من رصيد سنة {selectedBalanceOption.year} (سيتبقى بعد الخصم: {selectedBalanceOption.effectiveRemaining - requestedDaysNumeric} يوم).
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* ── Conditional Exceptional Leave Reason Input ── */}
                 {leaveForm.StateTypeOrReason === "عطلة استثنائية" && (
                   <div className="md:col-span-2 animate-[fadeIn_0.2s_ease-out]">
@@ -925,8 +1085,8 @@ const UnifiedEntryModal = ({
           <button
             type="submit"
             form="unifiedForm"
-            disabled={loading}
-            className="flex items-center justify-center gap-2 h-10 px-6 text-white rounded-lg transition-all font-medium text-sm disabled:opacity-70 hover:opacity-90 active:scale-[0.98] shadow-xs"
+            disabled={loading || isAnnualBalanceMissing || isAnnualBalanceExceeded}
+            className="flex items-center justify-center gap-2 h-10 px-6 text-white rounded-lg transition-all font-medium text-sm disabled:opacity-60 disabled:cursor-not-allowed hover:opacity-90 active:scale-[0.98] shadow-xs"
             style={{ backgroundColor: '#105b38' }}
           >
             {loading ? (

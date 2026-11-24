@@ -22,7 +22,7 @@ const {
   resolveExceptionalReason,
 } = require("./leaveHelpers");
 const {
-  refundAnnualBalanceReverseFIFO,
+  refundConsumedLeave,
   getPositiveRemainingBreakdown,
 } = require("./leaveBalanceHelper");
 
@@ -100,6 +100,7 @@ async function getAllStates(
     { CurrentJobTitle: { contains: token } },
     { Notes: { contains: token } },
     { Employee: { JobTitle: { RankName: { contains: token } } } },
+    ...(/^\d{4}$/.test(token) ? [{ ConsumedYear: Number(token) }] : []),
   ]);
   if (tokenSearch) {
     baseWhere.AND = [...(baseWhere.AND || []), ...tokenSearch.AND];
@@ -170,6 +171,8 @@ async function getAllStates(
         SecondCertificateDate: true,
         ExceptionalReason: true,
         CustomEndText: true,
+        ConsumedYear: true,
+        ConsumedBreakdown: true,
         Employee: { select: STATE_EMPLOYEE_SELECT },
       },
       skip,
@@ -262,7 +265,7 @@ async function resumeLeaveEarly(id, data, requestingUser) {
       let totalRefunded = 0;
 
       if (isAnnualLeave && refundDaysNeeded > 0) {
-        const res = await refundAnnualBalanceReverseFIFO(tx, existing.EmployeesId, refundDaysNeeded);
+        const res = await refundConsumedLeave(tx, existing.EmployeesId, existing, refundDaysNeeded);
         breakdown = res.breakdown;
         totalRefunded = res.totalRefunded;
       }
@@ -296,6 +299,9 @@ async function resumeLeaveEarly(id, data, requestingUser) {
           RequestedDays: existing.RequestedDays || existing.DaysCount,
           RefundedDays: totalRefunded,
           RefundedBreakdown: breakdown.length > 0 ? JSON.stringify(breakdown) : null,
+          ...(isAnnualLeave && isEarly && existing.ConsumedYear
+            ? { ConsumedBreakdown: JSON.stringify([{ year: existing.ConsumedYear, deducted: newDaysCount }]) }
+            : {}),
           RemainingBalanceAfter: remainingBalanceAfter,
           Notes: updatedNotes,
           CustomEndText: resolveCustomEndText(data, existing.StateTypeOrReason, existing.CustomEndText, true),

@@ -173,11 +173,24 @@ export default function LeavePrintDocument(props) {
     !isDecisionDoc &&
     !isExceptionalLeave &&
     (String(rawLeaveType).trim() === "عطلة سنوية" || String(rawLeaveType).includes("سنوية"));
+  const resolvedLeaveYear = (() => {
+    if (isAnnualLeave) {
+      const explicit =
+        leave?.consumedYear ??
+        leave?.ConsumedYear ??
+        props?.ConsumedYear ??
+        props?.consumedYear ??
+        props?.targetYear ??
+        leave?.year;
+      if (explicit) return String(explicit);
+    }
+    return String(leave?.year || new Date().getFullYear());
+  })();
   const leaveDayUnit = arabicDayUnit(leave.days);
   const annualRemainingRows = isAnnualLeave
     ? (Array.isArray(leave.remaining) && leave.remaining.length > 0
         ? leave.remaining
-        : [{ year: String(leave.year || new Date().getFullYear()), days: 0, daysInWords: "0" }])
+        : [{ year: resolvedLeaveYear, days: 0, daysInWords: "0" }])
     : [];
   const rawDirectorate = decision.directorateName || "المديرية الجهوية للأملاك الوطنية بالشلف";
   const directorateName = formatPrintDirectorate(
@@ -650,7 +663,7 @@ export default function LeavePrintDocument(props) {
           </p>
           <p className="doc-whereas">
             - وبعد الإطلاع على الطلب المحرر من طرف {g.maani} المتضمن {annualNaming.requestPhrase} بعنوان سنة{" "}
-            <LTR>{leave.year}</LTR>
+            <strong><LTR>{resolvedLeaveYear}</LTR></strong>،
           </p>
           <p className="doc-whereas">- وباقتراح من السيد المدير الفرعي للإدارة العامة.</p>
         </>
@@ -696,13 +709,17 @@ export default function LeavePrintDocument(props) {
               <>تمنح {annualNaming.grantPhrase} مدفوعة الأجر.</>
             ) : (
               <>
-                تمنح {annualNaming.grantPhrase} مدفوعة الأجر مدتها{" "}
+                تمنح {annualNaming.grantPhrase}
+                {isAnnualLeave && resolvedLeaveYear ? (
+                  <> بعنوان سنة <strong><LTR>{resolvedLeaveYear}</LTR></strong></>
+                ) : null}{" "}
+                مدفوعة الأجر مدتها{" "}
                 <strong>{leave.daysInWords}</strong> (<strong><LTR>{leave.days}</LTR></strong>) {leaveDayUnit}.
               </>
             )}
           </div>
           <div className="doc-article-line">
-            <strong>السنة:</strong> <strong><LTR>{leave.year}</LTR></strong>
+            <strong>{isAnnualLeave ? "بعنوان سنة:" : "السنة:"}</strong> <strong><LTR>{resolvedLeaveYear}</LTR></strong>
           </div>
           <div className="doc-article-line">
             <strong>{employee.gender === "female" ? "للسيدة" : "للسيد"} :</strong> <strong>{formattedEmployeeName}</strong>

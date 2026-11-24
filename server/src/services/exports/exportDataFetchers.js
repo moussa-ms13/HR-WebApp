@@ -134,6 +134,7 @@ async function fetchLeavesReport(baseWhere, filters, limit) {
         select: {
           Id: true,
           StateTypeOrReason: true,
+          ConsumedYear: true,
           DaysCount: true,
           StartDate: true,
           EndDate: true,

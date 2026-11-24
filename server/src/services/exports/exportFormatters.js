@@ -68,7 +68,10 @@ function formatLeavesRows(states, now = new Date()) {
       rank: emp.JobTitle?.RankName || "—",
       province: emp.Province || "—",
       directorate: emp.Directorate || "—",
-      leaveType: state.StateTypeOrReason || "عطلة",
+      leaveType:
+        state.StateTypeOrReason === "عطلة سنوية" && state.ConsumedYear
+          ? `عطلة سنوية (بعنوان سنة ${state.ConsumedYear})`
+          : (state.StateTypeOrReason || "عطلة"),
       daysCount: state.DaysCount || 0,
       startDate: formatDate(state.StartDate),
       endDate: formatDate(state.EndDate),

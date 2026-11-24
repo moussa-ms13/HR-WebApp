@@ -1,5 +1,6 @@
 // ============================================================
 // Leave Mutations — Atomic Create, Update & Delete with Balance Engine
+// Supports Explicit Target-Year Consumption ("بعنوان سنة") & Exact Refund
 // ============================================================
 const prisma = require("../../config/database");
 const ApiError = require("../../utils/ApiError");
@@ -14,11 +15,25 @@ const {
   resolveMedicalFields,
 } = require("./leaveHelpers");
 const {
+  deductAnnualBalanceForYear,
   deductAnnualBalanceFIFO,
-  refundAnnualBalanceReverseFIFO,
+  refundConsumedLeave,
   getPositiveRemainingBreakdown,
 } = require("./leaveBalanceHelper");
 const { STATE_EMPLOYEE_SELECT, getStateById, resumeLeaveEarly } = require("./leaveLifecycle");
+
+function extractTargetYear(data) {
+  const raw =
+    data?.targetYear ??
+    data?.TargetYear ??
+    data?.ConsumedYear ??
+    data?.consumedYear;
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return null;
+  }
+  const yr = parseInt(raw, 10);
+  return Number.isInteger(yr) && yr >= 1990 && yr <= 2100 ? yr : null;
+}
 
 async function createState(data, requestingUser) {
   const employeesId = parseInt(data.EmployeesId, 10);
@@ -77,7 +92,7 @@ async function createState(data, requestingUser) {
 
   const cleanedCustomEndText = resolveCustomEndText(data, effectiveStateType, null, false);
   const isOpenEndedLeave = Boolean(cleanedCustomEndText);
-  const isAnnualType = String(effectiveStateType || "").includes("سنوية");
+  const isAnnualType = String(effectiveStateType || "").includes("سنوية") && !String(effectiveStateType || "").includes("استثنائية");
   const daysCount = isOpenEndedLeave ? 0 : parseInt(data.DaysCount ?? data.RequestedDays ?? 0, 10);
 
   if (isNaN(daysCount) || daysCount < 0) {
@@ -86,6 +101,8 @@ async function createState(data, requestingUser) {
   if (isAnnualType && daysCount < 1) {
     throw ApiError.badRequest("مدة العطلة السنوية يجب أن تكون يوماً واحداً على الأقل.");
   }
+
+  const requestedTargetYear = extractTargetYear(data);
 
   const usersId =
     requestingUser?.userName ??
@@ -128,9 +145,31 @@ async function createState(data, requestingUser) {
     async (tx) => {
       let remainingBalanceAfter = null;
       let remainingBreakdown = [];
+      let consumedYear = null;
+      let consumedBreakdownJson = null;
 
       if (isAnnualLeave) {
-        await deductAnnualBalanceFIFO(tx, employeesId, daysCount, "لتسجيل هذه العطلة");
+        const deductRes = requestedTargetYear
+          ? await deductAnnualBalanceForYear(
+              tx,
+              employeesId,
+              requestedTargetYear,
+              daysCount,
+              "لتسجيل هذه العطلة"
+            )
+          : await deductAnnualBalanceFIFO(
+              tx,
+              employeesId,
+              daysCount,
+              "لتسجيل هذه العطلة"
+            );
+
+        consumedYear = deductRes.consumedYear;
+        consumedBreakdownJson =
+          Array.isArray(deductRes.consumedBreakdown) && deductRes.consumedBreakdown.length > 0
+            ? JSON.stringify(deductRes.consumedBreakdown)
+            : null;
+
         const snap = await getPositiveRemainingBreakdown(tx, employeesId);
         remainingBreakdown = snap.remainingBreakdown;
         remainingBalanceAfter = snap.remainingBalanceAfter;
@@ -146,6 +185,8 @@ async function createState(data, requestingUser) {
       const rec = await tx.employeeStates.create({
         data: {
           ...baseData,
+          ConsumedYear: consumedYear,
+          ConsumedBreakdown: consumedBreakdownJson,
           RemainingBalanceAfter: remainingBalanceAfter,
         },
       });
@@ -157,10 +198,11 @@ async function createState(data, requestingUser) {
     { maxWait: 15000, timeout: 60000 }
   );
 
+  const yearLogSuffix = created.ConsumedYear ? ` (بعنوان سنة ${created.ConsumedYear})` : "";
   await SystemRecordService.log({
     userFullName: requestingUser?.fullName || usersId,
     title: "إضافة وضعية/إجازة موظف",
-    description: `تمت إضافة ${effectiveCategory}: '${effectiveStateType}' للموظف '${employee.LastName} ${employee.Name}' بواسطة '${usersId}'.`,
+    description: `تمت إضافة ${effectiveCategory}: '${effectiveStateType}${yearLogSuffix}' للموظف '${employee.LastName} ${employee.Name}' بواسطة '${usersId}'.`,
     usersId: requestingUser?.id || 1,
     employeesId,
     ipAddress: requestingUser?.ipAddress,
@@ -195,8 +237,13 @@ async function updateState(id, data, requestingUser) {
   }
 
   const nextStateType = data.StateTypeOrReason ?? existing.StateTypeOrReason;
-  const isAnnualLeave = nextStateType === ANNUAL_LEAVE_TYPE;
-  const isAnnualType = String(nextStateType || "").includes("سنوية");
+  const wasAnnualLeave =
+    existing.StateTypeOrReason === ANNUAL_LEAVE_TYPE &&
+    !existing.CustomEndText &&
+    Number(existing.DaysCount || 0) > 0;
+  const isAnnualType =
+    String(nextStateType || "").includes("سنوية") &&
+    !String(nextStateType || "").includes("استثنائية");
   const nextCustomEndText = resolveCustomEndText(data, nextStateType, existing.CustomEndText, true);
   const isOpenEndedLeave = Boolean(nextCustomEndText) && !existing.IsResumed;
   const oldDays = Number(existing.DaysCount || 0);
@@ -206,20 +253,99 @@ async function updateState(id, data, requestingUser) {
     throw ApiError.badRequest("مدة العطلة السنوية يجب أن تكون يوماً واحداً على الأقل.");
   }
 
+  const isAnnualLeave = nextStateType === ANNUAL_LEAVE_TYPE && !isOpenEndedLeave && newDays > 0;
+  const requestedTargetYear = extractTargetYear(data);
   const medicalFields = resolveMedicalFields(data, existing);
 
   const state = await prisma.$transaction(
     async (tx) => {
       let remainingBreakdown = [];
       let remainingBalanceAfter = existing.RemainingBalanceAfter;
+      let nextConsumedYear = existing.ConsumedYear ?? null;
+      let nextConsumedBreakdown = existing.ConsumedBreakdown ?? null;
 
-      if (isAnnualLeave) {
-        const daysDiff = newDays - oldDays;
-        if (daysDiff < 0) {
-          await refundAnnualBalanceReverseFIFO(tx, existing.EmployeesId, Math.abs(daysDiff));
-        } else if (daysDiff > 0) {
-          await deductAnnualBalanceFIFO(tx, existing.EmployeesId, daysDiff, "لتمديد العطلة");
+      if (wasAnnualLeave && isAnnualLeave) {
+        const effectiveTargetYear = requestedTargetYear ?? existing.ConsumedYear ?? null;
+        const yearChanged =
+          Boolean(requestedTargetYear) &&
+          requestedTargetYear !== (existing.ConsumedYear ?? null);
+
+        if (yearChanged) {
+          // Refund full oldDays back to original year(s), then deduct newDays from new targetYear
+          if (oldDays > 0) {
+            await refundConsumedLeave(tx, existing.EmployeesId, existing, oldDays);
+          }
+          const deductRes = await deductAnnualBalanceForYear(
+            tx,
+            existing.EmployeesId,
+            requestedTargetYear,
+            newDays,
+            "لتعديل العطلة"
+          );
+          nextConsumedYear = deductRes.consumedYear;
+          nextConsumedBreakdown = JSON.stringify(deductRes.consumedBreakdown);
+        } else {
+          // Same consumption year: adjust only the delta
+          const daysDiff = newDays - oldDays;
+          if (daysDiff < 0) {
+            await refundConsumedLeave(tx, existing.EmployeesId, existing, Math.abs(daysDiff));
+            if (effectiveTargetYear) {
+              nextConsumedYear = effectiveTargetYear;
+              nextConsumedBreakdown = JSON.stringify([{ year: effectiveTargetYear, deducted: newDays }]);
+            }
+          } else if (daysDiff > 0) {
+            if (effectiveTargetYear) {
+              await deductAnnualBalanceForYear(
+                tx,
+                existing.EmployeesId,
+                effectiveTargetYear,
+                daysDiff,
+                "لتمديد العطلة"
+              );
+              nextConsumedYear = effectiveTargetYear;
+              nextConsumedBreakdown = JSON.stringify([{ year: effectiveTargetYear, deducted: newDays }]);
+            } else {
+              const deductRes = await deductAnnualBalanceFIFO(
+                tx,
+                existing.EmployeesId,
+                daysDiff,
+                "لتمديد العطلة"
+              );
+              nextConsumedYear = existing.ConsumedYear || deductRes.consumedYear;
+            }
+          }
         }
+
+        const snap = await getPositiveRemainingBreakdown(tx, existing.EmployeesId);
+        remainingBreakdown = snap.remainingBreakdown;
+        remainingBalanceAfter = snap.remainingBalanceAfter;
+      } else if (wasAnnualLeave && !isAnnualLeave) {
+        // Switched from Annual Leave to another leave type -> refund previously consumed days
+        if (oldDays > 0) {
+          await refundConsumedLeave(tx, existing.EmployeesId, existing, oldDays);
+        }
+        nextConsumedYear = null;
+        nextConsumedBreakdown = null;
+        remainingBalanceAfter = null;
+      } else if (!wasAnnualLeave && isAnnualLeave) {
+        // Switched from another leave type to Annual Leave -> deduct newDays
+        const deductRes = requestedTargetYear
+          ? await deductAnnualBalanceForYear(
+              tx,
+              existing.EmployeesId,
+              requestedTargetYear,
+              newDays,
+              "لتعديل العطلة"
+            )
+          : await deductAnnualBalanceFIFO(
+              tx,
+              existing.EmployeesId,
+              newDays,
+              "لتعديل العطلة"
+            );
+        nextConsumedYear = deductRes.consumedYear;
+        nextConsumedBreakdown = JSON.stringify(deductRes.consumedBreakdown);
+
         const snap = await getPositiveRemainingBreakdown(tx, existing.EmployeesId);
         remainingBreakdown = snap.remainingBreakdown;
         remainingBalanceAfter = snap.remainingBalanceAfter;
@@ -245,6 +371,8 @@ async function updateState(id, data, requestingUser) {
             : existing.EndDate,
           IsResumed: wantsResume ? true : data.IsResumed !== undefined ? data.IsResumed : existing.IsResumed,
           ActualReturnDate: data.ActualReturnDate ? new Date(data.ActualReturnDate) : existing.ActualReturnDate,
+          ConsumedYear: nextConsumedYear,
+          ConsumedBreakdown: nextConsumedBreakdown,
           RemainingBalanceAfter: remainingBalanceAfter,
           Notes: data.Notes !== undefined ? data.Notes : existing.Notes,
           CustomEndText: nextCustomEndText,
@@ -263,7 +391,7 @@ async function updateState(id, data, requestingUser) {
   await SystemRecordService.log({
     userFullName: requestingUser.fullName,
     title: "تعديل وضعية/إجازة موظف",
-    description: `تم تعديل وضعية '${state.StateTypeOrReason}' للموظف (رقم: ${state.EmployeesId}) بواسطة '${requestingUser.userName}'.`,
+    description: `تم تعديل وضعية '${state.StateTypeOrReason}${state.ConsumedYear ? ` (بعنوان سنة ${state.ConsumedYear})` : ""}' للموظف (رقم: ${state.EmployeesId}) بواسطة '${requestingUser.userName}'.`,
     usersId: requestingUser.id,
     employeesId: state.EmployeesId,
     ipAddress: requestingUser.ipAddress,
@@ -279,7 +407,12 @@ async function deleteState(id, requestingUser) {
     select: {
       Id: true,
       EmployeesId: true,
+      RecordCategory: true,
       StateTypeOrReason: true,
+      DaysCount: true,
+      CustomEndText: true,
+      ConsumedYear: true,
+      ConsumedBreakdown: true,
       Employee: { select: { Name: true, LastName: true, Province: true } },
     },
   });
@@ -292,19 +425,49 @@ async function deleteState(id, requestingUser) {
     }
   }
 
-  await prisma.employeeStates.delete({ where: { Id: id } });
+  const isAnnualLeaveToRefund =
+    existing.StateTypeOrReason === ANNUAL_LEAVE_TYPE &&
+    !existing.CustomEndText &&
+    Number(existing.DaysCount || 0) > 0;
+
+  let refundedDaysTotal = 0;
+  let refundedYearSummary = "";
+
+  await prisma.$transaction(
+    async (tx) => {
+      if (isAnnualLeaveToRefund) {
+        const refundRes = await refundConsumedLeave(
+          tx,
+          existing.EmployeesId,
+          existing,
+          Number(existing.DaysCount)
+        );
+        refundedDaysTotal = refundRes.totalRefunded;
+        if (refundRes.breakdown?.length > 0) {
+          refundedYearSummary = refundRes.breakdown
+            .map((b) => `${b.refunded} يوم لسنة ${b.year}`)
+            .join("، ");
+        }
+      }
+      await tx.employeeStates.delete({ where: { Id: id } });
+    },
+    { maxWait: 15000, timeout: 60000 }
+  );
 
   await SystemRecordService.log({
     userFullName: requestingUser.fullName,
     title: "حذف وضعية/إجازة موظف",
-    description: `تم حذف وضعية '${existing.StateTypeOrReason}' للموظف '${existing.Employee.LastName} ${existing.Employee.Name}' بواسطة '${requestingUser.userName}'.`,
+    description: `تم حذف وضعية '${existing.StateTypeOrReason}' للموظف '${existing.Employee.LastName} ${existing.Employee.Name}'${refundedDaysTotal > 0 ? ` واسترجاع الرصيد (${refundedYearSummary})` : ""} بواسطة '${requestingUser.userName}'.`,
     usersId: requestingUser.id,
     employeesId: existing.EmployeesId,
     ipAddress: requestingUser.ipAddress,
   });
 
   CacheService.invalidateEmployeeEcosystem();
-  return { message: "State deleted successfully." };
+  return {
+    message: "State deleted successfully.",
+    refundedDays: refundedDaysTotal,
+  };
 }
 
 module.exports = { createState, updateState, deleteState };

@@ -48,6 +48,7 @@ function getYearCondition(year) {
     OR: [
       { StartDate: { gte: startOfYear, lt: endOfYear } },
       { EndDate: { gte: startOfYear, lt: endOfYear } },
+      { ConsumedYear: y },
     ],
   };
 }
@@ -81,8 +82,25 @@ async function getDistinctYears() {
  */
 function attachLiveRemainingBreakdown(st) {
   if (!st || st.StateTypeOrReason !== ANNUAL_LEAVE_TYPE) return st;
+
+  let resolvedConsumedYear = st.ConsumedYear ?? null;
+  if (!resolvedConsumedYear && st.ConsumedBreakdown) {
+    try {
+      const parsed = JSON.parse(st.ConsumedBreakdown);
+      if (Array.isArray(parsed) && parsed[0]?.year) {
+        resolvedConsumedYear = Number(parsed[0].year) || null;
+      }
+    } catch (_) {}
+  }
+
   const rawBalances = st.Employee?.LeaveBalances;
-  if (!Array.isArray(rawBalances)) return st;
+  if (!Array.isArray(rawBalances)) {
+    return {
+      ...st,
+      ConsumedYear: resolvedConsumedYear,
+      targetYear: resolvedConsumedYear,
+    };
+  }
 
   const positive = rawBalances
     .filter((b) => Number(b.RemainingDays) > 0)
@@ -96,6 +114,8 @@ function attachLiveRemainingBreakdown(st) {
 
   return {
     ...st,
+    ConsumedYear: resolvedConsumedYear,
+    targetYear: resolvedConsumedYear,
     RemainingBalanceAfter: liveTotal,
     _remainingBreakdown: breakdown,
   };

@@ -653,6 +653,7 @@ export function buildQrPayload({
   jobTitle,
   province,
   leaveYear,
+  consumedYear,
   leaveType = "عطلة سنوية",
   doctorName,
   certificateDate,
@@ -663,6 +664,8 @@ export function buildQrPayload({
   const isSick = leaveType === "عطلة مرضية";
   const isMaternity = leaveType === "عطلة أمومة";
   const isMedical = isSick || isMaternity;
+  const isAnnual = isAnnualLeaveType(leaveType);
+  const effectiveYear = consumedYear || leaveYear || "N/A";
   const docTitle = isMaternity
     ? "HR-WebApp Maternity Leave Decision (مقرر عطلة أمومة)"
     : isSick
@@ -671,6 +674,7 @@ export function buildQrPayload({
   const lines = [
     docTitle,
     `Type: ${leaveType}`,
+    ...(isAnnual ? [`سنة الاستهلاك: بعنوان سنة ${effectiveYear}`] : []),
     `Reference: ${referenceCode || "N/A"}`,
     `Employee: ${employeeName || "N/A"}`,
     `Date of birth: ${dateOfBirth || "N/A"}`,
@@ -691,7 +695,7 @@ export function buildQrPayload({
     `Rank: ${rank || "N/A"}`,
     `Position: ${jobTitle || "/"}`,
     `Province: ${province || "N/A"}`,
-    `Leave year: ${leaveYear || "N/A"}`,
+    `Leave year: ${effectiveYear}`,
   ];
   return lines.join("\n");
 }

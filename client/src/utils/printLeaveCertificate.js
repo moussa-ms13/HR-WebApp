@@ -162,9 +162,42 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
   // Rank (from JobTitle relation)
   const rank = emp.JobTitle?.RankName || stClean.CurrentJobTitle || "";
 
-  // Leave year — derive from StartDate
+  // Remaining balance & Consumed Year — strictly determined for Annual Leave ("عطلة سنوية").
+  const isAnnualLeave =
+    !isDecisionDoc &&
+    !isExceptionalType &&
+    (String(leaveType || "").trim() === "عطلة سنوية" || String(leaveType || "").includes("سنوية"));
+
+  // Leave year: for Annual Leave, strictly resolve the consumed balance year ("بعنوان سنة / targetYear")
+  // with fallback to recorded ConsumedBreakdown or StartDate year for legacy records.
   const startYear = stClean.StartDate ? new Date(stClean.StartDate).getFullYear() : new Date().getFullYear();
-  const leaveYear = String(startYear);
+  const consumedYear = (() => {
+    if (!isAnnualLeave) return null;
+    const explicit =
+      stClean.ConsumedYear ??
+      stClean.consumedYear ??
+      stClean.targetYear ??
+      stClean.TargetYear ??
+      nestedLeave.consumedYear ??
+      nestedLeave.ConsumedYear ??
+      nestedLeave.targetYear;
+    if (explicit !== undefined && explicit !== null && String(explicit).trim() !== "") {
+      const yr = parseInt(explicit, 10);
+      if (Number.isInteger(yr) && yr > 1900) return String(yr);
+    }
+    const rawBreakdown = stClean.ConsumedBreakdown ?? stClean.consumedBreakdown;
+    if (rawBreakdown) {
+      try {
+        const parsed = typeof rawBreakdown === "string" ? JSON.parse(rawBreakdown) : rawBreakdown;
+        if (Array.isArray(parsed) && parsed.length > 0 && parsed[0]?.year) {
+          return String(parsed[0].year);
+        }
+      } catch (_) {}
+    }
+    return String(startYear);
+  })();
+
+  const leaveYear = isAnnualLeave ? consumedYear : String(startYear);
 
   // Days in words & open-ended custom text
   const days = Number(stClean.DaysCount || 0);
@@ -207,6 +240,7 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
     jobTitle: emp.AssignedPosition || "/",
     province: emp.Province || "الشلف",
     leaveYear,
+    consumedYear,
     leaveType,
     doctorName,
     certificateDate,
@@ -218,9 +252,6 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
   // Remaining balance — strictly rendered ONLY when isAnnualLeave === true.
   // When isAnnualLeave is true and all balances are 0, explicitly fallback to 0 (0) for leaveYear.
   // When isAnnualLeave is false (e.g., عطلة استثنائية, مرضية, أمومة), return [] and never render.
-  const isAnnualLeave =
-    !isDecisionDoc &&
-    (String(leaveType || "").trim() === "عطلة سنوية" || String(leaveType || "").includes("سنوية"));
 
   const remaining = (() => {
     if (!isAnnualLeave) return [];
@@ -311,6 +342,8 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
 
   return {
     leaveType,
+    consumedYear,
+    ConsumedYear: consumedYear ? Number(consumedYear) : null,
     exceptionalReason,
     customEndText,
     CustomEndText: customEndText,
@@ -353,6 +386,8 @@ export function buildPrintDataFromState(st, fallbackEmployee = null) {
       isResumed,
       actualReturnDate,
       year: leaveYear,
+      consumedYear,
+      ConsumedYear: consumedYear ? Number(consumedYear) : null,
       days,
       daysInWords,
       startDate,
