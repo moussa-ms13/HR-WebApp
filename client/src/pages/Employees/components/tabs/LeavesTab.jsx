@@ -10,7 +10,6 @@ import { useAuth } from '../../../../context/AuthContext';
 import { useToast } from '../../../../components/ui/Toast';
 import { refreshLeaves, refreshEmployees } from '../../../../utils/cacheManager';
 import { LeaveStatusBadge } from '../../../../components/common/UnifiedBadge';
-import { isAnnualLeaveType, resolveConsumedYearFromLeave } from '../../../Leaves/utils/leaveModalHelpers';
 
 const fetcher = async (url) => {
   const res = await apiClient.get(url);
@@ -295,20 +294,9 @@ const LeavesTab = ({ employee, onRefresh }) => {
                 leaves.map((leave) => (
                   <tr key={leave.Id} className="hover:bg-gray-50 transition-colors">
                     <td className="py-4 px-6 font-bold text-slate-800">
-                      {leave.StateTypeOrReason === 'عطلة استثنائية' && leave.ExceptionalReason ? (
-                        `عطلة استثنائية (${leave.ExceptionalReason})`
-                      ) : isAnnualLeaveType(leave.StateTypeOrReason) ? (
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span>{leave.StateTypeOrReason}</span>
-                          {resolveConsumedYearFromLeave(leave) && (
-                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              بعنوان سنة {resolveConsumedYearFromLeave(leave)}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        leave.StateTypeOrReason
-                      )}
+                      {leave.StateTypeOrReason === 'عطلة استثنائية' && leave.ExceptionalReason
+                        ? `عطلة استثنائية (${leave.ExceptionalReason})`
+                        : leave.StateTypeOrReason}
                     </td>
                     <td className="py-4 px-6 text-gray-600"><DateText value={leave.StartDate} /></td>
                     <td className="py-4 px-6 text-gray-600">
