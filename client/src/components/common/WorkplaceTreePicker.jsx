@@ -5,6 +5,7 @@ import {
   getMohafathat,
   PROVINCIAL_AMLAK_BASE,
   PROVINCIAL_MASH_BASE,
+  CHLEF_MASH_DIRECTORATE,
   REGIONAL_DIRECTORATE,
 } from '../../utils/constants';
 import { useToast } from '../ui/Toast';
@@ -146,8 +147,8 @@ export default function WorkplaceTreePicker({
 
             <TreeNode label={PROVINCIAL_MASH_BASE} onSelect={handleSelect} isLeaf={false}>
               <TreeNode
-                label={`${PROVINCIAL_MASH_BASE} (${province})`}
-                value={`${PROVINCIAL_MASH_BASE} (${province})`}
+                label={province === 'الشلف' ? CHLEF_MASH_DIRECTORATE : `${PROVINCIAL_MASH_BASE} (${province})`}
+                value={province === 'الشلف' ? CHLEF_MASH_DIRECTORATE : `${PROVINCIAL_MASH_BASE} (${province})`}
                 onSelect={handleSelect}
                 isLeaf={true}
                 dirTag={PROVINCIAL_MASH_BASE}

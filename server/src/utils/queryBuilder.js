@@ -100,12 +100,35 @@ function resolveEmployeeWorkplace(emp) {
 
 const KNOWN_PROVINCES = ["الشلف", "تيارت", "تيسمسيلت", "عين الدفلى", "غليزان", "قصر الشلالة"];
 
+const CHLEF_MASH_OFFICIAL = "مديرية مسح الأراضي والحفظ العقاري لولاية الشلف";
+
+const CHLEF_MOHAFATHAT_ALIASES = {
+  "المحافظة العقارية بالشلف": ["المحافظة العقارية بالشلف", "المحافظة العقارية الشلف"],
+  "المحافظة العقارية الشلف": ["المحافظة العقارية بالشلف", "المحافظة العقارية الشلف"],
+  "المحافظة العقارية بتنس": ["المحافظة العقارية بتنس", "المحافظة العقارية تنس"],
+  "المحافظة العقارية تنس": ["المحافظة العقارية بتنس", "المحافظة العقارية تنس"],
+  "المحافظة العقارية ببوقادير": ["المحافظة العقارية ببوقادير", "المحافظة العقارية بوقادير"],
+  "المحافظة العقارية بوقادير": ["المحافظة العقارية ببوقادير", "المحافظة العقارية بوقادير"],
+  "المحافظة العقارية بأولاد فارس": ["المحافظة العقارية بأولاد فارس", "المحافظة العقارية أولاد فارس"],
+  "المحافظة العقارية أولاد فارس": ["المحافظة العقارية بأولاد فارس", "المحافظة العقارية أولاد فارس"],
+  "المحافظة العقارية بوادي الفضة": ["المحافظة العقارية بوادي الفضة", "المحافظة العقارية وادي الفضة"],
+  "المحافظة العقارية وادي الفضة": ["المحافظة العقارية بوادي الفضة", "المحافظة العقارية وادي الفضة"],
+};
+
+const CHLEF_MOHAFATHAT_CANONICAL = {
+  "المحافظة العقارية الشلف": "المحافظة العقارية بالشلف",
+  "المحافظة العقارية تنس": "المحافظة العقارية بتنس",
+  "المحافظة العقارية بوقادير": "المحافظة العقارية ببوقادير",
+  "المحافظة العقارية أولاد فارس": "المحافظة العقارية بأولاد فارس",
+  "المحافظة العقارية وادي الفضة": "المحافظة العقارية بوادي الفضة",
+};
+
 /**
  * Normalizes a workplace/directorate string on input/save.
  * - Rejects bare category headers ("مفتشيات أملاك الدولة", "المحافظات العقارية")
  * - Normalizes legacy variations ("المديرية الجهوية للاملاك الوطنية", "مديرية مسح الأراضي")
- * - Ensures provincial headquarters include ` (${province})` when `province` is provided,
- *   while leaving municipality inspectorates, land registries, and the regional directorate untouched.
+ * - Ensures provincial headquarters include canonical province label when `province` is provided,
+ *   while leaving municipality inspectorates, land registries, and the regional directorate clean.
  * @param {string} rawDirectorate
  * @param {string} [province]
  * @returns {string}
@@ -116,10 +139,15 @@ function normalizeWorkplaceValue(rawDirectorate, province = "") {
 
   const prov = String(province || "").trim();
 
+  if (CHLEF_MOHAFATHAT_CANONICAL[dir]) {
+    return CHLEF_MOHAFATHAT_CANONICAL[dir];
+  }
+
   if (dir === "مفتشيات أملاك الدولة") {
     return prov ? `مديرية أملاك الدولة (${prov})` : "مديرية أملاك الدولة";
   }
   if (dir === "المحافظات العقارية") {
+    if (prov === "الشلف") return CHLEF_MASH_OFFICIAL;
     return prov
       ? `مديرية مسح الأراضي والحفظ العقاري (${prov})`
       : "مديرية مسح الأراضي والحفظ العقاري";
@@ -137,17 +165,21 @@ function normalizeWorkplaceValue(rawDirectorate, province = "") {
   }
 
   // Canonicalize short "مديرية مسح الأراضي" or "مديرية مسح الأراضي (...)"
-  const shortMashMatch = dir.match(/^مديرية\s+مسح\s+الأراضي\s*\(([^)]+)\)$/);
+  const shortMashMatch = dir.match(/^مديرية\s+مسح\s+الأراضي\s*(?:\(([^)]+)\)|لولاية\s+(.+))$/);
   if (dir === "مديرية مسح الأراضي" || shortMashMatch) {
-    const effectiveProv = prov || (shortMashMatch ? shortMashMatch[1].trim() : "");
+    const effectiveProv = prov || (shortMashMatch ? (shortMashMatch[1] || shortMashMatch[2] || "").trim() : "");
+    if (effectiveProv === "الشلف") return CHLEF_MASH_OFFICIAL;
     return effectiveProv
       ? `مديرية مسح الأراضي والحفظ العقاري (${effectiveProv})`
       : "مديرية مسح الأراضي والحفظ العقاري";
   }
 
-  // Canonicalize "مديرية مسح الأراضي والحفظ العقاري" or "مديرية مسح الأراضي والحفظ العقاري (...)"
-  if (/^مديرية\s+مسح\s+الأراضي\s+والحفظ\s+العقاري\s*(?:\([^)]*\))?$/.test(dir)) {
-    return prov ? `مديرية مسح الأراضي والحفظ العقاري (${prov})` : dir;
+  // Canonicalize "مديرية مسح الأراضي والحفظ العقاري" or "(...)" or "لولاية ..."
+  const fullMashMatch = dir.match(/^مديرية\s+مسح\s+الأراضي\s+والحفظ\s+العقاري\s*(?:\(([^)]+)\)|لولاية\s+(.+))?$/);
+  if (fullMashMatch) {
+    const effectiveProv = prov || (fullMashMatch[1] || fullMashMatch[2] || "").trim();
+    if (effectiveProv === "الشلف") return CHLEF_MASH_OFFICIAL;
+    return effectiveProv ? `مديرية مسح الأراضي والحفظ العقاري (${effectiveProv})` : dir;
   }
 
   return dir;
@@ -155,7 +187,7 @@ function normalizeWorkplaceValue(rawDirectorate, province = "") {
 
 /**
  * Builds a Prisma field-level filter condition for Directorate that matches
- * bare canonical names, legacy aliases, AND `(Province)` suffixed variants.
+ * bare canonical names, legacy aliases, AND `(Province)` / `لولاية ...` suffixed variants.
  * @param {string} requestedDirectorate
  * @returns {object|string|undefined}
  */
@@ -163,13 +195,18 @@ function buildDirectorateFilter(requestedDirectorate) {
   const dir = String(requestedDirectorate || "").trim();
   if (!dir) return undefined;
 
-  const amlakMatch = dir.match(/^مديرية\s+أملاك\s+الدولة(?:\s*\(([^)]+)\))?$/);
+  if (CHLEF_MOHAFATHAT_ALIASES[dir]) {
+    return { in: CHLEF_MOHAFATHAT_ALIASES[dir] };
+  }
+
+  const amlakMatch = dir.match(/^مديرية\s+أملاك\s+الدولة(?:\s*\(([^)]+)\)|\s+لولاية\s+(.+))?$/);
   if (amlakMatch) {
-    const prov = amlakMatch[1]?.trim();
+    const prov = (amlakMatch[1] || amlakMatch[2] || "").trim();
     if (prov) {
       return {
         in: [
           `مديرية أملاك الدولة (${prov})`,
+          `مديرية أملاك الدولة لولاية ${prov}`,
           "مديرية أملاك الدولة",
         ],
       };
@@ -178,16 +215,18 @@ function buildDirectorateFilter(requestedDirectorate) {
       in: [
         "مديرية أملاك الدولة",
         ...KNOWN_PROVINCES.map((p) => `مديرية أملاك الدولة (${p})`),
+        ...KNOWN_PROVINCES.map((p) => `مديرية أملاك الدولة لولاية ${p}`),
       ],
     };
   }
 
-  const mashMatch = dir.match(/^مديرية\s+مسح\s+الأراضي(?:\s+والحفظ\s+العقاري)?(?:\s*\(([^)]+)\))?$/);
+  const mashMatch = dir.match(/^مديرية\s+مسح\s+الأراضي(?:\s+والحفظ\s+العقاري)?(?:\s*\(([^)]+)\)|\s+لولاية\s+(.+))?$/);
   if (mashMatch) {
-    const prov = mashMatch[1]?.trim();
+    const prov = (mashMatch[1] || mashMatch[2] || "").trim();
     if (prov) {
       return {
         in: [
+          `مديرية مسح الأراضي والحفظ العقاري لولاية ${prov}`,
           `مديرية مسح الأراضي والحفظ العقاري (${prov})`,
           `مديرية مسح الأراضي (${prov})`,
           "مديرية مسح الأراضي والحفظ العقاري",
@@ -199,6 +238,7 @@ function buildDirectorateFilter(requestedDirectorate) {
       in: [
         "مديرية مسح الأراضي والحفظ العقاري",
         "مديرية مسح الأراضي",
+        ...KNOWN_PROVINCES.map((p) => `مديرية مسح الأراضي والحفظ العقاري لولاية ${p}`),
         ...KNOWN_PROVINCES.map((p) => `مديرية مسح الأراضي والحفظ العقاري (${p})`),
         ...KNOWN_PROVINCES.map((p) => `مديرية مسح الأراضي (${p})`),
       ],
@@ -225,7 +265,7 @@ function buildDirectorateFilter(requestedDirectorate) {
 
 /**
  * Builds an Employee-level Prisma WHERE condition for Directorate.
- * Matches BOTH bare canonical names AND any `Directorate (Province)` variant via OR + startsWith.
+ * Matches BOTH bare canonical names AND any `Directorate (Province)` / `لولاية ...` variant.
  * @param {string} requestedDirectorate
  * @returns {object|undefined}
  */
@@ -233,13 +273,18 @@ function buildDirectorateCondition(requestedDirectorate) {
   const dir = String(requestedDirectorate || "").trim();
   if (!dir) return undefined;
 
-  const amlakMatch = dir.match(/^مديرية\s+أملاك\s+الدولة(?:\s*\(([^)]+)\))?$/);
+  if (CHLEF_MOHAFATHAT_ALIASES[dir]) {
+    return { Directorate: { in: CHLEF_MOHAFATHAT_ALIASES[dir] } };
+  }
+
+  const amlakMatch = dir.match(/^مديرية\s+أملاك\s+الدولة(?:\s*\(([^)]+)\)|\s+لولاية\s+(.+))?$/);
   if (amlakMatch) {
-    const prov = amlakMatch[1]?.trim();
+    const prov = (amlakMatch[1] || amlakMatch[2] || "").trim();
     if (prov) {
       return {
         OR: [
           { Directorate: `مديرية أملاك الدولة (${prov})` },
+          { Directorate: `مديرية أملاك الدولة لولاية ${prov}` },
           { AND: [{ Directorate: "مديرية أملاك الدولة" }, { Province: prov }] },
           { Directorate: "مديرية أملاك الدولة" },
         ],
@@ -249,16 +294,18 @@ function buildDirectorateCondition(requestedDirectorate) {
       OR: [
         { Directorate: "مديرية أملاك الدولة" },
         { Directorate: { startsWith: "مديرية أملاك الدولة (" } },
+        { Directorate: { startsWith: "مديرية أملاك الدولة لولاية " } },
       ],
     };
   }
 
-  const mashMatch = dir.match(/^مديرية\s+مسح\s+الأراضي(?:\s+والحفظ\s+العقاري)?(?:\s*\(([^)]+)\))?$/);
+  const mashMatch = dir.match(/^مديرية\s+مسح\s+الأراضي(?:\s+والحفظ\s+العقاري)?(?:\s*\(([^)]+)\)|\s+لولاية\s+(.+))?$/);
   if (mashMatch) {
-    const prov = mashMatch[1]?.trim();
+    const prov = (mashMatch[1] || mashMatch[2] || "").trim();
     if (prov) {
       return {
         OR: [
+          { Directorate: `مديرية مسح الأراضي والحفظ العقاري لولاية ${prov}` },
           { Directorate: `مديرية مسح الأراضي والحفظ العقاري (${prov})` },
           { Directorate: `مديرية مسح الأراضي (${prov})` },
           { AND: [{ Directorate: { in: ["مديرية مسح الأراضي والحفظ العقاري", "مديرية مسح الأراضي"] } }, { Province: prov }] },
@@ -271,6 +318,7 @@ function buildDirectorateCondition(requestedDirectorate) {
       OR: [
         { Directorate: "مديرية مسح الأراضي والحفظ العقاري" },
         { Directorate: "مديرية مسح الأراضي" },
+        { Directorate: { startsWith: "مديرية مسح الأراضي والحفظ العقاري لولاية " } },
         { Directorate: { startsWith: "مديرية مسح الأراضي والحفظ العقاري (" } },
         { Directorate: { startsWith: "مديرية مسح الأراضي (" } },
       ],

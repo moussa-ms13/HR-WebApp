@@ -32,11 +32,12 @@ export function getAllowedProvinces(user) {
 
 export const PROVINCIAL_AMLAK_BASE = "مديرية أملاك الدولة";
 export const PROVINCIAL_MASH_BASE = "مديرية مسح الأراضي والحفظ العقاري";
+export const CHLEF_MASH_DIRECTORATE = "مديرية مسح الأراضي والحفظ العقاري لولاية الشلف";
 export const REGIONAL_DIRECTORATE = "المديرية الجهوية للأملاك الوطنية";
 
 /**
  * If `directorate` refers to one of the two provincial headquarters directorates
- * (either bare or with a `(Province)` suffix, or legacy short name), returns its canonical base name;
+ * (either bare or with a `(Province)` / `لولاية ...` suffix, or legacy short name), returns its canonical base name;
  * otherwise returns null.
  */
 export function getProvincialDirectorateBase(directorate) {
@@ -45,15 +46,16 @@ export function getProvincialDirectorateBase(directorate) {
 
   if (
     dir === PROVINCIAL_AMLAK_BASE ||
-    /^مديرية\s+أملاك\s+الدولة\s*(?:\([^)]*\))?$/.test(dir)
+    /^مديرية\s+أملاك\s+الدولة\s*(?:\([^)]*\)|لولاية\s+.+)?$/.test(dir)
   ) {
     return PROVINCIAL_AMLAK_BASE;
   }
 
   if (
     dir === PROVINCIAL_MASH_BASE ||
+    dir === CHLEF_MASH_DIRECTORATE ||
     dir === "مديرية مسح الأراضي" ||
-    /^مديرية\s+مسح\s+الأراضي(?:\s+والحفظ\s+العقاري)?\s*(?:\([^)]*\))?$/.test(dir)
+    /^مديرية\s+مسح\s+الأراضي(?:\s+والحفظ\s+العقاري)?\s*(?:\([^)]*\)|لولاية\s+.+)?$/.test(dir)
   ) {
     return PROVINCIAL_MASH_BASE;
   }
@@ -62,7 +64,7 @@ export function getProvincialDirectorateBase(directorate) {
 }
 
 /**
- * Formats a provincial headquarters directorate to always display ` (${province})`
+ * Formats a provincial headquarters directorate to its canonical official label
  * while keeping municipality inspectorates, land registries, and regional directorate unchanged.
  */
 export function formatProvincialDirectorate(directorate, province) {
@@ -73,6 +75,9 @@ export function formatProvincialDirectorate(directorate, province) {
   const prov = String(province || "").trim();
   const base = getProvincialDirectorateBase(dir);
   if (base) {
+    if (base === PROVINCIAL_MASH_BASE && prov === "الشلف") {
+      return CHLEF_MASH_DIRECTORATE;
+    }
     return prov ? `${base} (${prov})` : base;
   }
   return dir;
@@ -80,7 +85,7 @@ export function formatProvincialDirectorate(directorate, province) {
 
 /**
  * Computes the updated Directorate value when the user changes Province in the form:
- * updates the `(Province)` suffix for provincial HQ choices, keeps Regional Directorate if switching to Chlef,
+ * updates the province suffix for provincial HQ choices, keeps Regional Directorate if switching to Chlef,
  * and clears province-specific inspectorates/conservations.
  */
 export function resolveDirectorateOnProvinceChange(currentDirectorate, newProvince) {
@@ -90,6 +95,9 @@ export function resolveDirectorateOnProvinceChange(currentDirectorate, newProvin
 
   const base = getProvincialDirectorateBase(dir);
   if (base) {
+    if (base === PROVINCIAL_MASH_BASE && nextProv === "الشلف") {
+      return CHLEF_MASH_DIRECTORATE;
+    }
     return nextProv ? `${base} (${nextProv})` : base;
   }
 
@@ -111,7 +119,13 @@ export const getMofatishiyat = (province) => {
 };
 
 export const getMohafathat = (province) => {
-  if (province === "الشلف") return ["المحافظة العقارية الشلف", "المحافظة العقارية بوقادير", "المحافظة العقارية أولاد فارس", "المحافظة العقارية وادي الفضة", "المحافظة العقارية تنس"];
+  if (province === "الشلف") return [
+    "المحافظة العقارية بالشلف",
+    "المحافظة العقارية بتنس",
+    "المحافظة العقارية ببوقادير",
+    "المحافظة العقارية بأولاد فارس",
+    "المحافظة العقارية بوادي الفضة",
+  ];
   if (province === "عين الدفلى") return ["المحافظة العقارية عين الدفلى", "المحافظة العقارية خميس مليانة", "المحافظة العقارية جليدة", "المحافظة العقارية جندل", "المحافظة العقارية العطاف"];
   if (province === "غليزان" || province === "غيليزان") return ["المحافظة العقارية غليزان", "المحافظة العقارية وادي ارهيو", "المحافظة العقارية زمورة", "المحافظة العقارية مازونة", "المحافظة العقارية عمي موسى"];
   if (province === "تيسمسيلت") return ["المحافظة العقارية تيسمسيلت", "المحافظة العقارية ثنية الحد", "المحافظة العقارية برج بونعامة"];
