@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import useSWR from 'swr';
 import { useAuth } from '../../context/AuthContext';
@@ -14,24 +14,6 @@ import { StatutoryStatusBadge, ProfileCompletenessBadge } from '../../components
 
 const WorkCertificateModal = lazy(() => import('../../components/OfficialDocuments/WorkCertificateModal'));
 const WorkDeclarationModal = lazy(() => import('../../components/OfficialDocuments/WorkDeclarationModal'));
-
-const fetcher = async (
-  [_url, page, limit, search, province, directorate, fileStatus, category, sortBy, sortOrder]
-) => {
-  const result = await EmployeeService.getAll(
-    page,
-    limit,
-    search,
-    province,
-    directorate,
-    fileStatus,
-    category,
-    sortBy,
-    sortOrder
-  );
-  if (!result.success) throw new Error("Failed to fetch");
-  return result;
-};
 
 const HeaderCell = ({ 
   label, 
@@ -108,12 +90,33 @@ const EmployeesList = () => {
   
   const allowedProvinces = getAllowedProvinces(useAuth().user);
 
-  const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
-  const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
+  const availableMofatishiyat = useMemo(() => (provinceFilter ? getMofatishiyat(provinceFilter) : []), [provinceFilter]);
+  const availableMohafathat = useMemo(() => (provinceFilter ? getMohafathat(provinceFilter) : []), [provinceFilter]);
+
+  const abortControllerRef = useRef(null);
+  useEffect(() => () => { abortControllerRef.current?.abort(); }, []);
+
+  const fetchEmployees = useCallback(async (
+    [_url, p, l, q, prov, dir, fs, cat, sBy, sOrd]
+  ) => {
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    try {
+      const result = await EmployeeService.getAll(
+        p, l, q, prov, dir, fs, cat, sBy, sOrd,
+        { signal: controller.signal }
+      );
+      if (!result.success) throw new Error("Failed to fetch");
+      return result;
+    } finally {
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
+    }
+  }, []);
 
   const { data, error, isLoading, isValidating, mutate } = useSWR(
     ['/api/employees', page, limit, search, provinceFilter, directorateFilter, fileStatusFilter, '', sortBy, sortOrder],
-    fetcher,
+    fetchEmployees,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
 

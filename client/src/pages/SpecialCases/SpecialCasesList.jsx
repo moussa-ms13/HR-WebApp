@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import useSWR from 'swr';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -31,23 +31,6 @@ import {
   ChevronRight,
   ChevronLeft,
 } from 'lucide-react';
-
-const casesFetcher = async ([_url, page, limit, search, directorate, province, statusFilter, caseType, year, sortBy, sortOrder]) => {
-  const result = await SpecialCasesService.getAll(
-    page,
-    limit,
-    search,
-    province,
-    directorate,
-    statusFilter,
-    caseType,
-    year,
-    sortBy,
-    sortOrder
-  );
-  if (!result.success) throw new Error('فشل جلب الحالات الخاصة');
-  return result;
-};
 
 export default function SpecialCasesList() {
   const { user, hasPermission } = useAuth();
@@ -98,9 +81,30 @@ export default function SpecialCasesList() {
   const isAutoExpanded = isSearchAcrossAll || isPastYearAcrossAll;
   const effectiveStatusFilter = isAutoExpanded ? 'all' : statusFilter;
 
+  const abortControllerRef = useRef(null);
+  useEffect(() => () => { abortControllerRef.current?.abort(); }, []);
+
+  const fetchCases = useCallback(async (
+    [_url, p, l, q, dir, prov, stFilter, cType, yr, sBy, sOrd]
+  ) => {
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    try {
+      const result = await SpecialCasesService.getAll(
+        p, l, q, prov, dir, stFilter, cType, yr, sBy, sOrd,
+        { signal: controller.signal }
+      );
+      if (!result.success) throw new Error('فشل جلب الحالات الخاصة');
+      return result;
+    } finally {
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
+    }
+  }, []);
+
   const { data, isLoading, mutate } = useSWR(
     ['/api/special-cases', page, limit, search, directorateFilter, provinceFilter, effectiveStatusFilter, caseTypeFilter, yearFilter, sortBy, sortOrder],
-    casesFetcher,
+    fetchCases,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
 
@@ -109,16 +113,16 @@ export default function SpecialCasesList() {
   const showLoading = isLoading && !data;
 
   // "عرض السجلات" dropdown options with live counts
-  const viewOptions = RECORD_VIEW_OPTIONS.map((opt) => {
+  const viewOptions = useMemo(() => RECORD_VIEW_OPTIONS.map((opt) => {
     const count = meta.counts?.[opt.id];
     return {
       value: opt.id,
       label: count !== undefined ? `${opt.label} (${count})` : opt.label,
     };
-  });
+  }), [meta.counts]);
 
   // "السنة" dropdown: distinct years from DB + current year (+ selected year), desc
-  const yearOptions = Array.from(
+  const yearOptions = useMemo(() => Array.from(
     new Set([
       new Date().getFullYear(),
       ...(Array.isArray(meta.years) ? meta.years : []),
@@ -126,7 +130,7 @@ export default function SpecialCasesList() {
     ])
   )
     .filter((y) => Number.isInteger(y) && y > 0)
-    .sort((a, b) => b - a);
+    .sort((a, b) => b - a), [meta.years, yearFilter]);
 
   // Modal States
   const [isModalOpen, setIsModalOpen] = useState(false);

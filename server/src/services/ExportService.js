@@ -108,6 +108,17 @@ class ExportService {
   }
 
   static async getPreview(reportType, filters = {}, selectedColumns = [], requestingUser) {
+    const { allowedProvinces } = resolveGeographicFilter(requestingUser);
+    const scopeKey =
+      requestingUser?.role === ROLES.ADMIN
+        ? "admin"
+        : [...(allowedProvinces || [])].sort().join("|");
+    const previewCacheKey = `export_preview_${scopeKey}_${reportType}_${JSON.stringify(
+      filters || {}
+    )}_${JSON.stringify(selectedColumns || [])}`;
+    const cached = CacheService.get(previewCacheKey);
+    if (cached) return cached;
+
     const { totalCount, rows } = await fetchReportData(reportType, filters, requestingUser, 50);
     const { availableDefs, activeDefs } = resolveActiveColumns(reportType, selectedColumns);
 
@@ -119,7 +130,7 @@ class ExportService {
       return item;
     });
 
-    return {
+    const result = {
       success: true,
       reportType,
       totalCount,
@@ -130,6 +141,9 @@ class ExportService {
       data: preview,
       rows: preview,
     };
+
+    CacheService.set(previewCacheKey, result, 60);
+    return result;
   }
 
   static async exportCustomExcel(

@@ -6,6 +6,7 @@
 // ============================================================
 const prisma = require("../config/database");
 const os = require("os");
+const CacheService = require("./CacheService");
 const { getClientDeviceName, resolveDeviceName } = require("../utils/requestContext");
 const { sanitizePagination, buildTokenizedSearch } = require("../utils/queryBuilder");
 
@@ -51,6 +52,7 @@ class SystemRecordService {
           EmployeesId: employeesId,
         },
       });
+      CacheService.delByPrefix("dashboard_user_kpis_");
     } catch (error) {
       // Logging failures must never crash the main operation
       console.error("[SystemRecordService] Failed to log action:", error.message);
@@ -60,20 +62,50 @@ class SystemRecordService {
   /**
    * Retrieve system records with optional filtering and pagination.
    */
-  static async getAll({ page = 1, limit = 50, usersId = null, search = "", action = "", sortBy = "CreatedDate", sortOrder = "desc" } = {}) {
+  static async getAll({ page = 1, limit = 50, usersId = null, search = "", action = "", sortBy = "Id", sortOrder = "desc" } = {}) {
     const { safePage, safeLimit, skip } = sanitizePagination(page, limit, 100);
     const where = {};
     if (usersId) where.UsersId = usersId;
     if (action) where.Title = { contains: action };
-    
-    const tokenSearch = buildTokenizedSearch(search, (token) => [
-      { Title: { contains: token } },
-      { Description: { contains: token } },
-      { UserFullName: { contains: token } },
-      { DeviceName: { contains: token } },
-      { Employee: { LastName: { contains: token } } },
-      { Employee: { Name: { contains: token } } },
-    ]);
+
+    const trimmedSearch = String(search || "").trim();
+    const searchTokens = trimmedSearch ? trimmedSearch.split(/\s+/).filter(Boolean).slice(0, 5) : [];
+
+    // Pre-resolve matching Employee IDs in one fast indexed lookup instead of correlated EXISTS subqueries on 15k+ rows
+    const matchedEmpIdsByToken = new Map();
+    if (searchTokens.length > 0) {
+      const empLookups = await Promise.all(
+        searchTokens.map((token) =>
+          prisma.employees.findMany({
+            where: {
+              OR: [
+                { LastName: { contains: token } },
+                { Name: { contains: token } },
+              ],
+            },
+            select: { Id: true },
+            take: 200,
+          })
+        )
+      );
+      searchTokens.forEach((token, idx) => {
+        matchedEmpIdsByToken.set(
+          token,
+          empLookups[idx].map((e) => e.Id)
+        );
+      });
+    }
+
+    const tokenSearch = buildTokenizedSearch(trimmedSearch, (token) => {
+      const empIds = matchedEmpIdsByToken.get(token) || [];
+      return [
+        { Title: { contains: token } },
+        { Description: { contains: token } },
+        { UserFullName: { contains: token } },
+        { DeviceName: { contains: token } },
+        ...(empIds.length > 0 ? [{ EmployeesId: { in: empIds } }] : []),
+      ];
+    });
     if (tokenSearch) {
       if (where.Title) {
         where.AND = [
@@ -86,10 +118,10 @@ class SystemRecordService {
       }
     }
 
-    let orderBy = { CreatedDate: "desc" };
+    // Clustered PK (Id) is strictly monotonic with CreatedDate — ordering by Id avoids expensive LOB sort/key lookups
+    let orderBy = { Id: "desc" };
     const direction = sortOrder?.toLowerCase() === "asc" ? "asc" : "desc";
-    if (sortBy === "Id") orderBy = { Id: direction };
-    else if (sortBy === "CreatedDate") orderBy = { CreatedDate: direction };
+    if (sortBy === "Id" || sortBy === "CreatedDate") orderBy = { Id: direction };
     else if (sortBy === "Title") orderBy = { Title: direction };
     else if (sortBy === "UserFullName") orderBy = { UserFullName: direction };
     else if (sortBy === "DeviceName") orderBy = { DeviceName: direction };

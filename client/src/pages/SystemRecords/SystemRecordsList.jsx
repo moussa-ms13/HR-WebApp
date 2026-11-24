@@ -10,12 +10,6 @@ import { DateText, formatDateTime } from '../../utils/formatDate';
 import { formatEmployeeName } from '../../utils/employeeUtils';
 import * as XLSX from 'xlsx';
 
-const fetcher = async ([url, page, limit, search, action, sortBy, sortOrder]) => {
-  const result = await SystemRecordsService.getAll(page, limit, search, action, sortBy, sortOrder);
-  if (!result.success) throw new Error("Failed to fetch");
-  return result;
-};
-
 const HeaderCell = ({ 
   label, 
   sortKey = null, 
@@ -56,13 +50,29 @@ const SystemRecordsList = () => {
   const [search, setSearch] = useState('');
   const [actionFilter, setActionFilter] = useState('');
   
-  // Sorting
-  const [sortBy, setSortBy] = useState('CreatedDate');
+  // Sorting (defaults to clustered PK Id DESC — chronologically identical to CreatedDate)
+  const [sortBy, setSortBy] = useState('Id');
   const [sortOrder, setSortOrder] = useState('desc');
+
+  const abortControllerRef = useRef(null);
+  useEffect(() => () => { abortControllerRef.current?.abort(); }, []);
+
+  const fetchRecords = useCallback(async ([_url, p, l, q, act, sBy, sOrd]) => {
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    try {
+      const result = await SystemRecordsService.getAll(p, l, q, act, sBy, sOrd, { signal: controller.signal });
+      if (!result.success) throw new Error("Failed to fetch");
+      return result;
+    } finally {
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
+    }
+  }, []);
   
   const { data, error, isLoading } = useSWR(
     ['/api/system-records', page, limit, search, actionFilter, sortBy, sortOrder],
-    fetcher,
+    fetchRecords,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
 

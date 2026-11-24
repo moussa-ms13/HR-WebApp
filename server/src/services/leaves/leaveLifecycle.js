@@ -147,46 +147,73 @@ async function getAllStates(
   }
 
   const isStandardTab = ["active", "resumed", "all"].includes(effectiveStatus);
+  const hasSearch = Boolean(search && String(search).trim());
+  const countCacheKey = !hasSearch
+    ? `state_count_leaves_${JSON.stringify({
+        prov: provinceFilter,
+        dir: directorate || "",
+        cat: category || "",
+        st: stateType || "",
+        yr: year || "",
+        emp: employeeId || "",
+      })}`
+    : null;
+  const cachedCounts = countCacheKey ? CacheService.get(countCacheKey) : null;
 
-  const [states, activeCount, resumedCount, allCount, customTotal, years] = await Promise.all([
-    prisma.employeeStates.findMany({
-      where: whereClause,
-      select: {
-        Id: true,
-        EmployeesId: true,
-        RecordCategory: true,
-        CurrentJobTitle: true,
-        StateTypeOrReason: true,
-        DaysCount: true,
-        StartDate: true,
-        EndDate: true,
-        AddedDate: true,
-        IsResumed: true,
-        ActualReturnDate: true,
-        RemainingBalanceAfter: true,
-        Notes: true,
-        DoctorName: true,
-        CertificateDate: true,
-        SecondDoctorName: true,
-        SecondCertificateDate: true,
-        ExceptionalReason: true,
-        CustomEndText: true,
-        ConsumedYear: true,
-        ConsumedBreakdown: true,
-        Employee: { select: STATE_EMPLOYEE_SELECT },
-      },
-      skip,
-      take: safeLimit,
-      orderBy,
-    }),
-    prisma.employeeStates.count({ where: buildWhereForStatus("active") }),
-    prisma.employeeStates.count({ where: buildWhereForStatus("resumed") }),
-    prisma.employeeStates.count({ where: buildWhereForStatus("all") }),
-    isStandardTab ? Promise.resolve(null) : prisma.employeeStates.count({ where: whereClause }),
-    getDistinctYears(),
-  ]);
+  const statesPromise = prisma.employeeStates.findMany({
+    where: whereClause,
+    select: {
+      Id: true,
+      EmployeesId: true,
+      RecordCategory: true,
+      CurrentJobTitle: true,
+      StateTypeOrReason: true,
+      DaysCount: true,
+      StartDate: true,
+      EndDate: true,
+      AddedDate: true,
+      IsResumed: true,
+      ActualReturnDate: true,
+      RemainingBalanceAfter: true,
+      Notes: true,
+      DoctorName: true,
+      CertificateDate: true,
+      SecondDoctorName: true,
+      SecondCertificateDate: true,
+      ExceptionalReason: true,
+      CustomEndText: true,
+      ConsumedYear: true,
+      ConsumedBreakdown: true,
+      Employee: { select: STATE_EMPLOYEE_SELECT },
+    },
+    skip,
+    take: safeLimit,
+    orderBy,
+  });
 
-  const counts = { active: activeCount, resumed: resumedCount, all: allCount };
+  let states, counts, customTotal, years;
+  if (cachedCounts && isStandardTab) {
+    [states, years] = await Promise.all([statesPromise, getDistinctYears()]);
+    counts = cachedCounts;
+    customTotal = null;
+  } else {
+    const [rows, activeCount, resumedCount, allCount, customRes, yrs] = await Promise.all([
+      statesPromise,
+      prisma.employeeStates.count({ where: buildWhereForStatus("active") }),
+      prisma.employeeStates.count({ where: buildWhereForStatus("resumed") }),
+      prisma.employeeStates.count({ where: buildWhereForStatus("all") }),
+      isStandardTab ? Promise.resolve(null) : prisma.employeeStates.count({ where: whereClause }),
+      getDistinctYears(),
+    ]);
+    states = rows;
+    counts = { active: activeCount, resumed: resumedCount, all: allCount };
+    customTotal = customRes;
+    years = yrs;
+    if (countCacheKey) {
+      CacheService.set(countCacheKey, counts, 60);
+    }
+  }
+
   const total = isStandardTab ? counts[effectiveStatus] : customTotal;
 
   return {

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import useSWR from 'swr';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -43,24 +43,6 @@ const LEAVE_TYPE_OPTIONS = [
   'عطلة بدون أجر',
   'غياب',
 ];
-
-const fetcher = async ([_url, page, limit, category, search, directorate, province, sortBy, sortOrder, statusFilter, stateType, year]) => {
-  const result = await EmployeeStatesService.getAll(
-    page,
-    limit,
-    category,
-    search,
-    directorate,
-    province,
-    sortBy,
-    sortOrder,
-    statusFilter,
-    stateType,
-    year
-  );
-  if (!result.success) throw new Error("Failed to fetch");
-  return result;
-};
 
 const EmployeeStatesList = () => {
   const { user, hasPermission } = useAuth();
@@ -113,9 +95,30 @@ const EmployeeStatesList = () => {
   const isAutoExpanded = isSearchAcrossAll || isPastYearAcrossAll;
   const effectiveStatusFilter = isAutoExpanded ? 'all' : statusFilter;
 
+  const abortControllerRef = useRef(null);
+  useEffect(() => () => { abortControllerRef.current?.abort(); }, []);
+
+  const fetchStates = useCallback(async (
+    [_url, p, l, cat, q, dir, prov, sBy, sOrd, stFilter, stType, yr]
+  ) => {
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    try {
+      const result = await EmployeeStatesService.getAll(
+        p, l, cat, q, dir, prov, sBy, sOrd, stFilter, stType, yr,
+        { signal: controller.signal }
+      );
+      if (!result.success) throw new Error("Failed to fetch");
+      return result;
+    } finally {
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
+    }
+  }, []);
+
   const { data, isLoading, mutate } = useSWR(
     ['/api/employee-states', page, limit, '', search, directorateFilter, provinceFilter, sortBy, sortOrder, effectiveStatusFilter, stateTypeFilter, yearFilter],
-    fetcher,
+    fetchStates,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
 
@@ -128,16 +131,16 @@ const EmployeeStatesList = () => {
   const showLoading = isLoading && !data;
 
   // "عرض السجلات" dropdown options with live counts
-  const viewOptions = RECORD_VIEW_OPTIONS.map((opt) => {
+  const viewOptions = useMemo(() => RECORD_VIEW_OPTIONS.map((opt) => {
     const count = meta.counts?.[opt.id];
     return {
       value: opt.id,
       label: count !== undefined ? `${opt.label} (${count})` : opt.label,
     };
-  });
+  }), [meta.counts]);
 
   // "السنة" dropdown / stepper: distinct years from DB + current year (+ selected year), desc
-  const yearOptions = Array.from(
+  const yearOptions = useMemo(() => Array.from(
     new Set([
       new Date().getFullYear(),
       ...(Array.isArray(meta.years) ? meta.years : []),
@@ -145,7 +148,7 @@ const EmployeeStatesList = () => {
     ])
   )
     .filter((y) => Number.isInteger(y) && y > 0)
-    .sort((a, b) => b - a);
+    .sort((a, b) => b - a), [meta.years, yearFilter]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isUnifiedModalOpen, setIsUnifiedModalOpen] = useState(false);

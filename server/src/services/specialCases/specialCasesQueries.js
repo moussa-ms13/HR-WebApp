@@ -3,6 +3,7 @@
 // ============================================================
 const prisma = require("../../config/database");
 const ApiError = require("../../utils/ApiError");
+const CacheService = require("../CacheService");
 const {
   sanitizePagination,
   buildTokenizedSearch,
@@ -108,41 +109,66 @@ async function getAllSpecialCases(
   }
 
   const isStandardTab = ["temporary_active", "permanent_exit", "archived", "all"].includes(effectiveStatus);
+  const hasSearch = Boolean(search && String(search).trim());
+  const countCacheKey = !hasSearch
+    ? `state_count_sc_${JSON.stringify({
+        prov: provinceFilter,
+        dir: directorate || "",
+        ct: caseType || "",
+        yr: year || "",
+      })}`
+    : null;
+  const cachedCounts = countCacheKey ? CacheService.get(countCacheKey) : null;
 
-  const [cases, tempActiveCount, permExitCount, archivedCount, allCount, customTotal, years] =
-    await Promise.all([
-      prisma.specialCases.findMany({
-        where: whereClause,
-        select: {
-          Id: true,
-          EmployeesId: true,
-          CaseType: true,
-          StartDate: true,
-          EndDate: true,
-          Destination: true,
-          ReferenceDoc: true,
-          IsActive: true,
-          CreatedAt: true,
-          Employee: { select: { Name: true, LastName: true, Province: true } },
-        },
-        skip,
-        take: safeLimit,
-        orderBy,
-      }),
-      prisma.specialCases.count({ where: buildWhereForStatus("temporary_active") }),
-      prisma.specialCases.count({ where: buildWhereForStatus("permanent_exit") }),
-      prisma.specialCases.count({ where: buildWhereForStatus("archived") }),
-      prisma.specialCases.count({ where: buildWhereForStatus("all") }),
-      isStandardTab ? Promise.resolve(null) : prisma.specialCases.count({ where: whereClause }),
-      getDistinctYears(),
-    ]);
+  const casesPromise = prisma.specialCases.findMany({
+    where: whereClause,
+    select: {
+      Id: true,
+      EmployeesId: true,
+      CaseType: true,
+      StartDate: true,
+      EndDate: true,
+      Destination: true,
+      ReferenceDoc: true,
+      IsActive: true,
+      CreatedAt: true,
+      Employee: { select: { Name: true, LastName: true, Province: true } },
+    },
+    skip,
+    take: safeLimit,
+    orderBy,
+  });
 
-  const counts = {
-    temporary_active: tempActiveCount,
-    permanent_exit: permExitCount,
-    archived: archivedCount,
-    all: allCount,
-  };
+  let cases, counts, customTotal, years;
+  if (cachedCounts && isStandardTab) {
+    [cases, years] = await Promise.all([casesPromise, getDistinctYears()]);
+    counts = cachedCounts;
+    customTotal = null;
+  } else {
+    const [rows, tempActiveCount, permExitCount, archivedCount, allCount, customRes, yrs] =
+      await Promise.all([
+        casesPromise,
+        prisma.specialCases.count({ where: buildWhereForStatus("temporary_active") }),
+        prisma.specialCases.count({ where: buildWhereForStatus("permanent_exit") }),
+        prisma.specialCases.count({ where: buildWhereForStatus("archived") }),
+        prisma.specialCases.count({ where: buildWhereForStatus("all") }),
+        isStandardTab ? Promise.resolve(null) : prisma.specialCases.count({ where: whereClause }),
+        getDistinctYears(),
+      ]);
+    cases = rows;
+    counts = {
+      temporary_active: tempActiveCount,
+      permanent_exit: permExitCount,
+      archived: archivedCount,
+      all: allCount,
+    };
+    customTotal = customRes;
+    years = yrs;
+    if (countCacheKey) {
+      CacheService.set(countCacheKey, counts, 60);
+    }
+  }
+
   const total = isStandardTab ? counts[effectiveStatus] : customTotal;
 
   return {

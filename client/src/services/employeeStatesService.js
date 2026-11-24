@@ -15,7 +15,8 @@ class EmployeeStatesService {
     sortOrder = '',
     statusFilter = 'active',
     stateType = '',
-    year = ''
+    year = '',
+    options = {}
   ) {
     const response = await apiClient.get('/employee-states', {
       params: {
@@ -30,7 +31,8 @@ class EmployeeStatesService {
         statusFilter,
         stateType,
         year,
-      }
+      },
+      signal: options?.signal,
     });
     return response.data;
   }

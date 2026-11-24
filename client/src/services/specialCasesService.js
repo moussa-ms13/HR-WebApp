@@ -11,10 +11,12 @@ class SpecialCasesService {
     caseType = '',
     year = '',
     sortBy = '',
-    sortOrder = ''
+    sortOrder = '',
+    options = {}
   ) {
     const response = await apiClient.get('/special-cases', {
-      params: { page, limit, search, province, directorate, statusFilter, caseType, year, sortBy, sortOrder }
+      params: { page, limit, search, province, directorate, statusFilter, caseType, year, sortBy, sortOrder },
+      signal: options?.signal,
     });
     return response.data;
   }

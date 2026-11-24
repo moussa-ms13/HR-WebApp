@@ -18,6 +18,20 @@ const {
 
 const EXIT_CASE_TYPES = ["نقل", "تحويل", "استقالة", "تقاعد"];
 
+function findMatchingJobTitleIds(jobMap, token) {
+  if (!token || !jobMap) return [];
+  const lower = String(token).toLowerCase();
+  const ids = [];
+  for (const [idStr, entry] of Object.entries(jobMap)) {
+    const rankName = typeof entry === "string" ? entry : (entry?.RankName || "");
+    const empCat = typeof entry === "object" && entry ? (entry.EmploymentCategory || "") : "";
+    if (rankName.toLowerCase().includes(lower) || empCat.toLowerCase().includes(lower)) {
+      ids.push(Number(idStr));
+    }
+  }
+  return ids;
+}
+
 async function getJobTitlesMap() {
   let map = CacheService.get("all_job_titles_map");
   if (!map) {
@@ -154,18 +168,23 @@ async function listEmployees(rawArgs) {
     andConditions.push(excludeExitCondition);
   }
 
+  const jobMap = await getJobTitlesMap();
+
   if (hasSearch) {
     const isNumeric = /^\d+$/.test(trimmedSearch);
     const searchOrConditions = [];
 
-    const tokenSearch = buildTokenizedSearch(trimmedSearch, (token) => [
-      { Name: { contains: token } },
-      { LastName: { contains: token } },
-      { NameFr: { contains: token } },
-      { LastNameFr: { contains: token } },
-      { JobTitle: { RankName: { contains: token } } },
-      { AssignedPosition: { contains: token } },
-    ]);
+    const tokenSearch = buildTokenizedSearch(trimmedSearch, (token) => {
+      const matchedJobIds = findMatchingJobTitleIds(jobMap, token);
+      return [
+        { Name: { contains: token } },
+        { LastName: { contains: token } },
+        { NameFr: { contains: token } },
+        { LastNameFr: { contains: token } },
+        ...(matchedJobIds.length > 0 ? [{ JobTitleId: { in: matchedJobIds } }] : []),
+        { AssignedPosition: { contains: token } },
+      ];
+    });
     if (tokenSearch) searchOrConditions.push(tokenSearch);
 
     searchOrConditions.push({ NIN: { contains: trimmedSearch } });
@@ -217,7 +236,10 @@ async function listEmployees(rawArgs) {
     totalCompletedFiles = cachedCounts.totalCompletedFiles;
   } else {
     let countCompletedPromise;
-    if (fileStatus === "complete") {
+    if (hasSearch) {
+      // Skip unnecessary 3rd DB count query during live search
+      countCompletedPromise = Promise.resolve(0);
+    } else if (fileStatus === "complete") {
       countCompletedPromise = Promise.resolve(null);
     } else if (fileStatus === "incomplete") {
       countCompletedPromise = Promise.resolve(0);
@@ -225,9 +247,7 @@ async function listEmployees(rawArgs) {
       const leanCompletedWhere = { IsProfileComplete: true };
       if (whereClause.Province) leanCompletedWhere.Province = whereClause.Province;
       if (whereClause.EmployeeStatus) leanCompletedWhere.EmployeeStatus = whereClause.EmployeeStatus;
-      if (!hasSearch) {
-        leanCompletedWhere.SpecialCases = excludeExitCondition.SpecialCases;
-      }
+      leanCompletedWhere.SpecialCases = excludeExitCondition.SpecialCases;
       countCompletedPromise = prisma.employees.count({ where: leanCompletedWhere });
     }
 
@@ -246,7 +266,6 @@ async function listEmployees(rawArgs) {
     }
   }
 
-  const jobMap = await getJobTitlesMap();
   const formattedEmployees = employees.map((emp) => {
     const jtEntry = emp.JobTitleId ? jobMap[emp.JobTitleId] : null;
     const rankName = typeof jtEntry === "string" ? jtEntry : (jtEntry?.RankName || "");
@@ -295,21 +314,25 @@ async function searchEmployees(requestingUser, query = "", province = "", direct
 
   const term = (query || "").trim();
   if (term) {
+    const jobMap = await getJobTitlesMap();
     const terms = term.split(/\s+/).filter(Boolean);
     const orConditions = [];
 
     if (terms.length > 0) {
       orConditions.push({
-        AND: terms.map((t) => ({
-          OR: [
-            { Name: { contains: t } },
-            { LastName: { contains: t } },
-            { NameFr: { contains: t } },
-            { LastNameFr: { contains: t } },
-            { JobTitle: { RankName: { contains: t } } },
-            { AssignedPosition: { contains: t } },
-          ],
-        })),
+        AND: terms.map((t) => {
+          const matchedJobIds = findMatchingJobTitleIds(jobMap, t);
+          return {
+            OR: [
+              { Name: { contains: t } },
+              { LastName: { contains: t } },
+              { NameFr: { contains: t } },
+              { LastNameFr: { contains: t } },
+              ...(matchedJobIds.length > 0 ? [{ JobTitleId: { in: matchedJobIds } }] : []),
+              { AssignedPosition: { contains: t } },
+            ],
+          };
+        }),
       });
     }
 
