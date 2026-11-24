@@ -39,7 +39,11 @@ export default function WorkCertificateFrDocument({
   year = new Date().getFullYear(),
   issueDate = "",
   signatoryKey = "le_directeur",
+  interestedCopies = 1,
+  archiveCopies = 1,
 }) {
+  const safeInterestedCopies = Math.max(1, parseInt(interestedCopies, 10) || 1);
+  const safeArchiveCopies = Math.max(1, parseInt(archiveCopies, 10) || 1);
   const valGender = String(gender || "").trim().toLowerCase();
   const isFemale =
     valGender === "أنثى" ||
@@ -331,8 +335,8 @@ export default function WorkCertificateFrDocument({
         >
           Copie à :
         </div>
-        <div>1- (3 Or.) Intéressé(e).</div>
-        <div>2- (1 Cp.) Dossier d&apos;archive</div>
+        <div>1- ({safeInterestedCopies} Or.) Intéressé(e).</div>
+        <div>2- ({safeArchiveCopies} Cp.) Dossier d&apos;archive</div>
       </div>
     </div>
   );

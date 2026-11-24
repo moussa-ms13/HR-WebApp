@@ -8,10 +8,7 @@ import {
   PROVINCIAL_MASH_BASE,
 } from "../../utils/constants";
 
-/**
- * Formats a date into DD/MM/YYYY without timezone shift.
- * Ignores sentinel SQL dates (year <= 1900).
- */
+
 export function formatOfficialDate(dateInput, fallback = "..../..../......") {
   if (!dateInput) return fallback;
   if (typeof dateInput === "string") {
@@ -32,9 +29,7 @@ export function formatOfficialDate(dateInput, fallback = "..../..../......") {
   return `${day}/${month}/${d.getFullYear()}`;
 }
 
-/**
- * Converts date input to YYYY-MM-DD for HTML date inputs.
- */
+
 export function toIsoDateInput(dateInput) {
   if (!dateInput) return "";
   if (typeof dateInput === "string") {
@@ -54,9 +49,7 @@ export function getTodayIsoDate() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-/**
- * Gendered Arabic administrative phrasing based on employee.Gender.
- */
+
 export function getOfficialGenderPhrasing(rawGender) {
   const val = String(rawGender || "").trim().toLowerCase();
   const isFemale = val === "أنثى" || val === "انثى" || val === "female" || val === "f";
@@ -90,22 +83,15 @@ export function getOfficialGenderPhrasing(rawGender) {
   };
 }
 
-/**
- * Formats numbers using Arabic/French decimal comma (e.g. 45.63 -> "45,63", 1.4 -> "1,4").
- */
+
 export function formatCommaDecimal(value, decimals = 2) {
   const num = Number(value);
   if (!Number.isFinite(num)) return "0";
   const fixed = decimals != null ? num.toFixed(decimals) : String(num);
-  // Trim trailing zero only if decimals is null; otherwise keep exact administrative precision
   return fixed.replace(".", ",");
 }
 
-/**
- * Computes experience allowance percentage and formatted formula string.
- * Example: (31 سنة × 1,4%) + 2,23% = 45,63%
- * Omits `+ extra%` cleanly when extraPercent is 0.
- */
+
 export function computeExperienceAllowance(yearsInput, extraPercentInput = 0, rate = 1.4) {
   const years = Math.max(0, Number(yearsInput) || 0);
   const extra = Math.max(0, Number(extraPercentInput) || 0);
@@ -133,9 +119,7 @@ export function computeExperienceAllowance(yearsInput, extraPercentInput = 0, ra
   return { ...formulaParts, formulaText };
 }
 
-/**
- * Auto-suggests full years of service from FirstHireDate / InstallationDate to today.
- */
+
 export function suggestExperienceYears(hireDate) {
   const iso = toIsoDateInput(hireDate);
   if (!iso) return 0;
@@ -185,9 +169,6 @@ export function resolveEmployeeDirectorate(employee) {
   return normalized || dir;
 }
 
-/**
- * Auto-resolves target provincial director title for Article 02 of the Experience Decision.
- */
 export function resolveTargetDirectorTitle(directorate, province) {
   const dir = String(directorate || "").trim();
   const prov = String(province || "").trim() || "الشلف";
@@ -205,13 +186,6 @@ export function resolveTargetDirectorTitle(directorate, province) {
   return `مدير أملاك الدولة لولاية ${prov}`;
 }
 
-/**
- * Parses Algerian HR reference strings such as:
- * - "مقرر رقم 1043 المؤرخ في 2026/09/27"
- * - "مقرر رقم 553 المؤرخ في 14/04/2025"
- * - "عقد رقم 5098"
- * Returns { number: string, dateIso: string } (dateIso is YYYY-MM-DD or "").
- */
 export function parseAdministrativeReference(rawText) {
   if (!rawText || typeof rawText !== "string") {
     return { number: "", dateIso: "" };
@@ -405,7 +379,7 @@ export function useResolvedEmployee(isOpen, employee) {
           setResolved((prev) => ({ ...prev, ...res.data }));
         }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
@@ -514,7 +488,7 @@ export function printOfficialDocumentInIframe(Component, props, docTitle = "وث
         const cleanup = () => {
           try {
             root.unmount();
-          } catch (_) {}
+          } catch (_) { }
           if (iframe.parentNode) {
             iframe.parentNode.removeChild(iframe);
           }
@@ -523,7 +497,7 @@ export function printOfficialDocumentInIframe(Component, props, docTitle = "وث
 
         try {
           iframe.contentWindow.addEventListener("afterprint", cleanup, { once: true });
-        } catch (_) {}
+        } catch (_) { }
         setTimeout(cleanup, 60000);
       };
 

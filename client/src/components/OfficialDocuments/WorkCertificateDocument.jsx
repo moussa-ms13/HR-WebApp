@@ -125,7 +125,11 @@ export default function WorkCertificateDocument({
   year = new Date().getFullYear(),
   issueDate = "",
   signatoryKey = "sub_director",
+  interestedCopies = 1,
+  archiveCopies = 1,
 }) {
+  const safeInterestedCopies = Math.max(1, parseInt(interestedCopies, 10) || 1);
+  const safeArchiveCopies = Math.max(1, parseInt(archiveCopies, 10) || 1);
   const g = getOfficialGenderPhrasing(gender);
   const signatory =
     WORK_CERT_SIGNATORIES[signatoryKey] || WORK_CERT_SIGNATORIES.sub_director;
@@ -480,8 +484,8 @@ export default function WorkCertificateDocument({
         >
           نسخة إلى:
         </div>
-        <div>- المعني(ة).</div>
-        <div>- ملف الأرشفة.</div>
+        <div>- ({safeInterestedCopies}) المعني(ة).</div>
+        <div>- ({safeArchiveCopies}) ملف الأرشفة.</div>
       </div>
     </div>
   );
