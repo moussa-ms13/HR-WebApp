@@ -393,10 +393,12 @@ const HR_ACTION_TITLES = [
   "حذف مستخدم",
 ];
 
+const HR_ACTION_TITLES_SET = new Set(HR_ACTION_TITLES);
+
 /**
  * GET /api/dashboard/user-kpis?date=YYYY-MM-DD
  * Admin-only: Aggregates ONLY tangible HR operations per user for a specific day.
- * Excludes Login/Logout/read-only actions.
+ * Uses indexed CreatedDate seek + O(n) JS Set grouping to avoid SQL Server NVARCHAR(MAX) GROUP BY timeouts.
  * Cached per-date for 3 minutes.
  */
 exports.getUserKpis = async (req, res, next) => {
@@ -426,22 +428,28 @@ exports.getUserKpis = async (req, res, next) => {
       return res.json({ success: true, data: cached });
     }
 
-    // Group system records by UserFullName, filtered strictly
-    const groups = await prisma.systemRecords.groupBy({
-      by: ["UserFullName"],
-      _count: { Id: true },
+    // Fast indexed range seek on IX_SystemRecords_CreatedDate_Desc (zero NVARCHAR(MAX) SQL GROUP BY)
+    const dayRecords = await prisma.systemRecords.findMany({
       where: {
         CreatedDate: { gte: startOfDay, lte: endOfDay },
-        Title: { in: HR_ACTION_TITLES },
       },
-      orderBy: { _count: { Id: "desc" } },
-      take: 15,
+      select: {
+        UserFullName: true,
+        Title: true,
+      },
     });
 
-    const data = groups.map((g) => ({
-      name: g.UserFullName || "غير محدد",
-      count: g._count.Id,
-    }));
+    const countByUser = new Map();
+    for (const rec of dayRecords) {
+      if (!HR_ACTION_TITLES_SET.has(rec.Title)) continue;
+      const name = rec.UserFullName || "غير محدد";
+      countByUser.set(name, (countByUser.get(name) || 0) + 1);
+    }
+
+    const data = Array.from(countByUser.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 15);
 
     // Cache for 3 minutes (matches the frontend polling interval)
     CacheService.set(cacheKey, data, 180);

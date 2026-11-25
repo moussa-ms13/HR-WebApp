@@ -50,8 +50,66 @@ const HeaderCell = ({
 
 
 
+const EmployeeSearchBox = React.memo(({ initialValue, onCommit }) => {
+  const [localValue, setLocalValue] = useState(initialValue || '');
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    setLocalValue(initialValue || '');
+  }, [initialValue]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  const handleChange = (e) => {
+    const val = e.target.value;
+    setLocalValue(val);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      onCommit(val);
+    }, 200);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      onCommit(localValue);
+    }
+  };
+
+  const handleIconClick = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    onCommit(localValue);
+  };
+
+  return (
+    <div className="relative w-64">
+      <input
+        type="text"
+        placeholder="ابدأ الكتابة للبحث..."
+        value={localValue}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        className="w-full pr-10 pl-4 py-2 bg-gray-50 border-none rounded-lg outline-none text-sm text-slate-700 focus:ring-1 focus:ring-gray-200"
+      />
+      <button
+        type="button"
+        onClick={handleIconClick}
+        aria-label="بحث"
+        className="absolute right-3 top-2.5 text-gray-400 hover:text-emerald-600 transition-colors"
+      >
+        <Search size={16} />
+      </button>
+    </div>
+  );
+});
+
 const EmployeesList = () => {
-  const { hasPermission } = useAuth();
+  const { user, hasPermission } = useAuth();
   const navigate = useNavigate();
   const toast = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -65,10 +123,6 @@ const EmployeesList = () => {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(25);
   const [search, setSearch] = useState(searchParams.get('search') || '');
-  // Instant-UI value bound to the input — updates every keystroke with
-  // zero network cost. `search` above is the debounced value that
-  // actually drives the SWR key/fetch.
-  const [inputValue, setInputValue] = useState(searchParams.get('search') || '');
   const [provinceFilter, setProvinceFilter] = useState('');
   const [directorateFilter, setDirectorateFilter] = useState('');
   const [fileStatusFilter, setFileStatusFilter] = useState('');
@@ -88,7 +142,7 @@ const EmployeesList = () => {
     setPage(1);
   };
   
-  const allowedProvinces = getAllowedProvinces(useAuth().user);
+  const allowedProvinces = useMemo(() => getAllowedProvinces(user), [user]);
 
   const availableMofatishiyat = useMemo(() => (provinceFilter ? getMofatishiyat(provinceFilter) : []), [provinceFilter]);
   const availableMohafathat = useMemo(() => (provinceFilter ? getMohafathat(provinceFilter) : []), [provinceFilter]);
@@ -135,14 +189,6 @@ const EmployeesList = () => {
   // Dropdown State
   const [openDropdownId, setOpenDropdownId] = useState(null);
 
-  // Debounced search — syncs with URL query params.
-  // `commitSearch` is the single source of truth for actually applying a
-  // search term (updates the debounced `search` state that SWR keys off
-  // of, resets pagination, and syncs the URL). Both the debounce timer
-  // and the instant Enter/icon-click paths funnel through it, so there's
-  // no duplicated logic between the two triggers.
-  const debounceRef = useRef(null);
-
   const commitSearch = useCallback((value) => {
     const trimmed = value.trim();
     setSearch(trimmed);
@@ -153,36 +199,6 @@ const EmployeesList = () => {
       setSearchParams({}, { replace: true });
     }
   }, [setSearchParams]);
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, []);
-
-  // --- Handlers ---
-  const handleSearchChange = (e) => {
-    const value = e.target.value;
-    setInputValue(value); // instant UI update, no fetch here
-
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      commitSearch(value);
-    }, 300);
-  };
-
-  const handleSearchKeyDown = (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      commitSearch(inputValue);
-    }
-  };
-
-  const handleSearchIconClick = () => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    commitSearch(inputValue);
-  };
 
   const handleExport = async () => {
     try {
@@ -240,7 +256,7 @@ const EmployeesList = () => {
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  if (error) {
+  if (error && error.name !== 'CanceledError' && error.code !== 'ERR_CANCELED') {
     return (
       <div className="flex h-full items-center justify-center p-6 text-red-600 bg-red-50 rounded-xl m-6 border border-red-200">
         <div className="text-center">
@@ -314,24 +330,7 @@ const EmployeesList = () => {
           
           <div className="h-4 w-px bg-gray-200 ml-2"></div>
 
-          <div className="relative w-64">
-            <input
-              type="text"
-              placeholder="ابدأ الكتابة للبحث..."
-              value={inputValue}
-              onChange={handleSearchChange}
-              onKeyDown={handleSearchKeyDown}
-              className="w-full pr-10 pl-4 py-2 bg-gray-50 border-none rounded-lg outline-none text-sm text-slate-700 focus:ring-1 focus:ring-gray-200"
-            />
-            <button
-              type="button"
-              onClick={handleSearchIconClick}
-              aria-label="بحث"
-              className="absolute right-3 top-2.5 text-gray-400 hover:text-emerald-600 transition-colors"
-            >
-              <Search size={16} />
-            </button>
-          </div>
+          <EmployeeSearchBox initialValue={search} onCommit={commitSearch} />
         </div>
 
         {/* Left side: Add Button & Export Button */}
@@ -382,7 +381,7 @@ const EmployeesList = () => {
                 <th className="py-4 px-4 font-medium text-sm text-gray-500 whitespace-nowrap bg-white border-b border-gray-100 text-center select-none">الإجراء</th>
               </tr>
             </thead>
-            <tbody className={`text-sm divide-y divide-gray-100 transition-opacity duration-200 ${isRefreshing ? 'opacity-50' : 'opacity-100'}`}>
+            <tbody className={`text-sm divide-y divide-gray-100 transition-opacity duration-75 ${isRefreshing ? 'opacity-80' : 'opacity-100'}`}>
               {isInitialLoading ? (
                 <tr>
                   <td colSpan="7" className="py-12 text-center text-gray-400">
@@ -550,12 +549,14 @@ const EmployeesList = () => {
         </div>
       </div>
 
-      <EmployeeModal 
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        employee={selectedEmployee}
-        onSuccess={handleModalSuccess}
-      />
+      {isModalOpen && (
+        <EmployeeModal 
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          employee={selectedEmployee}
+          onSuccess={handleModalSuccess}
+        />
+      )}
 
       <ConfirmModal
         open={confirmState.open}

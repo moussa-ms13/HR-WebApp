@@ -3,7 +3,6 @@ import useSWR from 'swr';
 import { useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
-import useDebounce from '../../hooks/useDebounce';
 import SpecialCasesService from '../../services/specialCasesService';
 import SpecialCaseModal from './components/SpecialCaseModal';
 import ReintegrateModal from './components/ReintegrateModal';
@@ -60,16 +59,30 @@ export default function SpecialCasesList() {
     setPage(1);
   };
 
-  const allowedProvinces = getAllowedProvinces(user);
-  const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
-  const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
+  const allowedProvinces = useMemo(() => getAllowedProvinces(user), [user]);
+  const availableMofatishiyat = useMemo(() => (provinceFilter ? getMofatishiyat(provinceFilter) : []), [provinceFilter]);
+  const availableMohafathat = useMemo(() => (provinceFilter ? getMohafathat(provinceFilter) : []), [provinceFilter]);
 
-  const debouncedSearch = useDebounce(searchInput, 300);
-  const search = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : '';
+  const initialSearch = searchParams.get('search')?.trim() || '';
+  const [search, setSearch] = useState(initialSearch.length >= 2 ? initialSearch : '');
+  const searchDebounceRef = useRef(null);
 
   useEffect(() => {
-    setPage(1);
-  }, [search]);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, []);
+
+  const handleSearchChange = useCallback((e) => {
+    const val = e.target.value;
+    setSearchInput(val);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      const trimmed = val.trim();
+      setSearch(trimmed.length >= 2 || /^\d+$/.test(trimmed) ? trimmed : '');
+      setPage(1);
+    }, 200);
+  }, []);
 
   const currentYear = new Date().getFullYear();
   const isPastYear = Boolean(yearFilter) && Number(yearFilter) < currentYear;
@@ -148,10 +161,6 @@ export default function SpecialCasesList() {
     caseName: '',
     employeeId: null,
   });
-
-  const handleSearchChange = (e) => {
-    setSearchInput(e.target.value);
-  };
 
   const handleAdd = () => {
     setSelectedCase(null);
@@ -469,22 +478,26 @@ export default function SpecialCasesList() {
         </div>
       </div>
 
-      <SpecialCaseModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        record={selectedCase}
-        onSuccess={handleModalSuccess}
-      />
+      {isModalOpen && (
+        <SpecialCaseModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          record={selectedCase}
+          onSuccess={handleModalSuccess}
+        />
+      )}
 
-      <ReintegrateModal
-        isOpen={isReintegrateOpen}
-        onClose={() => {
-          setIsReintegrateOpen(false);
-          setReintegrateCase(null);
-        }}
-        record={reintegrateCase}
-        onSuccess={handleModalSuccess}
-      />
+      {isReintegrateOpen && (
+        <ReintegrateModal
+          isOpen={isReintegrateOpen}
+          onClose={() => {
+            setIsReintegrateOpen(false);
+            setReintegrateCase(null);
+          }}
+          record={reintegrateCase}
+          onSuccess={handleModalSuccess}
+        />
+      )}
 
       <ConfirmModal
         open={confirmState.open}

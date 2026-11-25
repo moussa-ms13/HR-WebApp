@@ -23,10 +23,16 @@ const routes = require("./routes");
 const errorHandler = require("./middleware/errorHandler");
 const prisma = require("./config/database");
 
-// Warm up database connection pool
+// Warm up database connection pool & in-memory employee search index
 prisma.$connect()
   .then(() => prisma.$queryRaw`SELECT 1`)
-  .then(() => console.log("[Database] Connection pool warmed up successfully."))
+  .then(() => {
+    console.log("[Database] Connection pool warmed up successfully.");
+    const { getEmployeeDirectoryIndex } = require("./services/employees/employeeQueryBuilder");
+    return getEmployeeDirectoryIndex().then((idx) => {
+      console.log(`[Cache] Employee search index warmed up (${idx.length} records).`);
+    });
+  })
   .catch((err) => console.error("[Database] Warmup warning:", err.message));
 
 const app = express();

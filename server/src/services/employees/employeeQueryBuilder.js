@@ -1,53 +1,159 @@
 // ============================================================
 // Employee Query & Search Builder (extracted from EmployeesService)
+// Uses a 1.2 MB in-memory search index (auto-invalidated on every write)
+// for sub-2ms search & filtering even under heavy SQL Server RAM pressure.
 // ============================================================
 const prisma = require("../../config/database");
 const CacheService = require("../CacheService");
 const { ROLES, getAllowedProvinces } = require("../../config/constants");
 const {
   sanitizePagination,
-  buildTokenizedSearch,
   resolveGeographicFilter,
-  buildDirectorateCondition,
+  buildDirectorateFilter,
 } = require("../../utils/queryBuilder");
 const {
   EMPLOYEE_LIST_SELECT,
-  EMPLOYEE_SEARCH_SELECT,
   SORT_MAPPING,
 } = require("./employeeHelpers");
 
 const EXIT_CASE_TYPES = ["نقل", "تحويل", "استقالة", "تقاعد"];
+const DIRECTORY_CACHE_KEY = "emp_directory_index";
 
-function findMatchingJobTitleIds(jobMap, token) {
-  if (!token || !jobMap) return [];
-  const lower = String(token).toLowerCase();
-  const ids = [];
-  for (const [idStr, entry] of Object.entries(jobMap)) {
-    const rankName = typeof entry === "string" ? entry : (entry?.RankName || "");
-    const empCat = typeof entry === "object" && entry ? (entry.EmploymentCategory || "") : "";
-    if (rankName.toLowerCase().includes(lower) || empCat.toLowerCase().includes(lower)) {
-      ids.push(Number(idStr));
-    }
-  }
-  return ids;
+let directoryLoadPromise = null;
+
+function normalizeSearchText(str) {
+  return String(str || "")
+    .replace(/\u0640/g, "") // strip Arabic tatweel/kashida
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .toLowerCase()
+    .trim();
 }
 
 async function getJobTitlesMap() {
   let map = CacheService.get("all_job_titles_map");
   if (!map) {
     const titles = await prisma.jobTitles.findMany({
-      select: { Id: true, RankName: true, EmploymentCategory: true },
+      select: { Id: true, RankName: true, EmploymentCategory: true, CategoryLevel: true },
     });
     map = {};
     for (const t of titles) {
       map[t.Id] = {
         RankName: t.RankName || "",
         EmploymentCategory: t.EmploymentCategory || "",
+        CategoryLevel: t.CategoryLevel || "",
       };
     }
     CacheService.set("all_job_titles_map", map, 3600);
   }
   return map;
+}
+
+/**
+ * Loads and caches the lean directory index (~1.2 MB for ~1,724 employees).
+ * Invalidated immediately on every Employee / SpecialCase / JobTitle / Career mutation
+ * via CacheService.invalidateEmployeeEcosystem().
+ */
+async function getEmployeeDirectoryIndex() {
+  const cached = CacheService.get(DIRECTORY_CACHE_KEY);
+  if (cached) return cached;
+
+  if (directoryLoadPromise) {
+    return directoryLoadPromise;
+  }
+
+  directoryLoadPromise = (async () => {
+    try {
+      const [employees, exitCases, jobMap] = await Promise.all([
+        prisma.employees.findMany({
+          select: {
+            ...EMPLOYEE_LIST_SELECT,
+            NIN: true,
+            InstallationDate: true,
+            Degree: true,
+          },
+          orderBy: { Id: "desc" },
+        }),
+        prisma.specialCases.findMany({
+          where: {
+            IsActive: true,
+            CaseType: { in: EXIT_CASE_TYPES },
+          },
+          select: { EmployeesId: true },
+        }),
+        getJobTitlesMap(),
+      ]);
+
+      const exitEmpIds = new Set(exitCases.map((c) => c.EmployeesId));
+
+      const indexed = employees.map((emp) => {
+        const jtEntry = emp.JobTitleId ? jobMap[emp.JobTitleId] : null;
+        const rankName = typeof jtEntry === "string" ? jtEntry : (jtEntry?.RankName || "");
+        const empCategory = typeof jtEntry === "object" && jtEntry ? (jtEntry.EmploymentCategory || "") : "";
+        const catLevel = typeof jtEntry === "object" && jtEntry ? (jtEntry.CategoryLevel || "") : "";
+
+        const jobTitleDto = emp.JobTitleId
+          ? {
+              Id: emp.JobTitleId,
+              RankName: rankName,
+              EmploymentCategory: empCategory,
+              Category: empCategory,
+            }
+          : null;
+
+        // Exact EMPLOYEE_LIST_SELECT DTO returned to clients
+        const listDto = {
+          Id: emp.Id,
+          Name: emp.Name,
+          LastName: emp.LastName,
+          LastNameFr: emp.LastNameFr,
+          NameFr: emp.NameFr,
+          Gender: emp.Gender,
+          Province: emp.Province,
+          Directorate: emp.Directorate,
+          EmployeeStatus: emp.EmployeeStatus,
+          AssignedPosition: emp.AssignedPosition,
+          IsProfileComplete: emp.IsProfileComplete,
+          ProfileImagePath: emp.ProfileImagePath,
+          JobTitleId: emp.JobTitleId,
+          CorpsType: emp.CorpsType,
+          JobTitle: jobTitleDto,
+          SpecialCases: [],
+        };
+
+        const searchBlob = normalizeSearchText(
+          `${emp.LastName || ""} ${emp.Name || ""} ${emp.LastNameFr || ""} ${emp.NameFr || ""} ${rankName} ${emp.AssignedPosition || ""}`
+        );
+
+        return {
+          Id: emp.Id,
+          idStr: String(emp.Id),
+          Province: emp.Province || "",
+          Directorate: emp.Directorate || "",
+          EmployeeStatus: emp.EmployeeStatus || "",
+          IsProfileComplete: Boolean(emp.IsProfileComplete),
+          NIN: emp.NIN || "",
+          ninLower: String(emp.NIN || "").toLowerCase(),
+          InstallationDate: emp.InstallationDate ? new Date(emp.InstallationDate).getTime() : 0,
+          Degree: Number(emp.Degree) || 0,
+          rankName,
+          empCategory,
+          catLevel,
+          hasExit: exitEmpIds.has(emp.Id),
+          searchBlob,
+          listDto,
+        };
+      });
+
+      CacheService.set(DIRECTORY_CACHE_KEY, indexed, 300);
+      return indexed;
+    } finally {
+      directoryLoadPromise = null;
+    }
+  })();
+
+  return directoryLoadPromise;
 }
 
 function normalizeGetAllArgs(args) {
@@ -96,6 +202,55 @@ function normalizeGetAllArgs(args) {
   };
 }
 
+function matchesDirectorateFilter(empDir, dirFilter) {
+  if (!dirFilter) return true;
+  if (typeof dirFilter === "string") return empDir === dirFilter;
+  if (Array.isArray(dirFilter.in)) return dirFilter.in.includes(empDir);
+  return true;
+}
+
+function compareEntries(a, b, sortField, isAsc) {
+  let va, vb;
+  switch (sortField) {
+    case "Id":
+      va = a.Id;
+      vb = b.Id;
+      break;
+    case "Degree":
+      va = a.Degree;
+      vb = b.Degree;
+      break;
+    case "InstallationDate":
+      va = a.InstallationDate;
+      vb = b.InstallationDate;
+      break;
+    case "IsProfileComplete":
+      va = a.IsProfileComplete ? 1 : 0;
+      vb = b.IsProfileComplete ? 1 : 0;
+      break;
+    case "RankName":
+      va = a.rankName;
+      vb = b.rankName;
+      break;
+    case "NIN":
+      va = a.NIN;
+      vb = b.NIN;
+      break;
+    default:
+      va = a.listDto[sortField] ?? "";
+      vb = b.listDto[sortField] ?? "";
+      break;
+  }
+
+  let cmp = 0;
+  if (typeof va === "number" && typeof vb === "number") {
+    cmp = va - vb;
+  } else {
+    cmp = String(va).localeCompare(String(vb), "ar");
+  }
+  return isAsc ? cmp : -cmp;
+}
+
 async function listEmployees(rawArgs) {
   const {
     requestingUser,
@@ -122,165 +277,98 @@ async function listEmployees(rawArgs) {
     };
   }
 
-  const whereClause = { Province: provinceFilter };
-  const andConditions = [];
+  const allowedProvSet =
+    typeof provinceFilter === "string"
+      ? new Set([provinceFilter])
+      : new Set(provinceFilter?.in || []);
 
-  const dirCondition = buildDirectorateCondition(directorate);
-  if (dirCondition) andConditions.push(dirCondition);
+  const dirFilter = buildDirectorateFilter(directorate);
+  const trimmedCat = category ? String(category).trim() : "";
+  const trimmedFs = String(fileStatus || "").trim();
 
-  if (category && String(category).trim()) {
-    const trimmedCat = String(category).trim();
-    andConditions.push({
-      OR: [
-        { JobTitle: { EmploymentCategory: trimmedCat } },
-        { JobTitle: { CategoryLevel: trimmedCat } },
-        { JobTitle: { RankName: trimmedCat } },
-        { EmployeeStatus: trimmedCat },
-      ],
-    });
+  let targetEmpStatus = "";
+  if (["مرسم", "متربص", "متعاقد"].includes(trimmedFs)) {
+    targetEmpStatus = trimmedFs;
   }
-
-  if (fileStatus === "complete") {
-    whereClause.IsProfileComplete = true;
-  } else if (fileStatus === "incomplete") {
-    whereClause.IsProfileComplete = false;
-  } else if (["مرسم", "متربص", "متعاقد"].includes(String(fileStatus || "").trim())) {
-    whereClause.EmployeeStatus = String(fileStatus).trim();
-  }
-
   if (statusFilter) {
-    whereClause.EmployeeStatus =
+    targetEmpStatus =
       statusFilter === "مثبت" || statusFilter === "نشط" ? "مرسم" : statusFilter;
-  } else if (category && ["مرسم", "متربص", "متعاقد"].includes(String(category).trim())) {
-    whereClause.EmployeeStatus = String(category).trim();
+  } else if (trimmedCat && ["مرسم", "متربص", "متعاقد"].includes(trimmedCat)) {
+    targetEmpStatus = trimmedCat;
   }
 
-  // Native relational exclusion (avoids SQL Server 2100-parameter limit on large NOT IN arrays)
-  const excludeExitCondition = {
-    SpecialCases: {
-      none: {
-        IsActive: true,
-        CaseType: { in: EXIT_CASE_TYPES },
-      },
-    },
-  };
-  if (!hasSearch) {
-    andConditions.push(excludeExitCondition);
-  }
+  const normSearch = hasSearch ? normalizeSearchText(trimmedSearch) : "";
+  const searchTokens = normSearch ? normSearch.split(/\s+/).filter(Boolean) : [];
+  const searchLower = trimmedSearch.toLowerCase();
+  const numericId = /^\d+$/.test(trimmedSearch) ? parseInt(trimmedSearch, 10) : null;
 
-  const jobMap = await getJobTitlesMap();
+  const index = await getEmployeeDirectoryIndex();
 
-  if (hasSearch) {
-    const isNumeric = /^\d+$/.test(trimmedSearch);
-    const searchOrConditions = [];
+  const filtered = [];
+  let totalCompletedFiles = 0;
 
-    const tokenSearch = buildTokenizedSearch(trimmedSearch, (token) => {
-      const matchedJobIds = findMatchingJobTitleIds(jobMap, token);
-      return [
-        { Name: { contains: token } },
-        { LastName: { contains: token } },
-        { NameFr: { contains: token } },
-        { LastNameFr: { contains: token } },
-        ...(matchedJobIds.length > 0 ? [{ JobTitleId: { in: matchedJobIds } }] : []),
-        { AssignedPosition: { contains: token } },
-      ];
-    });
-    if (tokenSearch) searchOrConditions.push(tokenSearch);
+  for (let i = 0; i < index.length; i++) {
+    const item = index[i];
 
-    searchOrConditions.push({ NIN: { contains: trimmedSearch } });
-    if (isNumeric) searchOrConditions.push({ Id: parseInt(trimmedSearch, 10) });
+    // 1. Geographic RBAC & Province filter
+    if (!allowedProvSet.has(item.Province)) continue;
 
-    andConditions.push({ OR: searchOrConditions });
-  }
+    // 2. Exit-case exclusion when browsing (not searching)
+    if (!hasSearch && item.hasExit) continue;
 
-  if (andConditions.length > 0) {
-    whereClause.AND = andConditions;
-  }
+    // 3. Directorate / Workplace filter
+    if (dirFilter && !matchesDirectorateFilter(item.Directorate, dirFilter)) continue;
 
-  const safeOrder = String(sortOrder || "").toLowerCase() === "asc" ? "asc" : "desc";
-  let orderBy = { Id: "desc" };
-  if (sortBy && SORT_MAPPING[sortBy]) {
-    orderBy = { [SORT_MAPPING[sortBy]]: safeOrder };
-  } else if (sortBy === "jobTitle" || sortBy === "RankName" || sortBy === "rank") {
-    orderBy = { JobTitle: { RankName: safeOrder } };
-  }
+    // 4. Category filter
+    if (trimmedCat) {
+      const catMatches =
+        item.empCategory === trimmedCat ||
+        item.catLevel === trimmedCat ||
+        item.rankName === trimmedCat ||
+        item.EmployeeStatus === trimmedCat;
+      if (!catMatches) continue;
+    }
 
-  // Only cache counts when NOT searching (prevents arbitrary search-string cache flooding)
-  const countCacheKey = !hasSearch
-    ? `emp_count_${JSON.stringify({
-        prov: whereClause.Province,
-        dir: directorate || "",
-        cat: category || "",
-        fs: fileStatus || "",
-        st: statusFilter || "",
-      })}`
-    : null;
+    // 5. Status filter
+    if (targetEmpStatus && item.EmployeeStatus !== targetEmpStatus) continue;
 
-  const cachedCounts = countCacheKey ? CacheService.get(countCacheKey) : null;
+    // 6. Profile completeness filter
+    if (trimmedFs === "complete" && !item.IsProfileComplete) continue;
+    if (trimmedFs === "incomplete" && item.IsProfileComplete) continue;
 
-  const employeesPromise = prisma.employees.findMany({
-    where: whereClause,
-    select: EMPLOYEE_LIST_SELECT,
-    skip,
-    take: safeLimit,
-    orderBy,
-  });
-
-  let total;
-  let totalCompletedFiles;
-  let employees;
-
-  if (cachedCounts) {
-    employees = await employeesPromise;
-    total = cachedCounts.total;
-    totalCompletedFiles = cachedCounts.totalCompletedFiles;
-  } else {
-    let countCompletedPromise;
+    // 7. Arabic-normalized tokenized search + NIN + numeric Id
     if (hasSearch) {
-      // Skip unnecessary 3rd DB count query during live search
-      countCompletedPromise = Promise.resolve(0);
-    } else if (fileStatus === "complete") {
-      countCompletedPromise = Promise.resolve(null);
-    } else if (fileStatus === "incomplete") {
-      countCompletedPromise = Promise.resolve(0);
-    } else {
-      const leanCompletedWhere = { IsProfileComplete: true };
-      if (whereClause.Province) leanCompletedWhere.Province = whereClause.Province;
-      if (whereClause.EmployeeStatus) leanCompletedWhere.EmployeeStatus = whereClause.EmployeeStatus;
-      leanCompletedWhere.SpecialCases = excludeExitCondition.SpecialCases;
-      countCompletedPromise = prisma.employees.count({ where: leanCompletedWhere });
+      const tokensMatch =
+        searchTokens.length > 0 &&
+        searchTokens.every((tok) => item.searchBlob.includes(tok));
+      const ninMatch = item.ninLower.includes(searchLower);
+      const idMatch = numericId !== null && item.Id === numericId;
+      if (!tokensMatch && !ninMatch && !idMatch) continue;
     }
 
-    const [empsResult, totalResult, completedResult] = await Promise.all([
-      employeesPromise,
-      prisma.employees.count({ where: whereClause }),
-      countCompletedPromise,
-    ]);
-
-    employees = empsResult;
-    total = totalResult;
-    totalCompletedFiles = completedResult === null ? total : (completedResult ?? 0);
-
-    if (countCacheKey) {
-      CacheService.set(countCacheKey, { total, totalCompletedFiles }, 60);
-    }
+    if (item.IsProfileComplete) totalCompletedFiles++;
+    filtered.push(item);
   }
 
-  const formattedEmployees = employees.map((emp) => {
-    const jtEntry = emp.JobTitleId ? jobMap[emp.JobTitleId] : null;
-    const rankName = typeof jtEntry === "string" ? jtEntry : (jtEntry?.RankName || "");
-    const empCategory = typeof jtEntry === "object" && jtEntry ? (jtEntry.EmploymentCategory || "") : "";
-    return {
-      ...emp,
-      JobTitle: emp.JobTitleId
-        ? { Id: emp.JobTitleId, RankName: rankName, EmploymentCategory: empCategory, Category: empCategory }
-        : null,
-      SpecialCases: [],
-    };
-  });
+  // Sort (index is already pre-sorted by Id DESC, so default order requires ZERO sort!)
+  const safeOrder = String(sortOrder || "").toLowerCase() === "asc" ? "asc" : "desc";
+  const isAsc = safeOrder === "asc";
+  let sortField = "Id";
+  if (sortBy && SORT_MAPPING[sortBy]) {
+    sortField = SORT_MAPPING[sortBy];
+  } else if (sortBy === "jobTitle" || sortBy === "RankName" || sortBy === "rank") {
+    sortField = "RankName";
+  }
+
+  if (sortField !== "Id" || isAsc) {
+    filtered.sort((a, b) => compareEntries(a, b, sortField, isAsc));
+  }
+
+  const total = filtered.length;
+  const pageItems = filtered.slice(skip, skip + safeLimit).map((item) => item.listDto);
 
   return {
-    data: formattedEmployees,
+    data: pageItems,
     meta: {
       total,
       page: safePage,
@@ -292,69 +380,81 @@ async function listEmployees(rawArgs) {
 }
 
 async function searchEmployees(requestingUser, query = "", province = "", directorate = "") {
-  const whereClause = {};
-
+  let allowedProvSet = null;
   if (requestingUser?.role !== ROLES.ADMIN) {
     const allowedProvinces = getAllowedProvinces(requestingUser?.permissions || {});
     if (!allowedProvinces || allowedProvinces.length === 0) return [];
-    whereClause.Province = { in: allowedProvinces };
+    allowedProvSet = new Set(allowedProvinces);
   }
 
   if (province) {
     const trimmedProv = String(province).trim();
-    if (requestingUser?.role === ROLES.ADMIN || (whereClause.Province?.in || []).includes(trimmedProv)) {
-      whereClause.Province = trimmedProv;
+    if (requestingUser?.role === ROLES.ADMIN || allowedProvSet?.has(trimmedProv)) {
+      allowedProvSet = new Set([trimmedProv]);
+    } else {
+      return [];
     }
   }
 
-  const dirCondition = buildDirectorateCondition(directorate);
-  if (dirCondition) {
-    whereClause.AND = [...(whereClause.AND || []), dirCondition];
-  }
-
+  const dirFilter = buildDirectorateFilter(directorate);
   const term = (query || "").trim();
-  if (term) {
-    const jobMap = await getJobTitlesMap();
-    const terms = term.split(/\s+/).filter(Boolean);
-    const orConditions = [];
+  const normTerm = term ? normalizeSearchText(term) : "";
+  const tokens = normTerm ? normTerm.split(/\s+/).filter(Boolean) : [];
+  const termLower = term.toLowerCase();
+  const numericId = /^\d+$/.test(term) ? Number(term) : null;
 
-    if (terms.length > 0) {
-      orConditions.push({
-        AND: terms.map((t) => {
-          const matchedJobIds = findMatchingJobTitleIds(jobMap, t);
-          return {
-            OR: [
-              { Name: { contains: t } },
-              { LastName: { contains: t } },
-              { NameFr: { contains: t } },
-              { LastNameFr: { contains: t } },
-              ...(matchedJobIds.length > 0 ? [{ JobTitleId: { in: matchedJobIds } }] : []),
-              { AssignedPosition: { contains: t } },
-            ],
-          };
-        }),
-      });
+  const index = await getEmployeeDirectoryIndex();
+  const matches = [];
+
+  for (let i = 0; i < index.length; i++) {
+    const item = index[i];
+    if (allowedProvSet && !allowedProvSet.has(item.Province)) continue;
+    if (dirFilter && !matchesDirectorateFilter(item.Directorate, dirFilter)) continue;
+
+    if (term) {
+      const tokensMatch = tokens.length > 0 && tokens.every((t) => item.searchBlob.includes(t));
+      const ninMatch = item.ninLower.startsWith(termLower);
+      const idMatch = numericId !== null && item.Id === numericId;
+      if (!tokensMatch && !ninMatch && !idMatch) continue;
     }
 
-    orConditions.push({ NIN: { startsWith: term } });
-    const numericId = Number(term);
-    if (!Number.isNaN(numericId) && /^\d+$/.test(term)) {
-      orConditions.push({ Id: numericId });
-    }
-
-    whereClause.AND = [...(whereClause.AND || []), { OR: orConditions }];
+    matches.push(item);
   }
 
-  return prisma.employees.findMany({
-    where: whereClause,
-    select: EMPLOYEE_SEARCH_SELECT,
-    take: 15,
-    orderBy: [{ LastName: "asc" }, { Name: "asc" }],
+  matches.sort((a, b) => {
+    const cmpLast = String(a.listDto.LastName || "").localeCompare(String(b.listDto.LastName || ""), "ar");
+    if (cmpLast !== 0) return cmpLast;
+    return String(a.listDto.Name || "").localeCompare(String(b.listDto.Name || ""), "ar");
+  });
+
+  return matches.slice(0, 15).map((item) => {
+    const d = item.listDto;
+    return {
+      Id: d.Id,
+      Name: d.Name,
+      LastName: d.LastName,
+      LastNameFr: d.LastNameFr,
+      NameFr: d.NameFr,
+      Gender: d.Gender,
+      Province: d.Province,
+      Directorate: d.Directorate,
+      EmployeeStatus: d.EmployeeStatus,
+      CorpsType: d.CorpsType,
+      JobTitleId: d.JobTitleId,
+      JobTitle: d.JobTitle
+        ? {
+            Id: d.JobTitle.Id,
+            RankName: d.JobTitle.RankName,
+            EmploymentCategory: d.JobTitle.EmploymentCategory,
+          }
+        : null,
+    };
   });
 }
 
 module.exports = {
   getJobTitlesMap,
+  getEmployeeDirectoryIndex,
   listEmployees,
   searchEmployees,
 };

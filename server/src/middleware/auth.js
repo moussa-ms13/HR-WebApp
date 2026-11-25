@@ -9,9 +9,9 @@ const { ROLES } = require("../config/constants");
 
 const { extractClientIp, asyncLocalStorage } = require("../utils/requestContext");
 
-// Short-lived cache (5s) for live DB permissions so updates take effect without requiring re-login
+// Short-lived cache (60s) for live DB permissions — invalidated immediately on any role/user edit
 const userPermsCache = new Map();
-const USER_PERMS_TTL_MS = 5000;
+const USER_PERMS_TTL_MS = 60000;
 const MAX_USER_PERMS_CACHE = 500;
 
 function invalidateUserPermissionsCache(userId) {

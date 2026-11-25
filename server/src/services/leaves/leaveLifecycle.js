@@ -25,6 +25,7 @@ const {
   refundConsumedLeave,
   getPositiveRemainingBreakdown,
 } = require("./leaveBalanceHelper");
+const { getJobTitlesMap } = require("../employees/employeeQueryBuilder");
 
 const STATE_EMPLOYEE_SELECT = {
   Id: true,
@@ -90,18 +91,53 @@ async function getAllStates(
     ...(stateType && String(stateType).trim() ? { StateTypeOrReason: String(stateType).trim() } : {}),
   };
 
-  const tokenSearch = buildTokenizedSearch(search, (token) => [
-    { Employee: { LastName: { contains: token } } },
-    { Employee: { Name: { contains: token } } },
-    { Employee: { NIN: { contains: token } } },
-    { StateTypeOrReason: { contains: token } },
-    { ExceptionalReason: { contains: token } },
-    { CustomEndText: { contains: token } },
-    { CurrentJobTitle: { contains: token } },
-    { Notes: { contains: token } },
-    { Employee: { JobTitle: { RankName: { contains: token } } } },
-    ...(/^\d{4}$/.test(token) ? [{ ConsumedYear: Number(token) }] : []),
-  ]);
+  const hasSearch = Boolean(search && String(search).trim());
+
+  // Short-TTL response cache for default/filtered non-search leaves table views
+  // Auto-invalidated on every write via CacheService.invalidateEmployeeEcosystem() ("state_list_")
+  const listCacheKey = !hasSearch
+    ? `state_list_${JSON.stringify({
+        prov: provinceFilter,
+        dir: directorate || "",
+        cat: category || "",
+        st: stateType || "",
+        yr: year || "",
+        emp: employeeId || "",
+        status: statusFilter || "",
+        p: safePage,
+        l: safeLimit,
+        sb: sortBy || "Id",
+        so: sortOrder || "desc",
+      })}`
+    : null;
+  if (listCacheKey) {
+    const cachedPage = CacheService.get(listCacheKey);
+    if (cachedPage) return cachedPage;
+  }
+
+  const jobMap = hasSearch ? await getJobTitlesMap() : null;
+  const tokenSearch = buildTokenizedSearch(search, (token) => {
+    const lower = String(token).toLowerCase();
+    const matchedJobIds = [];
+    if (jobMap) {
+      for (const [idStr, entry] of Object.entries(jobMap)) {
+        const rankName = typeof entry === "string" ? entry : (entry?.RankName || "");
+        if (rankName.toLowerCase().includes(lower)) matchedJobIds.push(Number(idStr));
+      }
+    }
+    return [
+      { Employee: { LastName: { contains: token } } },
+      { Employee: { Name: { contains: token } } },
+      { Employee: { NIN: { contains: token } } },
+      { StateTypeOrReason: { contains: token } },
+      { ExceptionalReason: { contains: token } },
+      { CustomEndText: { contains: token } },
+      { CurrentJobTitle: { contains: token } },
+      { Notes: { contains: token } },
+      ...(matchedJobIds.length > 0 ? [{ Employee: { JobTitleId: { in: matchedJobIds } } }] : []),
+      ...(/^\d{4}$/.test(token) ? [{ ConsumedYear: Number(token) }] : []),
+    ];
+  });
   if (tokenSearch) {
     baseWhere.AND = [...(baseWhere.AND || []), ...tokenSearch.AND];
   }
@@ -147,18 +183,15 @@ async function getAllStates(
   }
 
   const isStandardTab = ["active", "resumed", "all"].includes(effectiveStatus);
-  const hasSearch = Boolean(search && String(search).trim());
-  const countCacheKey = !hasSearch
-    ? `state_count_leaves_${JSON.stringify({
-        prov: provinceFilter,
-        dir: directorate || "",
-        cat: category || "",
-        st: stateType || "",
-        yr: year || "",
-        emp: employeeId || "",
-      })}`
-    : null;
-  const cachedCounts = countCacheKey ? CacheService.get(countCacheKey) : null;
+  const countCacheKey = `state_count_leaves_${JSON.stringify({
+    prov: provinceFilter,
+    dir: directorate || "",
+    cat: category || "",
+    st: stateType || "",
+    yr: year || "",
+    emp: employeeId || "",
+  })}`;
+  const cachedCounts = CacheService.get(countCacheKey);
 
   const statesPromise = prisma.employeeStates.findMany({
     where: whereClause,
@@ -191,11 +224,18 @@ async function getAllStates(
     orderBy,
   });
 
-  let states, counts, customTotal, years;
-  if (cachedCounts && isStandardTab) {
+  let states, counts, total, years;
+  if (hasSearch) {
+    // Fast search path: avoid 3 redundant relational COUNT(*) queries during live search
+    [states, years] = await Promise.all([statesPromise, getDistinctYears()]);
+    total = skip === 0 && states.length < safeLimit
+      ? states.length
+      : await prisma.employeeStates.count({ where: whereClause });
+    counts = cachedCounts || { active: 0, resumed: 0, all: total };
+  } else if (cachedCounts && isStandardTab) {
     [states, years] = await Promise.all([statesPromise, getDistinctYears()]);
     counts = cachedCounts;
-    customTotal = null;
+    total = counts[effectiveStatus];
   } else {
     const [rows, activeCount, resumedCount, allCount, customRes, yrs] = await Promise.all([
       statesPromise,
@@ -207,16 +247,12 @@ async function getAllStates(
     ]);
     states = rows;
     counts = { active: activeCount, resumed: resumedCount, all: allCount };
-    customTotal = customRes;
+    total = isStandardTab ? counts[effectiveStatus] : customRes;
     years = yrs;
-    if (countCacheKey) {
-      CacheService.set(countCacheKey, counts, 60);
-    }
+    CacheService.set(countCacheKey, counts, 60);
   }
 
-  const total = isStandardTab ? counts[effectiveStatus] : customTotal;
-
-  return {
+  const response = {
     data: states.map(attachLiveRemainingBreakdown),
     meta: {
       total,
@@ -227,6 +263,12 @@ async function getAllStates(
       years,
     },
   };
+
+  if (listCacheKey) {
+    CacheService.set(listCacheKey, response, 60);
+  }
+
+  return response;
 }
 
 async function getStateById(id, requestingUser) {

@@ -64,8 +64,10 @@ class CacheService {
    * and scoped dashboard analytics caches whenever data is mutated.
    */
   invalidateEmployeeEcosystem() {
+    this.del("emp_directory_index");
     this.delByPrefix("emp_count_");
     this.delByPrefix("state_count_");
+    this.delByPrefix("state_list_");
     this.delByPrefix("distinct_years_");
     this.delByPrefix("job_titles_");
     this.del("all_job_titles_map");

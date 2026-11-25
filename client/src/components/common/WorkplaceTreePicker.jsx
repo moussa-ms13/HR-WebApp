@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { ChevronDown, ChevronLeft } from 'lucide-react';
 import {
   getMofatishiyat,
@@ -47,7 +47,7 @@ const TreeNode = ({ label, value, children, onSelect, isLeaf, dirTag }) => {
   );
 };
 
-export default function WorkplaceTreePicker({
+function WorkplaceTreePicker({
   province,
   value,
   onChange,
@@ -59,6 +59,9 @@ export default function WorkplaceTreePicker({
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
   const toast = useToast();
+
+  const mofatishiyat = useMemo(() => (province ? getMofatishiyat(province) : []), [province]);
+  const mohafathat = useMemo(() => (province ? getMohafathat(province) : []), [province]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -132,7 +135,7 @@ export default function WorkplaceTreePicker({
                 dirTag={PROVINCIAL_AMLAK_BASE}
               />
               <TreeNode label="مفتشيات أملاك الدولة" onSelect={handleSelect} isLeaf={false}>
-                {getMofatishiyat(province).map((m) => (
+                {mofatishiyat.map((m) => (
                   <TreeNode
                     key={m}
                     label={m}
@@ -154,7 +157,7 @@ export default function WorkplaceTreePicker({
                 dirTag={PROVINCIAL_MASH_BASE}
               />
               <TreeNode label="المحافظات العقارية" onSelect={handleSelect} isLeaf={false}>
-                {getMohafathat(province).map((m) => (
+                {mohafathat.map((m) => (
                   <TreeNode
                     key={m}
                     label={m}
@@ -172,3 +175,5 @@ export default function WorkplaceTreePicker({
     </div>
   );
 }
+
+export default React.memo(WorkplaceTreePicker);

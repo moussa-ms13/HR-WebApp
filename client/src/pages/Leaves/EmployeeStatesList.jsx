@@ -3,7 +3,6 @@ import useSWR from 'swr';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { getAllowedProvinces, getMofatishiyat, getMohafathat } from '../../utils/constants';
-import useDebounce from '../../hooks/useDebounce';
 import EmployeeStatesService from '../../services/employeeStatesService';
 import EmployeeStateModal from './EmployeeStateModal';
 import UnifiedEntryModal from './UnifiedEntryModal';
@@ -73,17 +72,30 @@ const EmployeeStatesList = () => {
     setPage(1);
   };
 
-  const allowedProvinces = getAllowedProvinces(user);
-  const availableMofatishiyat = provinceFilter ? getMofatishiyat(provinceFilter) : [];
-  const availableMohafathat = provinceFilter ? getMohafathat(provinceFilter) : [];
+  const allowedProvinces = useMemo(() => getAllowedProvinces(user), [user]);
+  const availableMofatishiyat = useMemo(() => (provinceFilter ? getMofatishiyat(provinceFilter) : []), [provinceFilter]);
+  const availableMohafathat = useMemo(() => (provinceFilter ? getMohafathat(provinceFilter) : []), [provinceFilter]);
 
-  // SWR keys are bound ONLY to the debounced value; API search fires from 2+ chars
-  const debouncedSearch = useDebounce(searchInput, 300);
-  const search = debouncedSearch.trim().length >= 2 ? debouncedSearch.trim() : '';
+  const initialSearch = searchParams.get('search')?.trim() || '';
+  const [search, setSearch] = useState(initialSearch.length >= 2 ? initialSearch : '');
+  const searchDebounceRef = useRef(null);
 
   useEffect(() => {
-    setPage(1);
-  }, [search]);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, []);
+
+  const handleSearchChange = useCallback((e) => {
+    const val = e.target.value;
+    setSearchInput(val);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      const trimmed = val.trim();
+      setSearch(trimmed.length >= 2 || /^\d+$/.test(trimmed) ? trimmed : '');
+      setPage(1);
+    }, 200);
+  }, []);
 
   const currentYear = new Date().getFullYear();
   const isPastYear = Boolean(yearFilter) && Number(yearFilter) < currentYear;
@@ -121,10 +133,6 @@ const EmployeeStatesList = () => {
     fetchStates,
     { revalidateOnFocus: false, keepPreviousData: true }
   );
-
-  const handleSearchChange = (e) => {
-    setSearchInput(e.target.value);
-  };
 
   const states = Array.isArray(data) ? data : (data?.records || data?.data || []);
   const meta = data?.meta || { total: 0, totalPages: 0, page: 1, counts: {}, years: [] };
@@ -523,20 +531,24 @@ const EmployeeStatesList = () => {
         </div>
       </div>
 
-      <EmployeeStateModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        record={selectedState}
-        onSuccess={handleModalSuccess}
-      />
+      {isModalOpen && (
+        <EmployeeStateModal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          record={selectedState}
+          onSuccess={handleModalSuccess}
+        />
+      )}
 
-      <UnifiedEntryModal
-        isOpen={isUnifiedModalOpen}
-        onClose={() => setIsUnifiedModalOpen(false)}
-        onSuccess={handleUnifiedSuccess}
-        defaultCategory="leave"
-        hideCategoryTabs={true}
-      />
+      {isUnifiedModalOpen && (
+        <UnifiedEntryModal
+          isOpen={isUnifiedModalOpen}
+          onClose={() => setIsUnifiedModalOpen(false)}
+          onSuccess={handleUnifiedSuccess}
+          defaultCategory="leave"
+          hideCategoryTabs={true}
+        />
+      )}
 
       <ConfirmModal
         open={confirmState.open}

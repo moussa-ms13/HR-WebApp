@@ -282,20 +282,23 @@ function buildDirectorateCondition(requestedDirectorate) {
     const prov = (amlakMatch[1] || amlakMatch[2] || "").trim();
     if (prov) {
       return {
-        OR: [
-          { Directorate: `مديرية أملاك الدولة (${prov})` },
-          { Directorate: `مديرية أملاك الدولة لولاية ${prov}` },
-          { AND: [{ Directorate: "مديرية أملاك الدولة" }, { Province: prov }] },
-          { Directorate: "مديرية أملاك الدولة" },
-        ],
+        Directorate: {
+          in: [
+            `مديرية أملاك الدولة (${prov})`,
+            `مديرية أملاك الدولة لولاية ${prov}`,
+            "مديرية أملاك الدولة",
+          ],
+        },
       };
     }
     return {
-      OR: [
-        { Directorate: "مديرية أملاك الدولة" },
-        { Directorate: { startsWith: "مديرية أملاك الدولة (" } },
-        { Directorate: { startsWith: "مديرية أملاك الدولة لولاية " } },
-      ],
+      Directorate: {
+        in: [
+          "مديرية أملاك الدولة",
+          ...KNOWN_PROVINCES.map((p) => `مديرية أملاك الدولة (${p})`),
+          ...KNOWN_PROVINCES.map((p) => `مديرية أملاك الدولة لولاية ${p}`),
+        ],
+      },
     };
   }
 
@@ -304,24 +307,27 @@ function buildDirectorateCondition(requestedDirectorate) {
     const prov = (mashMatch[1] || mashMatch[2] || "").trim();
     if (prov) {
       return {
-        OR: [
-          { Directorate: `مديرية مسح الأراضي والحفظ العقاري لولاية ${prov}` },
-          { Directorate: `مديرية مسح الأراضي والحفظ العقاري (${prov})` },
-          { Directorate: `مديرية مسح الأراضي (${prov})` },
-          { AND: [{ Directorate: { in: ["مديرية مسح الأراضي والحفظ العقاري", "مديرية مسح الأراضي"] } }, { Province: prov }] },
-          { Directorate: "مديرية مسح الأراضي والحفظ العقاري" },
-          { Directorate: "مديرية مسح الأراضي" },
-        ],
+        Directorate: {
+          in: [
+            `مديرية مسح الأراضي والحفظ العقاري لولاية ${prov}`,
+            `مديرية مسح الأراضي والحفظ العقاري (${prov})`,
+            `مديرية مسح الأراضي (${prov})`,
+            "مديرية مسح الأراضي والحفظ العقاري",
+            "مديرية مسح الأراضي",
+          ],
+        },
       };
     }
     return {
-      OR: [
-        { Directorate: "مديرية مسح الأراضي والحفظ العقاري" },
-        { Directorate: "مديرية مسح الأراضي" },
-        { Directorate: { startsWith: "مديرية مسح الأراضي والحفظ العقاري لولاية " } },
-        { Directorate: { startsWith: "مديرية مسح الأراضي والحفظ العقاري (" } },
-        { Directorate: { startsWith: "مديرية مسح الأراضي (" } },
-      ],
+      Directorate: {
+        in: [
+          "مديرية مسح الأراضي والحفظ العقاري",
+          "مديرية مسح الأراضي",
+          ...KNOWN_PROVINCES.map((p) => `مديرية مسح الأراضي والحفظ العقاري لولاية ${p}`),
+          ...KNOWN_PROVINCES.map((p) => `مديرية مسح الأراضي والحفظ العقاري (${p})`),
+          ...KNOWN_PROVINCES.map((p) => `مديرية مسح الأراضي (${p})`),
+        ],
+      },
     };
   }
 
